@@ -20,7 +20,7 @@ def test_evaluation_case_defaults_to_fail_closed_unclassified():
     """Unclassified cases must default to UNCLASSIFIED and block external dispatch."""
     case = EvaluationCase(
         id="case-001",
-        query="What is the tuition fee for MBBS at MSU?",
+        query="What is the tuition fee for MBBS at Apex University?",
     )
     assert case.classification == DataClassification.UNCLASSIFIED
     assert case.split == DatasetSplit.UNASSIGNED
@@ -51,7 +51,7 @@ def test_verified_status_requires_explicit_reference_citation():
     # Valid verified record
     valid_record = VerificationRecord(
         status=VerificationStatus.VERIFIED,
-        reference_source="MSU Academic Prospectus 2026, Section 4.2",
+        reference_source="University Academic Prospectus 2026, Section 4.2",
         verifier="Dean of Academic Affairs",
     )
     assert valid_record.status == VerificationStatus.VERIFIED
