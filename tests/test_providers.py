@@ -95,8 +95,8 @@ def test_rubric_evaluator_scoring():
     score = evaluator.evaluate(
         score_id="score-test-1",
         execution_id="exec-test-1",
-        generated_output="MSU provides 100% PTPTN loan facilities and scholarship waivers.",
-        expected_answer="PTPTN loan options and merit scholarships are available at MSU.",
+        generated_output="Apex University provides 100% financial aid facilities and scholarship waivers.",
+        expected_answer="Financial aid options and merit scholarships are available at Apex University.",
     )
     assert score.accuracy > 0.0
     assert score.groundedness > 0.0
