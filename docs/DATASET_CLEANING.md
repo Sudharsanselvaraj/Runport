@@ -3,8 +3,8 @@
 Status: local preparation only. `PRODUCTION_PARITY_NOT_ESTABLISHED`. No labels approved. Nothing was sent to any provider.
 
 - **Source:** `september_to_october.csv` (read only; git-ignored). SHA-256 prefix `fd6b06a2d4ad`, checked before and after the run: unchanged.
-- **Code:** `src/msu_llm_lab/classification/dataprep.py`, run with `msu-llm-lab prepare-classification-data`.
-- **Output folder:** `data/classification_prep/prep-v1/` (git-ignored; it contains redacted student text, so it must never be committed or uploaded).
+- **Code:** `src/runport/classification/dataprep.py`, run with `runport prepare-classification-data`.
+- **Output folder:** `data/classification_prep/prep-v1/` (local and git-ignored).
 - **Version:** `prep-v1`, deterministic (the same input gives the same output).
 
 ## 1. What happened to each source column
@@ -98,7 +98,7 @@ Limits, stated plainly:
 
 - **Grouping:** all rows of one provisional user group stay in one split.
 - **Views:** 642 groups. 121 contain phrases that hint at rare classes (handoff, upload status, out of scope); 61 of those form a separate **challenge** view (355 intent cases). The other 581 groups form the **natural** view (1,869 cases). The natural view therefore under-represents rare intents. The two views are never combined into one accuracy figure.
-- **Splits:** DEV and TEST at 50/50 within each view, seed `msu-prep-v1-seed`. The assignment is the same under both session policies.
+- **Splits:** DEV and TEST at 50/50 within each view, seed `runport-prep-v1-seed`. The assignment is the same under both session policies.
 - **Checks:** 0 groups appear in more than one split or view. 67 distinct stock messages (greetings and similar) appear in both DEV and TEST, which is expected but reported.
 
 ## 7. Files written (`data/classification_prep/prep-v1/`)
@@ -129,7 +129,7 @@ These changes apply to the code and to any NEW preparation run. The existing `pr
 - **No silent overwrite.** `prepare-classification-data` now refuses to write into a non-empty output folder (it checks before reading the CSV). A folder that holds an `annotations/` directory gets a specific protective message. Use `--new-version` to write a sibling version (`prep-v1-r2`, `prep-v1-r3`, ...). Human annotations belong in a separate versioned `annotations/` folder that no rerun may touch, keyed by **row id** (`R0001...`, file order), not by group id.
 - **Run provenance.** The manifest now records a code fingerprint (hash of the preparation, summary-builder, contract and split sources), the git commit, creation time and all parameters (session thresholds, seed, split ratios, challenge fraction).
 - **O1 narrowed.** A bare "no" or "thanks" is treated as the unresolved O1 case only when the assistant's previous message made a concrete non-counsellor offer ("would you like...", "do you want...", "shall I...", "can I help with..."). A plain clarifying question ending in "?" no longer qualifies, a generic "let me know" closing no longer qualifies, and counsellor-connect offers follow the handoff rule instead. The existing `prep-v1` candidates were made with the broader rule (5 intent cases per policy were excluded under O1), so some of those exclusions may be over-broad until a new version is prepared.
-- **Pseudonymisation is not anonymisation.** Group and trace ids are salted hashes. `prep-v1` used a PUBLIC constant salt, so anyone holding the export can re-link them. A new version can use a private secret by setting `MSU_PREP_SALT` in the shell before running. The salt is never written to any file; only a short `salt_id` is recorded. **Migration:** changing the salt changes every group id and therefore the group-level splits, so a protected version is a new dataset; annotations must be migrated by row id. Existing ids were not rotated.
+- **Pseudonymisation is not anonymisation.** Group and trace ids are salted hashes. `prep-v1` used a PUBLIC constant salt, so anyone holding the export can re-link them. A new version can use a private secret by setting `RUNPORT_PREP_SALT` in the shell before running. The salt is never written to any file; only a short `salt_id` is recorded.
 - **Limitations are visible everywhere.** Every derived record now carries `privacy_notice` (`REDACTION_INCOMPLETE_NO_NER;PSEUDONYMS_ARE_NOT_ANONYMOUS;LOCAL_ONLY`), and the README and manifest say so.
 - **Views are unvalidated.** The challenge view is a candidate pool chosen by phrase hints before any label review, and the natural view is not validated as representative. Candidates and split assignments carry `view_status: HEURISTIC_UNVALIDATED`, and the manifest explains both.
 
