@@ -44,7 +44,7 @@ UNIMPLEMENTED_RULES: Dict[str, str] = {
     "A_OTHER_INSTITUTION_OFFER_OR_REJECTION": "Needs named-institution handling; only flagged.",
     "A_THINK_IT_OVER_AFTER_PROGRAMME": "Needs programme-context resolution; only flagged.",
     "A_PATHWAY_EXPLORATION": "Cross-turn semantic pairing of qualification and 'what can I do' (B6); only flagged.",
-    "B_PROGRAMME_COMPARISON": "Needs two resolved MSU programme names; only flagged when a heuristic pattern matches.",
+    "B_PROGRAMME_COMPARISON": "Needs two resolved programme names; only flagged when a heuristic pattern matches.",
     "B_CAMPUS_TOUR_SENT": "'Was sent the video' is an assistant action; never inferred from assistant text.",
     "B_RETURN_VISIT": "Emitted only with approved session-boundary evidence (B9).",
     "B_PARENT_ENQUIRY_SEMANTICS": "Parent-on-behalf detection is heuristic; only emitted with child level/results in the same turn.",
@@ -96,7 +96,7 @@ RULES: Tuple[Rule, ...] = (
           r"\bhow\s+many\s+semesters?\s+(?:can\s+i\s+)?skip\b", r"\bpindah\s+kredit\b", r"\bpengecualian\s+kredit\b")),
     Rule("A08", "APEL_OR_WORK_EXPERIENCE", "A", "asked about APEL or work-experience recognition",
          (r"\bapel\b", r"\bpengalaman\s+kerja\s+(?:untuk|bagi)\s+(?:masuk|kemasukan)\b")),
-    Rule("A09", "INTRA_MSU_TRANSFER", "A", "asked about changing programme or faculty within MSU",
+    Rule("A09", "INTRA_PROGRAMME_TRANSFER", "A", "asked about changing programme or faculty within the institution",
          (r"\b(?:change|switch|transfer)\s+(?:my\s+)?(?:programme|program|faculty|course)\b", r"\btukar\s+(?:program|fakulti|kursus)\b")),
     Rule("A10", "ELIGIBILITY_QUESTION", "A", "asked whether eligible with their results",
          (r"\bam\s+i\s+eligible\b", r"\bcan\s+i\s+get\s+in(?:to)?\b", r"\bdo\s+i\s+qualify\b", r"\bwill\s+i\s+qualify\b", r"\bsaya\s+layak\b", r"\badakah\s+saya\s+layak\b")),
@@ -108,7 +108,7 @@ RULES: Tuple[Rule, ...] = (
          (r"\bhow\s+long\s+(?:does|will|is)\s+(?:the\s+)?(?:application|approval|process)\b", r"\bberapa\s+lama\s+(?:permohonan|kelulusan)\b")),
     Rule("A14", "URGENCY", "A", "used urgency language",
          (r"\burgent(?:ly)?\b", r"\basap\b", r"\bas\s+soon\s+as\s+possible\b", r"\bresults?\s+just\s+came\s+out\b", r"\bneed\s+to\s+decide\s+this\s+week\b", r"\bsegera\b")),
-    Rule("A15", "OWNERSHIP_LANGUAGE", "A", "used ownership language about studying at MSU",
+    Rule("A15", "OWNERSHIP_LANGUAGE", "A", "used ownership language about studying at the institution",
          (r"\bwhen\s+i\s+(?:start|join|begin)\b", r"\bmy\s+(?:classes|intake|lecturers?|class\s+schedule)\b")),
     Rule("A16", "POST_DECISION_LOGISTICS", "A", "asked about hostel, transport or campus logistics",
          (r"\bhostel\b", r"\baccommodation\b", r"\btransport(?:ation)?\b", r"\bclass\s+schedule\b", r"\bcampus\s+location\b",
@@ -150,7 +150,7 @@ _STATUS_ASKED = re.compile(r"\b(?:what|which)\b.*\b(?:qualification|level|result
 _FEE_WORD = re.compile(r"\b(?:fees?|yuran|tuition|cost)\b", re.IGNORECASE)
 _ENTRY_WORD = re.compile(r"\b(?:entry\s+requirements?|requirements?|syarat\s+kemasukan)\b", re.IGNORECASE)
 _PROG_RE = re.compile(r"\b(bachelor|diploma|master|phd|doctorate|foundation|degree|sarjana|ijazah)\b(?:\s+(?:of|in|dalam))?\s+((?:[a-z]+\s?){0,5})", re.IGNORECASE)
-_PROG_STOP = {"fee", "fees", "requirement", "requirements", "for", "at", "msu", "how", "what", "is", "are", "the", "and", "or", "cost", "yuran", "tuition", "program", "programme", "course", "to", "can", "do", "does", "price", "much", "many", "when", "i", "my", "please", "pls", "again", "also", "now", "per", "semester", "year", "a", "an", "if", "there", "that", "this", "with", "only", "total", "first", "too", "is", "was", "will", "does", "did", "have", "has", "entry", "admission", "admissions", "intake", "duration", "length", "details", "info", "information", "eligibility", "about", "offered", "available"}
+_PROG_STOP = {"fee", "fees", "requirement", "requirements", "for", "at", "how", "what", "is", "are", "the", "and", "or", "cost", "yuran", "tuition", "program", "programme", "course", "to", "can", "do", "does", "price", "much", "many", "when", "i", "my", "please", "pls", "again", "also", "now", "per", "semester", "year", "a", "an", "if", "there", "that", "this", "with", "only", "total", "first", "too", "is", "was", "will", "does", "did", "have", "has", "entry", "admission", "admissions", "intake", "duration", "length", "details", "info", "information", "eligibility", "about", "offered", "available"}
 _CAPABILITY_UPLOAD = re.compile(r"\b(?:can|could|may|am\s+i\s+able\s+to|boleh)\s+(?:i|saya)\s+(?:upload|submit|send|hantar|muat\s+naik)\b", re.IGNORECASE)
 _DEADLINE = re.compile(r"\b(?:deadline|closing\s+date|tarikh\s+tutup)\b", re.IGNORECASE)
 _THINK = re.compile(r"\blet\s+me\s+think\b|\bdiscuss\s+with\s+my\s+parents\b", re.IGNORECASE)
