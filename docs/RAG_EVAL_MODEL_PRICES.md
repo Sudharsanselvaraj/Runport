@@ -6,7 +6,7 @@ The owner's cost table (50 cases at 700 in / 100 out) reconciles exactly with th
 
 ## What changes in the flow
 
-Only the planner node ("MSU Search AI", currently `openai/gpt-6-luna` through the OpenAI plugin) is replaced. The counsellor (`google/gemini-3.5-flash-lite` through OpenRouter) and the clarification guard stay fixed, so differences come from the planner.
+Only the planner node ("Search AI Planner", currently `openai/gpt-6-luna` through the OpenAI plugin) is replaced. The counsellor (`google/gemini-3.5-flash-lite` through OpenRouter) and the clarification guard stay fixed, so differences come from the planner.
 
 | Variant | OpenRouter slug | Standard in / out | Notes from the endpoints data |
 |---|---|---|---|
