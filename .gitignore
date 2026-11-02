@@ -56,6 +56,11 @@ reports/
 scratch/
 experiments/
 
+# Node.js and web frontend dependencies
+node_modules/
+web/node_modules/
+web/dist/
+
 # Confidential source data and internal prompts (NEVER COMMIT)
 september_to_october.csv
 main_intent_classifier.md
