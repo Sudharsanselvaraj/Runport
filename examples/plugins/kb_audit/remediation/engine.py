@@ -1,4 +1,4 @@
-"""Safe, repeatable remediation engine for MSU knowledge-base content defects."""
+"""Safe, repeatable remediation engine for knowledge-base content defects."""
 
 import hashlib
 from pathlib import Path
