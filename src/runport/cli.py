@@ -789,10 +789,30 @@ def launch_welcome() -> None:
 
 
 @app.command(name="ui")
-def launch_ui() -> None:
-    """Launch the interactive terminal UI (welcome screen, model catalogue, budget)."""
-    from runport.tui.app import run_tui
-    run_tui()
+def launch_ui(
+    web: bool = typer.Option(False, "--web", help="Launch the web dashboard instead of the terminal UI"),
+    port: int = typer.Option(8000, help="Web server port (if --web is used)"),
+) -> None:
+    """Launch the interactive terminal UI (or web dashboard with --web)."""
+    if web:
+        import uvicorn
+        console.print(f"[bold green]Starting Runport Web Dashboard on http://127.0.0.1:{port}[/bold green]")
+        uvicorn.run("runport.api.app:create_app", factory=True, host="127.0.0.1", port=port)
+    else:
+        from runport.tui.app import run_tui
+        run_tui()
+
+
+@app.command(name="web")
+def web_cmd(
+    host: str = typer.Option("127.0.0.1", help="Host interface to bind to"),
+    port: int = typer.Option(8000, help="Port to listen on"),
+    reload: bool = typer.Option(False, help="Enable auto-reload for development"),
+) -> None:
+    """Start the Runport web dashboard and REST API service."""
+    import uvicorn
+    console.print(f"[bold green]Starting Runport Web Dashboard on http://{host}:{port}[/bold green]")
+    uvicorn.run("runport.api.app:create_app", factory=True, host=host, port=port, reload=reload)
 
 
 @app.command(name="interactive", hidden=True)
@@ -1153,7 +1173,7 @@ def benchmark_rag(
     gen_kb_path = Path("data/audit/parsed_records_general_kb.jsonl")
     prog_kb_path = Path("data/audit/parsed_records_programmes_kb.jsonl")
     if not (gen_kb_path.exists() or prog_kb_path.exists()):
-        console.print("[bold red]Audited knowledge-base records not found under data/audit/.[/bold red] Run `msu-llm-lab audit-kb` first; "
+        console.print("[bold red]Audited knowledge-base records not found under data/audit/.[/bold red] Run `runport audit-kb` first; "
                       "the benchmark will not fall back to evaluation passages.")
         raise typer.Exit(code=1)
     retriever = KeywordBM25Retriever.from_parsed_kb(
