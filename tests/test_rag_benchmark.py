@@ -58,8 +58,8 @@ def test_keyword_bm25_retriever():
 def test_keyword_bm25_independent_corpus_and_anti_leakage():
     """KeywordBM25Retriever supports independent corpus passages and detects test context leakage."""
     corpus = [
-        "MSU Faculty of Business: Bachelor of Accounting total fee is RM 46,500.",
-        "MSU International Medical School: MBBS is a 5-year full-time programme.",
+        "Faculty of Business: Bachelor of Accounting total fee is $46,500.",
+        "International Medical School: MBBS is a 5-year full-time programme.",
     ]
     bm25 = KeywordBM25Retriever(corpus_documents=corpus)
     assert len(bm25.documents) == 2
@@ -78,7 +78,7 @@ def test_keyword_bm25_independent_corpus_and_anti_leakage():
     case_leaked = EvaluationCase(
         id="c-leaked",
         query="What is the fee?",
-        expected_context="MSU Faculty of Business: Bachelor of Accounting total fee is RM 46,500.",
+        expected_context="Faculty of Business: Bachelor of Accounting total fee is $46,500.",
         classification=DataClassification.SYNTHETIC,
         verification=VerificationRecord(status=VerificationStatus.VERIFIED, reference_source="Source 1"),
     )
