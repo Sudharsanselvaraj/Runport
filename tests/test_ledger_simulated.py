@@ -1,0 +1,123 @@
+"""Legacy simulated entries (from before the tool stopped simulating anything) never count against a ceiling, are migrated on evidence only, and can be purged."""
+
+import sqlite3
+from pathlib import Path
+from decimal import Decimal
+
+import pytest
+from typer.testing import CliRunner
+
+from runport.cli import app
+from runport.core.budget import BudgetExceededError, BudgetService
+from runport.core.config import BudgetPolicy
+from runport.dataset.manager import DatasetManager
+from runport.evaluation.runner import BenchmarkRunner
+from runport.rag.runner import RAGBenchmarkRunner
+from runport.schemas.evaluation import (
+    DataClassification, DatasetSplit, EvaluationCase, VerificationRecord, VerificationStatus,
+)
+from runport.storage.db import DatabaseManager
+
+MODEL = "google/gemini-3.5-flash-lite"
+
+
+def svc(tmp_path, **policy):
+    db = DatabaseManager(db_path=tmp_path / "l.db")
+    return db, BudgetService(db=db, policy=BudgetPolicy(**policy) if policy else None)
+
+
+def test_fresh_ledger_separates_simulated_from_actual(tmp_path):
+    db, b = svc(tmp_path)
+    b.record_spend("t1", MODEL, "openrouter", Decimal("0.01"), "simulated", run_id="r", is_simulated=True)
+    b.record_spend("t2", MODEL, "openrouter", Decimal("0.002"), "actual", run_id="r2")
+    b.record_spend("t3", MODEL, "openrouter", Decimal("0.5"), "estimate", is_preflight_estimate=True)
+    st = b.get_status()
+    assert st.cumulative_spend_usd == Decimal("0.002") and st.pilot_spend_usd == Decimal("0.002")
+    assert st.simulated_spend_usd == Decimal("0.01") and st.remaining_pilot_usd == Decimal("1.998")
+    rows = {r["transaction_id"]: r["is_simulated"] for r in db.get_recent_transactions()}
+    assert rows == {"t1": 1, "t2": 0, "t3": 0}
+
+
+def test_simulated_spend_never_blocks_a_run_or_exhausts_the_pilot(tmp_path):
+    db, b = svc(tmp_path, pilot_budget_usd=Decimal("0.05"))
+    b.record_spend("sim", MODEL, "openrouter", Decimal("0.049"), "simulated", is_simulated=True)
+    assert b.get_status().is_pilot_exhausted is False
+    b.check_preflight_budget(estimated_cost_usd=Decimal("0.04"))          # fits: simulated spend is ignored
+    b.record_spend("real", MODEL, "openrouter", Decimal("0.049"), "actual")
+    with pytest.raises(BudgetExceededError):
+        b.check_preflight_budget(estimated_cost_usd=Decimal("0.04"))      # actual spend does count
+
+
+def make_legacy_db(path):
+    c = sqlite3.connect(path)
+    c.executescript("""
+    CREATE TABLE budget_ledger (transaction_id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, run_id TEXT, model_id TEXT NOT NULL,
+        provider TEXT NOT NULL, amount_micros INTEGER NOT NULL, amount_usd TEXT NOT NULL, is_pilot INTEGER NOT NULL DEFAULT 1,
+        is_preflight_estimate INTEGER NOT NULL DEFAULT 0, description TEXT NOT NULL);
+    CREATE TABLE evaluation_runs (run_id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, model_id TEXT NOT NULL, dataset_path TEXT NOT NULL,
+        total_cases INTEGER NOT NULL, completed_cases INTEGER NOT NULL, failed_cases INTEGER NOT NULL, total_cost_usd TEXT NOT NULL,
+        mean_latency_ms REAL NOT NULL, mean_accuracy REAL NOT NULL, mean_groundedness REAL NOT NULL, mean_overall_score REAL NOT NULL,
+        is_dry_run INTEGER NOT NULL DEFAULT 1, notes TEXT);
+    """)
+    for rid, dry in (("run_dry", 1), ("run_live", 0)):
+        c.execute("INSERT INTO evaluation_runs VALUES (?, 't', ?, 'd', 1, 1, 0, '0', 0, 0, 0, 0, ?, NULL)", (rid, MODEL, dry))
+    rows = [("a", "run_dry", 20_000), ("b", "run_dry", 3_000), ("c", "run_live", 7_000), ("d", None, 4_000), ("e", "run_unknown", 1_000)]
+    for tid, rid, micros in rows:
+        c.execute("INSERT INTO budget_ledger VALUES (?, 't', ?, ?, 'openrouter', ?, ?, 1, 0, 'legacy')", (tid, rid, MODEL, micros, f"{micros/1e6:.6f}"))
+    c.commit()
+    c.close()
+
+
+def test_legacy_ledger_migrates_on_evidence_only_and_is_idempotent(tmp_path):
+    path = tmp_path / "legacy.db"
+    make_legacy_db(path)
+    db = DatabaseManager(db_path=path)
+    db.init_db()
+    db.init_db()  # idempotent
+    with sqlite3.connect(path) as c:
+        got = dict(c.execute("SELECT transaction_id, is_simulated FROM budget_ledger").fetchall())
+        assert c.execute("SELECT COUNT(*), SUM(amount_micros) FROM budget_ledger").fetchone() == (5, 35_000)  # nothing lost or altered
+    # only rows tied to a recorded dry-run are simulated; live-run, unlinked and unknown-run rows stay counted as actual
+    assert got == {"a": 1, "b": 1, "c": 0, "d": 0, "e": 0}
+    assert db.get_simulated_spend()[1] == Decimal("0.023")
+    assert db.get_cumulative_spend()[1] == Decimal("0.012") and db.get_pilot_spend()[1] == Decimal("0.012")
+
+
+def dataset(tmp_path):
+    cases = [EvaluationCase(id=f"syn-{i}", query="synthetic question", expected_answer="synthetic answer",
+                            classification=DataClassification.SYNTHETIC, split=DatasetSplit.TEST,
+                            verification=VerificationRecord(status=VerificationStatus.VERIFIED, reference_source="synthetic"))
+             for i in range(3)]
+    p = tmp_path / "ds.jsonl"
+    DatasetManager.save_jsonl(cases, p)
+    return p
+
+
+def test_budget_status_cli_still_labels_legacy_simulated_rows(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    b = BudgetService()
+    b.record_spend("s1", MODEL, "openrouter", Decimal("0.001"), "Evaluation case x (dry_run=True)", run_id="r", is_simulated=True)
+    b.record_spend("a1", MODEL, "openrouter", Decimal("0.002"), "provider-reported actual", run_id="r2", cost_basis="PROVIDER_REPORTED")
+    b.record_spend("e1", MODEL, "openrouter", Decimal("0.003"), "estimated from catalogue", run_id="r2", cost_basis="ESTIMATED_FROM_CATALOG")
+    r = CliRunner(env={"COLUMNS": "250"}).invoke(app, ["budget", "status"])
+    assert r.exit_code == 0 and "SIMULATED" in r.output and "ACTUAL" in r.output and "ESTIMATED" in r.output   # the type column follows the cost basis, not a blanket "ACTUAL"
+    assert "Legacy simulated entries (never counted against any ceiling): $0.001000" in r.output
+
+
+def test_purge_removes_only_simulated_rows_and_backs_up_first(tmp_path):
+    from decimal import Decimal
+    db = DatabaseManager(db_path=tmp_path / "p.db")
+    b = BudgetService(db=db)
+    b.record_spend("sim", MODEL, "openrouter", Decimal("0.01"), "x", run_id="r_dry", is_simulated=True)
+    b.record_spend("real", MODEL, "openrouter", Decimal("0.002"), "x", run_id="r_live", cost_basis="ESTIMATED_FROM_CATALOG")
+    b.record_unresolved_spend("unres", MODEL, "openrouter", "unknown")
+    for rid, dry in (("r_dry", True), ("r_live", False)):
+        db.save_evaluation_run({"run_id": rid, "timestamp": "t", "model_id": MODEL, "dataset_path": "d", "total_cases": 1, "completed_cases": 1,
+                                "failed_cases": 0, "total_cost_usd": "0", "mean_latency_ms": 1.0, "mean_accuracy": 1.0, "mean_groundedness": 1.0,
+                                "mean_overall_score": 1.0, "is_dry_run": dry, "notes": ""})
+    res = db.purge_simulated()
+    assert (res["ledger_rows"], res["runs"]) == (1, 1) and res["backup"] and Path(res["backup"]).exists()
+    left = {r["transaction_id"] for r in db.get_recent_transactions()}
+    assert left == {"real", "unres"} and [r["run_id"] for r in db.get_all_evaluation_runs()] == ["r_live"]
+    assert db.get_cumulative_spend()[1] == Decimal("0.002") and len(db.get_unresolved()) == 1
+    assert db.purge_simulated()["ledger_rows"] == 0  # idempotent
