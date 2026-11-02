@@ -35,7 +35,7 @@ from runport.providers.base import LiveNotAuthorizedError, ProviderError, UsageU
 
 PLAN_SCHEMA = "real-benchmark-plan-v1"
 EVAL_CONTRACT = "classification-benchmark-contract-v1"
-ORDER_SEED = "msu-bench-order-v1"
+ORDER_SEED = "runport-bench-order-v1"
 DEFAULT_BLOCK = 10
 STAGE = "pilot"
 TIMEOUT_S = 30.0
