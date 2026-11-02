@@ -150,7 +150,7 @@ def audit_kb(
 @app.command(name="remediate-kb")
 def remediate_kb(
     file_path: Path = typer.Argument(
-        Path("Copy of MSU Programmes KB - Local - Sudharsan.md"),
+        Path("examples/plugins/kb_audit/tests/fixtures/synthetic_programmes_kb.md"),
         help="Path to the source knowledge base Markdown file.",
         exists=True,
         file_okay=True,
@@ -161,7 +161,7 @@ def remediate_kb(
         None,
         "--output",
         "-o",
-        help="Destination path for versioned clean copy (e.g., data/remediated/MSU_Programmes_KB_v1.1_clean.md).",
+        help="Destination path for versioned clean copy (e.g., data/remediated/Programmes_KB_v1.1_clean.md).",
     ),
     apply: bool = typer.Option(
         False,
@@ -173,7 +173,7 @@ def remediate_kb(
     from examples.plugins.kb_audit.remediation.engine import RemediationEngine
     from examples.plugins.kb_audit.remediation.models import RemediationStatus
 
-    console.print(Panel(f"[bold cyan]MSU Knowledge Base Remediation Engine[/bold cyan]: {file_path.name}", expand=False))
+    console.print(Panel(f"[bold cyan]Knowledge Base Remediation Engine[/bold cyan]: {file_path.name}", expand=False))
     console.print("[yellow]SAFETY INVARIANT: Original knowledge-base source files remain 100% read-only and immutable.[/yellow]\n")
 
     engine = RemediationEngine(file_path)
