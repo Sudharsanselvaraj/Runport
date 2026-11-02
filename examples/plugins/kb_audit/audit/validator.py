@@ -168,7 +168,7 @@ class KBValidator:
         """Flags stray non-blank text outside headings and Q&A blocks."""
         for line_no, raw_text in self.orphan_lines:
             # Skip introductory overview paragraphs if longer than 150 chars
-            if len(raw_text) > 150 and ("Management and Science University" in raw_text or "MSU" in raw_text):
+            if len(raw_text) > 150 and ("University" in raw_text or "Institution" in raw_text):
                 continue
 
             self._add_issue(
@@ -374,7 +374,7 @@ class KBValidator:
                             question_snippet=r.question_clean,
                             description=f"Conflicting fee amounts ({formatted_fees}) found within the same answer.",
                             raw_snippet=r.raw_text[:120],
-                            suggested_action="Verify authoritative fee schedule with MSU finance registrar. Do not guess correct fee.",
+                            suggested_action="Verify authoritative fee schedule with finance registrar. Do not guess correct fee.",
                             record_id=r.record_id,
                             status=FindingStatus.OFFICIAL_VERIFICATION_REQUIRED,
                         )
