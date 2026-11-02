@@ -6,21 +6,21 @@ For the operator-authorized benchmark of all ten participants on the prepared ad
 
 ```bash
 # 1. Prepare a NEW dataset version with a private pseudonymization secret (typed twice, hidden; never stored or printed)
-uv run msu-llm-lab prepare-classification-data --out-dir data/classification_prep/prep-v2 --prompt-salt
+uv run runport prepare-classification-data --out-dir data/classification_prep/prep-v2 --prompt-salt
 
 # 2. Build and store the plan (plan only, no provider call). The session policy is YOUR choice: 2h or 30m.
-uv run msu-llm-lab real-benchmark plan --prep-dir data/classification_prep/prep-v2 --session-policy 2h
+uv run runport real-benchmark plan --prep-dir data/classification_prep/prep-v2 --session-policy 2h
 
 # 3. Execute (or resume). Needs the live approval phrase AND the real-data authorization phrase for this exact plan.
-uv run msu-llm-lab real-benchmark run --prep-dir data/classification_prep/prep-v2 --session-policy 2h --operator "Your Name" --live
+uv run runport real-benchmark run --prep-dir data/classification_prep/prep-v2 --session-policy 2h --operator "Your Name" --live
 
 # --max-blocks N means "N blocks in TOTAL from the start of the plan" (the plan has hundreds of blocks; 1 block = 10 cases per task for every participant).
 # The first 3 blocks (30 cases per task) are the part that fits the $2 pilot ceiling even at worst-case cost; run with --max-blocks 3, or omit it to continue
 # block by block while the recorded cost still leaves room under the caps. Re-running resumes; completed requests are never repeated.
 
 # 4. Status, report, comparison bundle and redacted trace export (read-only)
-uv run msu-llm-lab real-benchmark status
-uv run msu-llm-lab real-benchmark report bench-<id> --prep-dir data/classification_prep/prep-v2
+uv run runport real-benchmark status
+uv run runport real-benchmark report bench-<id> --prep-dir data/classification_prep/prep-v2
 ```
 
 ## What the plan states
@@ -54,12 +54,12 @@ Each participant has the existing circuit breaker (3 consecutive errors or a sys
 ## Ground truth workflow
 
 ```bash
-uv run msu-llm-lab annotate queue  --prep-dir ... --session-policy 2h --task INTENT        # redacted review queue (local)
-uv run msu-llm-lab annotate submit --prep-dir ... --session-policy 2h --task INTENT --reviewer alice --file alice.jsonl
-uv run msu-llm-lab annotate status --prep-dir ... --session-policy 2h
-uv run msu-llm-lab annotate adjudicate --prep-dir ... --task INTENT --case I-2h-R0001 --label QUERY --adjudicator dave
-uv run msu-llm-lab annotate approve --prep-dir ... --approver carol --all-ready            # typed phrase required
-uv run msu-llm-lab annotate freeze  --prep-dir ... --by carol
+uv run runport annotate queue  --prep-dir ... --session-policy 2h --task INTENT        # redacted review queue (local)
+uv run runport annotate submit --prep-dir ... --session-policy 2h --task INTENT --reviewer alice --file alice.jsonl
+uv run runport annotate status --prep-dir ... --session-policy 2h
+uv run runport annotate adjudicate --prep-dir ... --task INTENT --case I-2h-R0001 --label QUERY --adjudicator dave
+uv run runport annotate approve --prep-dir ... --approver carol --all-ready            # typed phrase required
+uv run runport annotate freeze  --prep-dir ... --by carol
 ```
 
 Two distinct reviewers label independently; agreement makes a case ready, disagreement needs a third reviewer; approval is explicit and named (bulk approval needs a typed phrase); revocation keeps history; a freeze records the SHA-256 of the approved set. Thresholds are selected on DEV only and applied unchanged to TEST. Nothing is approved automatically and predictions are never inputs.
