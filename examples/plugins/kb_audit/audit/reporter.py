@@ -208,7 +208,7 @@ class KBReporter:
             "> [!IMPORTANT]",
             "> **Non-Negotiable Research Policy**:",
             "> 1. **Zero Automatic Fixes**: The audit tool never automatically determines which conflicting tuition fee, duration, or entry requirement is correct.",
-            "> 2. **Authoritative Verification**: All flagged discrepancies are exported to CSV for verification against official MSU registrar records.",
+            "> 2. **Authoritative Verification**: All flagged discrepancies are exported to CSV for verification against official registrar records.",
             "> 3. **Source Immutability**: The original knowledge base files remain untouched.",
             "",
         ])
