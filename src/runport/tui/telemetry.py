@@ -12,7 +12,7 @@ from collections import deque
 from datetime import datetime
 from typing import Callable, Deque, Dict, List, Optional, Tuple
 
-try:  # optional: pip install "msu-llm-lab[monitor]"
+try:  # optional: pip install "runport[monitor]"
     import psutil  # type: ignore
 except Exception:  # pragma: no cover - environment dependent
     psutil = None
