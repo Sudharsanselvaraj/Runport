@@ -47,7 +47,7 @@ def clean_text(text: str) -> str:
 
 
 class KBParser:
-    """Robust parser for MSU Markdown knowledge bases."""
+    """Robust parser for Markdown knowledge bases."""
 
     def __init__(self, source_path: Path):
         self.source_path = Path(source_path)
