@@ -1,21 +1,33 @@
-# Labelled classifier evaluation (labeled-eval-v1)
+# Ground-Truth Annotation & Evaluation (`runport annotate`)
 
-Offline preparation, a guarded executor and a scorer for the expected-label test suites (Main Intent 120 cases, Lead Qualifier 200 cases; eight participants per task).
+Runport requires human-approved ground-truth labels for all supervised metrics (Accuracy, F1, Calibration). Unanimous model agreement is never presented as ground truth.
+
+---
+
+## 1. Ground-Truth Workflow
 
 ```bash
-uv run msu-llm-lab labeled-eval prepare              # audit, frozen splits, answer-key separation, decisions, plan, gate report (offline)
-uv run msu-llm-lab labeled-eval gates --save-plan    # show the plan and every gate; exit 2 while any blocking gate fails
-uv run msu-llm-lab labeled-eval run --operator NAME  # refuses before any typed phrase if a gate fails; --live adds the two typed approvals
-uv run msu-llm-lab labeled-eval score <prediction.jsonl ...>   # evaluator only, after inference
+# Check status of annotations for a prepared dataset
+uv run runport annotate status --prep-dir data/evaluation/
+
+# Queue cases for independent blind annotation
+uv run runport annotate queue --prep-dir data/evaluation/ --annotator-id rater-1
+
+# Adjudicate discrepancies between independent annotators
+uv run runport annotate adjudicate --prep-dir data/evaluation/
+
+# Approve adjudicated ground-truth labels with named human authorization
+uv run runport annotate approve --prep-dir data/evaluation/ --approver-name "Lead Evaluator"
+
+# Cryptographically freeze approved ground truth for benchmark reporting
+uv run runport annotate freeze --prep-dir data/evaluation/
 ```
 
-- Inputs stay in `Intent:lead dataset/` (git-ignored, read-only). Label-free inference inputs and the answer key (mode 0600) live under `data/labeled_eval/`; reports go to `reports/labeled_eval/labeled-eval-v1/`.
-- Both datasets are classified CONFIDENTIAL (potentially real): their text matches prepared real-conversation messages and the origin is unverified. They are never described as synthetic or anonymised.
-- Lead input is `action_summary` only; `user_msg` is never sent. Output caps stay 16 (INTENT) and 24 (LEAD) tokens. Mistral runs last. No cap is raised: the effective policy must equal the recorded one.
-- The executor dispatches only when every blocking gate passes (operator approval record, a verified data-processing permission record bound to the dataset hashes, models and routes, separation checks, caps, unresolved spend, headroom minus reserve, registry readiness) and the typed live approval and typed real-data authorisation (bound to the plan fingerprint) were issued in the same process.
-- Invalid or missing outputs count as misses in the end-to-end view; a conditional view over valid outputs is reported next to it. Empty cells mean not measured, never zero.
-- Jev threshold selection uses DEV scores only and is frozen before TEST; it needs a continuous score for these cases.
+---
 
-## Jev prompt experiment
+## 2. Invariants & Rules
 
-`labeled-eval jev-experiment gates|record-approval|record-permission|run|score` runs the pre-registered V0/V1/V2 comparison on Main Intent (`reports/labeled_eval/labeled-eval-v1/jev_prompt_experiment/PREREGISTRATION.md`). It has its own plan fingerprint, approval and permission records, and typed authorisation; it refuses to run unless every blocking gate passes, including that each variant changes what Jev receives (Jev's payload builder drops unmapped prompt sections). Selection uses the dev half only; the held-out half is too small to confirm gains on the rare classes.
+1. **Two-Pass Annotation & Adjudication**: Cases are evaluated by independent raters; conflicting labels must be explicitly adjudicated before approval.
+2. **Named Human Approval**: Metrics remain `GROUND TRUTH PENDING` until an authorized human signs off (`approved_by`).
+3. **Never Tune on Held-Out Test Split**: Thresholds are computed exclusively on `DEV`, frozen, and evaluated without alteration on `TEST`.
+4. **Append-Only & Immutable**: Once frozen, ground truth cannot be modified in place.
