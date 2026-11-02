@@ -1,4 +1,4 @@
-"""Pytest fixtures for msu-llm-lab test suite."""
+"""Pytest fixtures for runport test suite."""
 
 import pytest
 from pathlib import Path
@@ -20,5 +20,4 @@ def _isolate_local_state(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(settings, "data_dir", base / "data")
     monkeypatch.setattr(settings, "reports_dir", base / "reports")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("MSU_LLM_SKIP_DOTENV", "1")
     monkeypatch.setenv("RUNPORT_SKIP_DOTENV", "1")
