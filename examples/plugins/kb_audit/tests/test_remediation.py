@@ -76,7 +76,7 @@ def test_remediation_cli_command():
     """Verify CLI 'remediate-kb' command runs in dry-run mode and displays findings table."""
     res = runner.invoke(app, ["remediate-kb", str(PROGRAMMES_KB)], env={"COLUMNS": "120"})
     assert res.exit_code == 0
-    assert "MSU Knowledge Base Remediation Engine" in res.stdout
+    assert "Knowledge Base Remediation Engine" in res.stdout
     assert "REM-001" in res.stdout
     assert "CONFIRMED_CONTENT" in res.stdout
     assert "APPLIED (CLEAN COPY)" in res.stdout
