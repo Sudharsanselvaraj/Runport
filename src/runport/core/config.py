@@ -19,6 +19,7 @@ class BudgetPolicy(BaseModel):
     per_run_ceiling_usd: Decimal = Field(default=Decimal("0.50"), description="Max spend allowed per single evaluation run")
     per_case_ceiling_usd: Decimal = Field(default=Decimal("0.02"), description="Max spend allowed per individual evaluation case")
     retry_buffer_pct: Decimal = Field(default=Decimal("0.05"), description="Buffer for network/rate-limit retries (5%)")
+    require_priced: bool = Field(default=True, description="Fail preflight if model pricing is unknown or unavailable")
 
     @property
     def total_budget_micros(self) -> int:
@@ -86,14 +87,14 @@ def load_project_env(
     Predictably resolves to PROJECT_ROOT / '.env' (or Path.cwd() / '.env')
     unless a specific path is given. Does NOT search arbitrary parent directories.
     Preserves explicitly exported shell variables (override=False by default).
-    Honors MSU_LLM_SKIP_DOTENV=1 for offline test isolation.
+    Honors RUNPORT_SKIP_DOTENV=1 for offline test isolation.
     
     Returns:
         (loaded: bool, resolved_path: Optional[Path])
     """
     global _DOTENV_LOADED_PATH, _DOTENV_KEY_HASH, _KEY_ORIGINALLY_IN_SHELL
 
-    if (os.environ.get("RUNPORT_SKIP_DOTENV") == "1" or os.environ.get("MSU_LLM_SKIP_DOTENV") == "1") and dotenv_path is None:
+    if os.environ.get("RUNPORT_SKIP_DOTENV") == "1" and dotenv_path is None:
         return False, None
 
     target = dotenv_path or DEFAULT_DOTENV_PATH
