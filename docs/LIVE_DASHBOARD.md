@@ -44,7 +44,7 @@ One `LiveMonitor` per dashboard session holds a single `EventTail` (byte offset 
 
 ## Trace Explorer & Export (section 13, `:export`)
 
-Preview and export stored trace records (prediction records joined with the request-event log and approved labels; no new store). Keys in the screen: `m` model, `t` task, `u` run, `s` status, `e` error class, `d` data kind (synthetic fixture vs real-data benchmark), `f` format (JSONL, CSV, ZIP), `c` clear filters, `x` export. The table shows a dash for anything not measured (the inspector lists why, for example "not reported by provider"); errors and invalid outputs are never shown as predictions; a per-run summary lists planned, attempted, succeeded, failed, invalid and unattempted counts; synthetic fixture traces are labelled SYNTHETIC and never look like real data. The same export is available as `msu-llm-lab export-traces`.
+Preview and export stored trace records (prediction records joined with the request-event log and approved labels; no new store). Keys in the screen: `m` model, `t` task, `u` run, `s` status, `e` error class, `d` data kind (synthetic fixture vs real-data benchmark), `f` format (JSONL, CSV, ZIP), `c` clear filters, `x` export. The table shows a dash for anything not measured (the inspector lists why, for example "not reported by provider"); errors and invalid outputs are never shown as predictions; a per-run summary lists planned, attempted, succeeded, failed, invalid and unattempted counts; synthetic fixture traces are labelled SYNTHETIC and never look like real data. The same export is available as `runport export-traces`.
 
 - Scopes: all models and runs, one model, one run, one task, or a filtered selection. Files go to `reports/exports/` (git-ignored); the exact path, counts (exported, skipped, redacted, missing telemetry) and warnings are shown. Existing files are never overwritten (`-r2` suffix); identical inputs and `exported_at` give identical bytes.
 - JSONL = full nested records (`trace-export-v1`); CSV = flattened with empty cells for null; ZIP = `manifest.json`, `all_records.*`, `models/<model>.jsonl|csv`, `consolidated_comparison.csv`, `participants.csv`. JSONL/CSV get a `<file>.manifest.json` sidecar.
@@ -57,7 +57,7 @@ Preview and export stored trace records (prediction records joined with the requ
 
 ## Local resources
 
-CPU, memory and disk come from `psutil` when installed (`pip install "msu-llm-lab[monitor]"`). Without it, CPU is the 1-minute load average per core (labelled LOAD/core), memory is UNAVAILABLE, and disk comes from the standard library. Histories start empty and each sample is timestamped.
+CPU, memory and disk come from `psutil` when installed (`pip install "runport[monitor]"`). Without it, CPU is the 1-minute load average per core (labelled LOAD/core), memory is UNAVAILABLE, and disk comes from the standard library. Histories start empty and each sample is timestamped.
 
 ## Known gaps
 
