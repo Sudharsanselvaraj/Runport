@@ -174,6 +174,21 @@ def test_no_models_refused():
         confirm_live_run([], is_interactive=lambda: True, prompt=boom_prompt, echo=lambda l: None)
 
 
+def test_ci_approve_token_validation():
+    fp = "abc123def456"
+    # Matches: authorizes even in non-interactive mode
+    auth = confirm_live_run([MODEL], plan_fingerprint=fp, approve_token=fp, is_interactive=lambda: False)
+    assert auth.covers(MODEL)
+
+    # Mismatches: fails closed
+    with pytest.raises(LiveNotAuthorizedError, match="does not match"):
+        confirm_live_run([MODEL], plan_fingerprint=fp, approve_token="wrong_token", is_interactive=lambda: False)
+
+    # Missing plan fingerprint: fails closed
+    with pytest.raises(LiveNotAuthorizedError, match="no plan fingerprint"):
+        confirm_live_run([MODEL], plan_fingerprint=None, approve_token=fp, is_interactive=lambda: False)
+
+
 def test_require_live_authorization():
     require_live_authorization(LiveAuthorization(models=(MODEL,)), MODEL)
     for bad in (None, LiveAuthorization(models=("x/y",))):
