@@ -49,7 +49,7 @@ def _salt() -> Tuple[str, str, bool]:
     if secret:
         return secret, "secret-" + hashlib.sha256(secret.encode("utf-8")).hexdigest()[:8], True
     return SALT, "public-legacy-v1", False
-SEED = "msu-prep-v1-seed"
+SEED = "runport-prep-v1-seed"
 EXPECTED_COLUMNS = ["traceId", "time", "user4", "user_hash", "conversation_id", "turn", "query", "answer"]
 POLICIES = {"30m": 1800, "2h": 7200}
 SPLIT_RATIOS = {DatasetSplit.DEV: 0.5, DatasetSplit.TEST: 0.5}  # provisional
