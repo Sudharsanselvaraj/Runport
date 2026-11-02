@@ -53,7 +53,7 @@ def test_assistant_text_never_creates_actions():
     ("I will upload my transcript tomorrow", "SUBMISSION_OR_COMMITMENT"),
     ("Can my credits be transferred?", "CREDIT_TRANSFER_OR_EXEMPTION"),
     ("Do you accept APEL?", "APEL_OR_WORK_EXPERIENCE"),
-    ("Can I change my programme later?", "INTRA_MSU_TRANSFER"),
+    ("Can I change my programme later?", "INTRA_PROGRAMME_TRANSFER"),
     ("Am I eligible?", "ELIGIBILITY_QUESTION"),
     ("Can I still join the March intake?", "INTAKE_NAMED"),
     ("Can I still apply?", "LATE_APPLICATION_QUESTION"),
