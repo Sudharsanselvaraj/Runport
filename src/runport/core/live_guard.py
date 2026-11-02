@@ -36,14 +36,28 @@ def confirm_live_run(
     prompt: Optional[Callable[[str], str]] = None,
     echo: Callable[[str], None] = print,
     plan_fingerprint: Optional[str] = None,
+    approve_token: Optional[str] = None,
 ) -> LiveAuthorization:
-    """Return a LiveAuthorization only if an interactive user types the exact confirmation phrase.
+    """Return a LiveAuthorization only if:
+    1. In CI / automated environments: `approve_token` matches the freshly recomputed `plan_fingerprint`.
+    2. In interactive terminals: an operator types the exact confirmation phrase.
 
     Raises LiveNotAuthorizedError otherwise. Nothing here contacts any provider.
     """
-    interactive = is_interactive if is_interactive is not None else (lambda: sys.stdin.isatty() and sys.stdout.isatty())
     if not models or any(not m for m in models):
         raise LiveNotAuthorizedError("Live run needs at least one explicit model id")
+
+    # CI / Automated approval using exact fingerprint token
+    if approve_token is not None:
+        if not plan_fingerprint:
+            raise LiveNotAuthorizedError("Approve token provided but no plan fingerprint was computed.")
+        if approve_token.strip() == plan_fingerprint.strip():
+            return LiveAuthorization(models=tuple(models))
+        raise LiveNotAuthorizedError(
+            f"Approval token '{approve_token}' does not match recomputed plan fingerprint '{plan_fingerprint}'; run refused."
+        )
+
+    interactive = is_interactive if is_interactive is not None else (lambda: sys.stdin.isatty() and sys.stdout.isatty())
     if not interactive():
         raise LiveNotAuthorizedError(
             "Live runs require interactive confirmation; non-interactive execution cannot confirm and is refused."
