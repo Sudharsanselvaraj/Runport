@@ -110,12 +110,12 @@ def test_leakage_detector_high_ngram_overlap():
     cases = [
         EvaluationCase(
             id="train-01",
-            query="What are the admission requirements and English language proficiency for Bachelor of Computer Science at MSU Malaysia?",
+            query="What are the admission requirements and English language proficiency for Bachelor of Computer Science at Apex University?",
             split=DatasetSplit.TRAIN,
         ),
         EvaluationCase(
             id="test-01",
-            query="What are the admission requirements and English language proficiency for Bachelor of Information Technology at MSU Malaysia?",
+            query="What are the admission requirements and English language proficiency for Bachelor of Information Technology at Apex University?",
             split=DatasetSplit.TEST,
         ),
     ]
