@@ -1,0 +1,125 @@
+[
+  {
+    "id": "trace-langfuse-001",
+    "timestamp": "2026-10-14T03:10:00Z",
+    "sessionId": "sess-uni-101",
+    "input": "What are the entry criteria and research supervisor availability for PhD in Information Technology?",
+    "output": "For Diploma in Information Technology, you need 3 SPM credits including Mathematics.",
+    "latency": 1.42,
+    "usage": {
+      "prompt": 128,
+      "completion": 45,
+      "total": 173
+    },
+    "tags": ["postgraduate", "admissions"],
+    "observations": [
+      {
+        "id": "obs-001-route",
+        "name": "intent_classifier",
+        "type": "span",
+        "latency": 0.12,
+        "output": "undergraduate_diploma_router"
+      },
+      {
+        "id": "obs-001-retrieval",
+        "name": "vector_retrieval",
+        "type": "retrieval",
+        "latency": 0.45,
+        "output": "Diploma in Information Technology requires SPM with 3 credits."
+      }
+    ]
+  },
+  {
+    "id": "trace-langfuse-002",
+    "timestamp": "2026-10-14T03:15:20Z",
+    "sessionId": "sess-uni-102",
+    "input": "Does the university offer scholarships for Bachelor of Software Engineering?",
+    "output": "I do not have access to scholarship information for that programme.",
+    "latency": 0.88,
+    "usage": {
+      "prompt": 95,
+      "completion": 20,
+      "total": 115
+    },
+    "tags": ["scholarships"],
+    "observations": [
+      {
+        "id": "obs-002-retrieval",
+        "name": "retrieval",
+        "type": "retrieval",
+        "latency": 0.32,
+        "output": []
+      }
+    ]
+  },
+  {
+    "id": "trace-langfuse-003",
+    "timestamp": "2026-10-14T03:22:15Z",
+    "sessionId": "sess-uni-103",
+    "input": "What is the total fee for PhD in Applied Science?",
+    "output": "The total fee for PhD in Applied Science is listed as $62,500, but another clause states $63,500.",
+    "latency": 1.65,
+    "usage": {
+      "prompt": 210,
+      "completion": 50,
+      "total": 260
+    },
+    "tags": ["fees", "phd"],
+    "observations": [
+      {
+        "id": "obs-003-retrieval",
+        "name": "retrieval",
+        "type": "retrieval",
+        "latency": 0.50,
+        "output": "The PhD in Applied Science tuition fee is $62,500. Under paragraph 3, the total programme fee is listed as $63,500."
+      }
+    ]
+  },
+  {
+    "id": "trace-langfuse-004",
+    "timestamp": "2026-10-14T03:30:40Z",
+    "sessionId": "sess-uni-104",
+    "input": "What is the fee for Bachelor of Computer Science?",
+    "output": "The tuition fee for Bachelor of Computer Science is $95,000 per year.",
+    "latency": 1.20,
+    "usage": {
+      "prompt": 140,
+      "completion": 30,
+      "total": 170
+    },
+    "tags": ["fees", "cs"],
+    "observations": [
+      {
+        "id": "obs-004-retrieval",
+        "name": "retrieval",
+        "type": "retrieval",
+        "latency": 0.40,
+        "output": "Bachelor of Computer Science tuition fee is $48,000 across 3 years with financial aid facilities."
+      }
+    ]
+  },
+  {
+    "id": "trace-langfuse-005",
+    "timestamp": "2026-10-14T03:35:10Z",
+    "sessionId": "sess-uni-105",
+    "input": "What is the duration for Foundation in Science?",
+    "output": "The Foundation in Science is a 1-year preparatory programme for medical and engineering pathways.",
+    "latency": 0.95,
+    "usage": {
+      "prompt": 80,
+      "completion": 25,
+      "total": 105
+    },
+    "tags": ["foundation", "duration"],
+    "observations": [
+      {
+        "id": "obs-005-retrieval",
+        "name": "retrieval",
+        "type": "retrieval",
+        "latency": 0.35,
+        "output": "Foundation in Science is a 1-year programme preparing students for medical and engineering degrees."
+      }
+    ]
+  }
+]
+
