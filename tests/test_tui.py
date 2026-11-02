@@ -722,7 +722,7 @@ def test_build_evaluation_main_panel_rendering():
     ]
     sample_results = [
         {
-            "case_id": "msu-rag-test-01",
+            "case_id": "eval-rag-test-01",
             "prompt": "What are the entry criteria for Master of Science in Engineering?",
             "accuracy": 1.0,
             "groundedness": 0.5,
@@ -739,7 +739,7 @@ def test_build_evaluation_main_panel_rendering():
     assert "Decoupled RAG Benchmarks" in output
     assert "rag_run_20261014_001" in output
     assert "google/gemini-3.5-flash-lite" in output
-    assert "msu-rag-test-01" in output
+    assert "eval-rag-test-01" in output
 
     # Test empty runs
     console.clear()
@@ -871,7 +871,7 @@ def test_welcome_screen_render():
 
 
 def test_welcome_cli_command():
-    """Verify msu-llm-lab welcome command can be invoked."""
+    """Verify runport welcome command can be invoked."""
     result = runner.invoke(app, ["welcome"], input="9\n")
     assert result.exit_code == 0
 
