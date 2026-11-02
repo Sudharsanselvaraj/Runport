@@ -19,19 +19,19 @@ runner = CliRunner()
 
 def test_unescape_and_clean_text():
     """Verify markdown escape removal and whitespace collapsing."""
-    raw = r"\*\*Question:\*\* What is MSU\'s address\? Visit \[MSU\]\(http\:\/\/msu\.edu\.my\)\."
+    raw = r"\*\*Question:\*\* What is Apex University\'s address\? Visit \[Apex University\]\(http\:\/\/example\.com\)\."
     cleaned = clean_text(raw)
     assert r"\*" not in cleaned
     assert r"\:" not in cleaned
-    assert "What is MSU's address? Visit [MSU](http://msu.edu.my)." in cleaned
+    assert "What is Apex University's address? Visit [Apex University](http://example.com)." in cleaned
 
 
 def test_valid_single_turn_and_multiline_record(tmp_kb_dir: Path):
     """Verify clean parsing and validation of well-formed Q&A entries."""
     content = (
-        "# \\# General Information about MSU\n\n"
+        "# \\# General Information about Apex University\n\n"
         "## \\#\\# Legitimacy\n\n"
-        "\\*\\*Question:\\*\\* Is this MSU’s official portal?\n\n"
+        "\\*\\*Question:\\*\\* Is this Apex University’s official portal?\n\n"
         "\\*\\*Answer:\\*\\* Yes, this is the official admissions portal.\n\n"
         "## \\#\\# Semester Breakdown\n\n"
         "\\*\\*Question:\\*\\* How long is each semester?\n\n"
@@ -167,7 +167,7 @@ def test_suspicious_programme_mismatch(tmp_kb_dir: Path):
     content = (
         "# \\# Doctor of Philosophy (Food Service Technology)\n\n"
         "\\*\\*Question:\\*\\* What is the Doctor of Philosophy (Applied Science)?\n\n"
-        "\\*\\*Answer:\\*\\* MSU's Doctor of Philosophy (Food Service Technology) is a research program.\n"
+        "\\*\\*Answer:\\*\\* Apex University's Doctor of Philosophy (Food Service Technology) is a research program.\n"
     )
     kb_file = tmp_kb_dir / "programme_mismatch.md"
     kb_file.write_text(content, encoding="utf-8")
@@ -189,8 +189,8 @@ def test_time_sensitive_content_flagging(tmp_kb_dir: Path):
     """Verify heuristic warning for specific calendar years and deadline terms."""
     content = (
         "# \\# Ranking\n\n"
-        "\\*\\*Question:\\*\\* What’s MSU’s QS ranking for 2027?\n\n"
-        "\\*\\*Answer:\\*\\* MSU places #608 on the QS World University Rankings.\n\n"
+        "\\*\\*Question:\\*\\* What’s Apex University’s QS ranking for 2027?\n\n"
+        "\\*\\*Answer:\\*\\* Apex University places #608 on the QS World University Rankings.\n\n"
         "\\*\\*Question:\\*\\* What is the application deadline?\n\n"
         "\\*\\*Answer:\\*\\* Applications close in July 2026.\n"
     )
@@ -217,7 +217,7 @@ def test_malformed_syntax_and_stray_tokens(tmp_kb_dir: Path):
         "\\*\\*Answer:\\*\\* 9:00 AM to 6:00 PM.\n"
         "cou\n\n"  # Stray token
         "## \\#\\# Accreditation\n\n"
-        "\\*\\*Question:\\*\\* Is MSU accredited?\n\n"
+        "\\*\\*Question:\\*\\* Is Apex University accredited?\n\n"
         "\\*\\*Answer:\\*\\* Yes, accredited by MQA.\n"
     )
     kb_file = tmp_kb_dir / "malformed.md"
@@ -395,10 +395,10 @@ def test_deterministic_pipeline_repeatability(tmp_kb_dir: Path):
 
 def test_redact_sensitive_credentials_and_pii():
     """Verify redaction utility cleans personal email, phone numbers, and secrets."""
-    raw = "Contact admin at counsellor.test@msu.edu.my or call +60123456789. Key: api_key=sk-live-12345"
+    raw = "Contact admin at counsellor.test@example.com or call +60123456789. Key: api_key=sk-live-12345"
     sanitized = redact_sensitive(raw)
 
-    assert "counsellor.test@msu.edu.my" not in sanitized
+    assert "counsellor.test@example.com" not in sanitized
     assert "[REDACTED_EMAIL]" in sanitized
     assert "+60123456789" not in sanitized
     assert "[REDACTED_PHONE]" in sanitized
