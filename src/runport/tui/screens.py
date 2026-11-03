@@ -778,7 +778,7 @@ def build_evaluation_main_panel(
         )
         if run_results:
             det_table.add_column("Case ID", style=f"bold {TEXT_PRIMARY}", width=18)
-            det_table.add_column("Student Prompt", style=f"{TEXT_PRIMARY}", ratio=1)
+            det_table.add_column("Case Prompt", style=f"{TEXT_PRIMARY}", ratio=1)
             det_table.add_column("Acc.", justify="right", width=8)
             det_table.add_column("Faithful", justify="right", width=9)
             det_table.add_column("Latency", justify="right", width=10)
@@ -787,9 +787,9 @@ def build_evaluation_main_panel(
             for r in run_results[:3]:
                 p_text = str(r.get("prompt", ""))
                 p_snippet = p_text[:45] + "…" if len(p_text) > 45 else p_text
-                acc_val = f"{float(r.get('accuracy', 0))*100:.0f}%"
-                grd_val = f"{float(r.get('groundedness', 0))*100:.0f}%"
-                l_val = f"{float(r.get('latency_ms', 0)):.0f}ms"
+                acc_val = f"{float(r['accuracy'])*100:.0f}%" if r.get('accuracy') is not None else "-"
+                grd_val = f"{float(r['groundedness'])*100:.0f}%" if r.get('groundedness') is not None else "-"
+                l_val = f"{float(r['latency_ms']):.0f}ms" if r.get('latency_ms') is not None else "-"
                 notes = str(r.get("evaluator_notes", "") or "-")
                 if len(notes) > 20:
                     notes = notes[:18] + "…"
@@ -806,8 +806,9 @@ def build_evaluation_main_panel(
             det_table.add_column("Value", justify="left", width=25)
             det_table.add_column("Analysis / Evaluation Invariant", style=f"{TEXT_MUTED}")
 
-            det_table.add_row("Evaluation Dataset", str(sel_run.get("dataset_path", "verified_rag_benchmark.jsonl")), "Decoupled evaluation dataset with verified ground truth")
-            det_table.add_row("Mean Accuracy", f"{float(sel_run.get('mean_accuracy', 0))*100:.1f}%", "Factual overlap against verified reference answers")
+            det_table.add_row("Evaluation Dataset", str(sel_run.get("dataset_path", "synthetic_seed_eval.jsonl")), "Decoupled evaluation dataset with verified ground truth")
+            mean_acc_str = f"{float(sel_run['mean_accuracy'])*100:.1f}%" if sel_run.get('mean_accuracy') is not None else "-"
+            det_table.add_row("Mean Accuracy", mean_acc_str, "Factual overlap against verified reference answers")
             det_table.add_row("Faithfulness (Groundedness)", f"{float(sel_run.get('mean_groundedness', 0))*100:.1f}%", "Context-supported ratio to prevent hallucinations")
             det_table.add_row("Execution Notes", str(sel_run.get("notes", "RAG evaluation")), "Tracked under local budget policy ceilings")
 
