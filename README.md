@@ -1,284 +1,251 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/runport-logo-white.png">
-    <img alt="Runport — Universal LLM, Prompt, and Workflow Benchmarking" src="assets/runport-logo-black.png" width="620">
+    <source media="(prefers-color-scheme: light)" srcset="assets/runport-logo-black.png">
+    <img src="assets/runport-logo-white.png" alt="Runport Logo" width="380" />
   </picture>
 </p>
 
-<h3 align="center">Universal, Local-First LLM, Prompt & Workflow Benchmarking Platform</h3>
+<h1 align="center">Runport</h1>
 
 <p align="center">
-  Benchmark <b>any API or orchestrated workflow</b> on your own dataset with strict ground-truth verification, zero simulated telemetry, and fail-closed micro-dollar spend caps.
+  <b>Universal local-first LLM, prompt, and workflow benchmarking platform.</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Sudharsanselvaraj/runport"><img src="https://img.shields.io/badge/tests-684%20passing-success?style=flat-square&logo=pytest&logoColor=white&labelColor=1e1b2e" alt="Tests"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12-3776ab?style=flat-square&logo=python&logoColor=white&labelColor=1e1b2e" alt="Python Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-a78bfa?style=flat-square&labelColor=1e1b2e" alt="License"></a>
-  <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/built%20with-uv-DE5FE9?style=flat-square&labelColor=1e1b2e" alt="uv"></a>
-  <img src="https://img.shields.io/badge/spend%20caps-fail--closed-critical?style=flat-square&labelColor=1e1b2e" alt="Spend Caps">
-  <img src="https://img.shields.io/badge/telemetry-zero--simulation-informational?style=flat-square&labelColor=1e1b2e" alt="Zero Simulation">
+  <a href="https://github.com/Sudharsanselvaraj/Runport/actions/workflows/ci.yml"><img src="https://github.com/Sudharsanselvaraj/Runport/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Sudharsanselvaraj/Runport"><img src="https://img.shields.io/badge/status-public%20alpha-orange.svg" alt="Status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg" alt="Python"></a>
+  <a href="https://github.com/Sudharsanselvaraj/Runport/stargazers"><img src="https://img.shields.io/github/stars/Sudharsanselvaraj/Runport?style=flat" alt="GitHub Stars"></a>
 </p>
 
 <p align="center">
-  <a href="#-quickstart"><b>Quickstart</b></a> •
-  <a href="#-why-runport"><b>Why Runport?</b></a> •
-  <a href="#-key-capabilities"><b>Key Capabilities</b></a> •
-  <a href="#-terminal-ui--dashboard"><b>Terminal UI</b></a> •
-  <a href="#-architecture"><b>Architecture</b></a> •
-  <a href="#-safety--spend-model"><b>Spend & Safety</b></a> •
-  <a href="#-connectors--workflows"><b>Connectors</b></a> •
-  <a href="#-python-sdk"><b>Python SDK</b></a> •
-  <a href="#-cli-reference"><b>CLI Reference</b></a> •
-  <a href="#-development"><b>Development</b></a>
+  <a href="#quickstart"><b>Quickstart</b></a> ·
+  <a href="docs/"><b>Docs</b></a> ·
+  <a href="docs/connectors/README.md"><b>Connectors</b></a> ·
+  <a href="SECURITY.md"><b>Security</b></a>
 </p>
 
 <br>
 
+> 🚧 **Public alpha**: Runport is under active development. Core evaluation abstractions, budget ledgers, and CLI commands are stable; workflow connector coverage is expanding. Feedback and issues are welcome.
+
 ---
 
-## ⚡ Quickstart
+## Before you begin
 
-Get up and running locally in under 60 seconds with [`uv`](https://github.com/astral-sh/uv) or `pip`:
+Runport is a developer-first platform for evaluating and comparing large language models, prompt chains, and agentic workflows:
 
-### 1. Installation
+- **Universal Evaluation**: Evaluates raw LLM APIs, prompt wrappers, and compound agentic workflows (Dify, Flowise, n8n, LangGraph, custom HTTP endpoints) under hard, fail-closed spend caps.
+- **Strict Ground Truth**: Supervised metrics (accuracy, F1, calibration) are computed **exclusively** from human-approved annotations. Model-to-model consensus is never presented as accuracy.
+- **Honest Accounting**: Missing tokens, latency, confidence, or cost remain `None` / `UNAVAILABLE`—never fabricated as zero. Spend is booked into an append-only SQLite WAL ledger with fixed provenance (`ACTUAL`, `ESTIMATED`, `UNRESOLVED`, `UNAVAILABLE`). Unresolved spend halts subsequent runs fail-closed until reconciled.
+- **Local-First & Private**: Zero external telemetry, zero tracking, and zero remote data collection. All prompts, evaluations, and API keys stay strictly on your local machine.
+
+---
+
+## Step 1: Install and start Runport
+
+### Requirements
+- **Python**: 3.11 or 3.12
+- **Package Manager**: [`uv`](https://docs.astral.sh/uv/) (recommended) or standard `pip`
 
 ```bash
-# Clone the repository
-git clone https://github.com/Sudharsanselvaraj/runport.git
-cd runport
+# Option A: Install via uv tool (global CLI)
+uv tool install runport
 
-# Install dependencies in an isolated virtual environment
+# Option B: Clone and run locally
+git clone https://github.com/Sudharsanselvaraj/Runport.git
+cd Runport
 uv sync
-```
 
-### 2. Launch the Interactive Interfaces
-
-```bash
-# Developer workflow launcher
+# Launch the interactive workbench launcher
 uv run runport
-
-# Full-screen Rich Terminal UI (TUI) Dashboard
-uv run runport ui
-```
-
-### 3. Verify Offline Safety & Budget
-
-```bash
-# Offline check: verify provider credentials without sending any network request
-uv run runport api-preflight
-
-# Check budget caps, remaining balances, and append-only WAL ledger
-uv run runport budget status
-
-# Inspect the participant catalog, readiness blockers, and routed pricing
-uv run runport models roster
-
-# Run a synthetic-only verification plan (zero cost, zero outbound requests)
-uv run runport smoke-test
-```
-
----
-
-## 💡 Why Runport?
-
-Evaluating AI systems in production is plagued by unreliable benchmarks: synthetic simulations that don't match provider billing, model agreement masquerading as accuracy, runaway API spend during batch evaluations, and tools that only evaluate raw completions rather than real multi-step workflows.
-
-**Runport fixes this with five foundational guarantees:**
-
-| Traditional LLM Benchmarking | The Runport Standard |
-|---|---|
-| **Simulated / Mock Telemetry**: Fakes token counts and latency offline. | **Zero Simulation**: There is no dry-run mode in production. Missing provider tokens or latency stay `null` / `UNAVAILABLE`. |
-| **Silent Overspend**: Batch evaluations run until your credit card fails. | **Hard Fail-Closed Caps**: Preflight bounds, circuit breakers down to `$0.02`/case, and an append-only SQLite WAL ledger. |
-| **Model Agreement = Correctness**: Treats LLM consensus as ground truth. | **Strict Ground Truth**: Supervised metrics (accuracy, F1, calibration) are computed **exclusively** from human-approved annotations. |
-| **Raw Model Endpoints Only**: Only tests single-prompt model APIs. | **Any Workflow / Any API**: Benchmarks raw LLMs alongside orchestrated workflows (Dify, Flowise, Langflow, n8n, LangGraph, custom HTTP). |
-| **Uncontrolled Outbound Calls**: Scripts make network calls without warning. | **Typed Live Authorization**: Live requests require an interactive terminal user to type an approval phrase bound to the plan fingerprint. |
-
----
-
-## 🚀 Key Capabilities
-
-```text
-┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│  Target System  │     │   Safety Gate    │     │  Observability   │
-│ • Raw LLM APIs  │────▶│ • Spend Ceilings │────▶│ • Rich TUI       │
-│ • Agent Flows   │     │ • Typed Approval │     │ • WAL Ledger     │
-│ • Dify Pipelines│     │ • PII Redaction  │     │ • Trace Export   │
-└─────────────────┘     └──────────────────┘     └──────────────────┘
-```
-
-- **Universal Target Support**: Benchmark anything with an input and output: OpenRouter, OpenAI-compatible APIs, local models (Ollama, vLLM), or workflow engines (Dify Chat & SSE Streaming, custom HTTP webhooks).
-- **Hard, Fail-Closed Spend Caps**: Built-in limits ($18 total, $2 pilot, $0.50 single run, $0.02 single case). Spend kinds remain separate: `ACTUAL` (provider reported), `ESTIMATED` (catalog pricing × reported tokens), and `UNRESOLVED` (requires manual reconciliation before running further).
-- **Statistical Rigor**: Built-in Wilson score confidence intervals, non-parametric bootstrap CIs, Cohen's Kappa for inter-annotator agreement, Holm-Bonferroni family-wise error rate corrections, and Precision/Recall/F1 metrics.
-- **Operator Authorization**: Live external requests require typed confirmation bound to the plan fingerprint (e.g. `RUN LIVE gpt-4.1-nano PLAN a1b2c3d4`). Piped or non-interactive execution cannot confirm and is safely refused.
-- **Local-First Privacy**: Automated salted SHA-256 pseudonyms and regex PII redaction (phones, emails). Source datasets and prediction stores are immutable and read-only.
-- **Telemetry & Traces**: Export sanitized, redacted local traces (`trace-export-v1` format in JSONL, CSV, or deterministic ZIP) directly from the local SQLite ledger.
-
----
-
-## 🖥️ Terminal UI & Dashboard
-
-Runport provides a responsive, read-only terminal dashboard built with [Rich](https://github.com/Textualize/rich). It visualizes spend, execution health, request telemetry, calibration, and model agreement in real time.
-
-```bash
-uv run runport ui
 ```
 
 <p align="center">
-  <img src="assets/readme/tui_dashboard.png" alt="Runport Rich TUI Dashboard" width="900" />
+  <img src="assets/readme/terminal-welcome.png" alt="Runport CLI Welcome Screen" width="900" />
 </p>
 
-### Dashboard Navigation & Controls
-
-| Shortcut | Action |
-|:---:|---|
-| `1` – `9`, `0`, `-`, `=` | Jump directly to dashboard sections (Overview, Quality, Calibration, Budget, etc.) |
-| `[` / `]` | Step backward / forward through all 16 views |
-| `Tab` / `Shift+Tab` | Cycle focus between navigation, data table, and inspector panels |
-| `↑` `↓` / `k` `j` | Navigate rows within data views |
-| `Enter` | Open side-by-side inspector for the selected model or run |
-| `/` | Live filter roster by participant, model name, or provider |
-| `:` | Open command prompt (`:overview`, `:budget`, `:quality`, `:latency`, `:traces`, `:quit`) |
-| `r` | Manually reload telemetry and SQLite WAL ledger (auto-refreshes every 2 s) |
-| `q` / `Esc` | Cleanly exit and restore terminal state |
+The interactive launcher provides unified access to every workbench capability:
+- Launch the full-screen terminal UI dashboard (`runport ui`)
+- Run dataset validation and cross-split leakage checks (`runport validate-dataset`)
+- Inspect candidate model routes, readiness, and blockers (`runport models roster`)
+- Verify API credentials offline without making any network requests (`runport api-preflight`)
+- Run RAG and classification benchmarks under spend ceilings (`runport benchmark`)
+- Inspect budget ledgers, spend caps, and ledger transactions (`runport budget status`)
 
 ---
 
-## 🏗️ Architecture
+## Table of Contents
 
-```text
-runport/
-├── src/runport/
-│   ├── cli.py                  # CLI entry point and interactive launcher
-│   ├── catalog/                # Model candidate definitions and portfolio specs
-│   ├── connectors/             # Workflow connectors (Dify chat/streaming, SSE, HTTP)
-│   ├── scorers/                # Statistical scorers (Wilson, Bootstrap, Kappa, PRF)
-│   ├── datasets/               # Dataset utilities and regex PII redaction
-│   ├── classification/         # Classification contracts, runner, validators, splits
-│   ├── core/                   # Spend budget service, paths, live execution guards
-│   ├── storage/                # SQLite WAL ledger and evaluation run history
-│   ├── providers/              # HTTP transports, retry policies, OpenRouter adapter
-│   ├── observability/          # Event loggers, telemetry aggregations, trace export
-│   └── tui/                    # Terminal dashboard, themes, live monitors, welcome menu
-│
-├── examples/plugins/           # Decoupled reference plugins
-│   ├── kb_audit/               # Domain KB audit and deterministic patch engine
-│   └── jev_decisions_api/      # Decisions API payload adapter
-│
-├── tests/                      # Comprehensive offline test suite (680+ tests)
-└── data/                       # Local-only database, trace fixtures, and evaluation datasets
-```
+- [Before you begin](#before-you-begin)
+- [Step 1: Install and start Runport](#step-1-install-and-start-runport)
+- [Why Runport?](#why-runport)
+- [Quickstart](#quickstart)
+- [How Runport works](#how-runport-works)
+- [Integrations](#integrations)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Telemetry](#telemetry)
+- [License](#license)
 
 ---
 
-## 🛡️ Safety & Spend Model
+## Why Runport?
 
-Runport enforces hard budget boundaries at both preflight and runtime:
+Traditional LLM evaluation frameworks suffer from silent overspend, simulated metrics, and siloed evaluation of raw prompts rather than real multi-step pipelines. Runport provides four foundational guarantees:
 
-| Policy | Threshold | Enforcement Action |
-|---|---|---|
-| **Experiment Ceiling** | `$18.00` (configurable) | Preflight blocks execution if cumulative spend reaches cap |
-| **Pilot Run Cap** | `$2.00` | Gating cap for exploratory or single-model runs |
-| **Single Run Limit** | `$0.50` | Preflight rejects batch if estimated plan cost exceeds bound |
-| **Single Case Circuit Breaker** | `$0.02` | Live runner immediately halts if a single record exceeds cap |
-| **Unresolved Spend Lock** | Any unpriced transaction | Freezes further live execution until operator reconciles transaction |
-| **Live Plan Authorization** | Interactive typed confirmation | Refuses requests without fingerprint-bound typed approval |
+| Principle | Traditional LLM Benchmarking | The Runport Guarantee |
+|:---|:---|:---|
+| **Hard Spend Caps** | Batch evaluations run until payment cards decline or rate limits trigger. | Preflight checks halt execution before spending a cent; unresolved spend halts subsequent runs fail-closed. |
+| **Strict Ground Truth** | LLM consensus is treated as ground truth ("LLM-as-a-judge" agreement = accuracy). | Supervised metrics require human ground-truth approval. DEV-only threshold tuning is frozen before TEST. |
+| **Universal Connectors** | Frameworks only benchmark single-prompt completion endpoints. | Benchmark raw LLMs alongside compound workflows (Dify, Flowise, n8n, LangGraph, Python scripts, custom REST). |
+| **Local-First Visibility** | Telemetry is phoned home to cloud SaaS dashboards. | 100% local operation: full-screen Rich TUI, local FastAPI + React web UI, and sanitized trace exports. |
 
 ---
 
-## 🔌 Connectors & Workflows
+## Quickstart
 
-### 1. Orchestrated Workflows (e.g. Dify)
-Benchmark multi-step conversational or streaming agents with automated secret scrubbing and retry handling:
+Verify your installation in under 60 seconds with an offline replay evaluation ($0.00 spend, zero network calls, zero keys required).
 
-```python
-from runport.connectors.dify import post_chat_message, post_chat_stream
-
-# Post to a Dify agent pipeline
-result = post_chat_message(
-    base_url="https://api.dify.ai/v1",
-    api_key="app-xxxxxxxxxxxxxxxx",
-    query="What are the system requirements?",
-    user="anonymous-eval-001",
-    timeout=30.0,
-)
-print(f"Status: {result.outcome}, Answer: {result.answer}")
-```
-
-### 2. Statistical Scoring SDK
-Compute publication-grade statistical metrics with confidence intervals:
-
-```python
-from runport.scorers.stats import wilson, boot_ci, cohen_kappa, prf
-
-# Wilson score interval for binomial accuracy (e.g. 85 successes in 100 trials)
-low, high = wilson(successes=85, total=100, confidence=0.95)
-print(f"95% CI: [{low:.3f}, {high:.3f}]")
-
-# Inter-annotator agreement
-kappa = cohen_kappa(rater_a=[1, 0, 1, 1], rater_b=[1, 0, 1, 0])
-print(f"Cohen's Kappa: {kappa:.3f}")
-```
-
-### 3. PII Redaction & Pseudonymization
-Clean evaluation datasets prior to benchmarking:
-
-```python
-from runport.datasets.redaction import redact, salted_hash
-
-# Deterministic pseudonym
-user_id = salted_hash("student@university.edu", salt="eval-salt-2026")
-
-# Strip Malaysian/international phone numbers and email addresses
-clean_text = redact("Contact me at user@example.com or +6012-3456789")
-# Output: "Contact me at [EMAIL_REDACTED] or [PHONE_REDACTED]"
-```
-
----
-
-## 📖 CLI Reference
-
-Run `runport --help` or `runport <command> --help` for full options:
-
-| Command | Purpose |
-|---|---|
-| `runport` | Launch the interactive developer workflow selector |
-| `runport ui` | Open the full-screen terminal dashboard (TUI) |
-| `runport models roster` | Display candidate model portfolio, pinned routes, and blockers |
-| `runport budget status` | View spend ledger, remaining balances, and active caps |
-| `runport budget reconcile` | Manually reconcile unpriced or unresolved spend entries |
-| `runport api-preflight` | Check provider API key availability without sending requests |
-| `runport smoke-test` | Run synthetic verification plan across adapters |
-| `runport export-traces` | Export sanitized local trace records (`jsonl`, `csv`, or `zip`) |
-| `runport validate-dataset` | Verify split leakage and dataset contract schemas |
-| `runport annotate` | Ground-truth annotation, adjudication, and label freezing |
-
----
-
-## 🧪 Development & Testing
-
-Runport uses [`uv`](https://github.com/astral-sh/uv) and [`pytest`](https://docs.pytest.org/). Sockets are blocked during tests, and all external transports use deterministic synthetic fixtures.
-
+### Step A: Validate Evaluation Dataset
+Validate dataset schema, confidentiality boundaries, and partition integrity:
 ```bash
-# Run the complete test suite (unit, integration, and PTY tests)
-uv run pytest
-
-# Run tests with coverage
-uv run pytest --cov=runport
-
-# Run plugin test suites
-uv run pytest examples/plugins
+uv run runport validate-dataset data/evaluation/synthetic_seed_eval.jsonl
 ```
+
+### Step B: Offline Credential & Safety Preflight
+Verify your local environment and safety gates without sending a single network packet:
+```bash
+uv run runport api-preflight
+```
+
+### Step C: Run Replay Benchmark
+Execute a deterministic offline evaluation against synthetic test cases:
+```bash
+uv run runport benchmark --dataset data/evaluation/synthetic_seed_eval.jsonl --target meta-llama/llama-3.1-8b-instruct --replay
+```
+
+<p align="center">
+  <img src="assets/readme/terminal-dashboard.png" alt="Runport TUI Dashboard showing an offline replay evaluation" width="900" />
+</p>
+
+### Launch the Local Web Dashboard
+Runport also includes a modern local web dashboard powered by FastAPI and React:
+```bash
+uv run runport web
+```
+Open **http://127.0.0.1:8000** in your browser to inspect evaluation runs, latency percentiles, confusion matrices, and budget ledgers.
 
 ---
 
-## 📄 License & Attribution
+## How Runport works
 
-Runport is open-source software licensed under the **[Apache 2.0 License](LICENSE)**.
-See the **[NOTICE](NOTICE)** file for copyright notices.
+Runport enforces a strict, fail-closed execution lifecycle for every evaluation run. No provider request is ever dispatched without passing each gate in order:
 
 ```text
-Runport
-Copyright 2026 Sudharsanselvaraj and contributors.
-Licensed under the Apache License, Version 2.0.
+┌─────────────────────────┐
+│ 1. Authorization Check  │  Interactive typed phrase or verified token approval
+└────────────┬────────────┘
+             │
+┌────────────▼────────────┐
+│ 2. Privacy Gate         │  Scans dataset confidentiality; blocks non-public records
+└────────────┬────────────┘
+             │
+┌────────────▼────────────┐
+│ 3. Preflight Budget     │  Binds cryptographic plan fingerprint (SHA-256); checks caps
+└────────────┬────────────┘
+             │
+┌────────────▼────────────┐
+│ 4. Transport Execution  │  Dispatches request with bounded retries (429/5xx only)
+└────────────┬────────────┘
+             │
+┌────────────▼────────────┐
+│ 5. Strict Validation    │  Validates response schema; rejects missing required telemetry
+└────────────┬────────────┘
+             │
+┌────────────▼────────────┐
+│ 6. Persistence          │  Writes run results and trace events to SQLite WAL database
+└────────────┬────────────┘
+             │
+┌────────────▼────────────┐
+│ 7. Spend Booking        │  Books spend into ledger (ACTUAL, ESTIMATED, or UNRESOLVED)
+└─────────────────────────┘
 ```
+
+### Cryptographic Plan Fingerprint
+Before any live run begins, Runport computes a SHA-256 fingerprint binding:
+- Candidate model IDs and endpoint routing configurations
+- SHA-256 hash of the input dataset
+- SHA-256 hash of the prompt template
+- Configured budget caps and circuit breaker ceilings
+
+If any input, route, or budget ceiling changes between approval and dispatch, the plan fingerprint changes and the execution is rejected fail-closed.
+
+---
+
+## Integrations
+
+Runport decouples target execution from evaluation scoring, allowing unified benchmarking across direct model APIs, local engines, and orchestration workflows.
+
+| Target / Connector | Type | Status | Description |
+|:---|:---|:---:|:---|
+| **OpenAI Compatible** (`openai_compat`) | LLM API | **Supported** | OpenAI, vLLM, Ollama, Together, Groq, Mistral, Anyscale, and custom endpoints. |
+| **OpenRouter** (`openrouter`) | LLM API | **Supported** | 200+ models via OpenRouter unified gateway with live catalog pricing. |
+| **Ollama** (`ollama`) | Local LLM | **Supported** | Local offline models (`/api/chat`, `/api/generate`) with zero API cost. |
+| **Custom HTTP Workflow** (`http_workflow`) | Workflow | **Supported** | Any external webhook or REST service accepting JSON payloads. |
+| **Python Target** (`python_target`) | Code | **Supported** | In-process Python callables, classes, or CLI binaries returning structured outputs. |
+| **Dify** (`dify`) | Workflow | **Supported** | Dify Chat & Workflow application executions via API endpoints. |
+| **Flowise** (`flowise`) | Workflow | *Experimental* | Flowise AI workflow executions. |
+| **Langflow** (`langflow`) | Workflow | *Experimental* | Langflow multi-agent and RAG flow executions. |
+| **n8n** (`n8n`) | Workflow | *Experimental* | n8n webhook automation pipelines. |
+| **LangGraph** (`langgraph`) | Workflow | *Experimental* | LangGraph StateGraph agent endpoints with per-step trace recording. |
+
+For detailed connector schemas and configuration examples, see the [Connector Documentation](docs/connectors/README.md).
+
+---
+
+## Contributing
+
+We welcome community contributions, bug fixes, and additional connector adapters. Please review our [Contributing Guidelines](CONTRIBUTING.md) before submitting pull requests.
+
+- **Offline Tests**: All automated tests run completely offline (`uv run pytest`).
+- **Invariant Integrity**: Never weaken architectural invariants or fabricate missing telemetry.
+- **Clean Commits**: Make focused, atomic commits with imperative commit messages.
+- **Zero Leakage**: Verify clean scans locally with `gitleaks detect` before pushing.
+
+---
+
+## Security
+
+Runport is engineered from the ground up to protect your data, credentials, and budget:
+- **Zero Telemetry**: Runport never collects, transmits, or phones home user queries, traces, or datasets.
+- **Automatic Secret Scrubbing**: Transports, logs, and trace exports automatically scrub API keys (`sk-...`) and Authorization headers.
+- **SSRF Safeguards**: Outbound HTTP transports reject connections to cloud metadata (`169.254.169.254`) and unauthorized internal network destinations.
+
+For vulnerability disclosure instructions, see [SECURITY.md](SECURITY.md).
+
+---
+
+## Telemetry
+
+Runport contains **zero** telemetry, tracking, or remote analytics:
+- No user events, prompt payloads, or benchmark metrics are ever uploaded.
+- All evaluation artifacts, traces, and SQLite ledgers remain strictly on your local filesystem.
+- You can verify this invariant directly in the codebase:
+  ```bash
+  git grep -iE "telemetry\.track|mixpanel|posthog|analytics|segment" src/
+  ```
+
+---
+
+## License
+
+Runport is licensed under the **Apache License, Version 2.0**. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for complete terms and third-party software acknowledgments.
+
+---
+
+<p align="center">
+  ⭐ If you find Runport useful, star us on GitHub — it helps the project grow.
+</p>
