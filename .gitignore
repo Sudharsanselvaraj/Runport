@@ -5,6 +5,7 @@ __pycache__/
 *.so
 build/
 dist/
+site/
 *.egg-info/
 *.egg
 

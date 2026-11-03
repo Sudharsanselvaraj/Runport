@@ -1,0 +1,3 @@
+{"id": "rep-001", "query": "What is the capital of France?", "output_text": "Paris", "status": "success", "tokens_in": 7, "tokens_out": 1, "latency_ms": 120.5}
+{"id": "rep-002", "query": "Convert 100 EUR to USD", "output_text": "108.50 USD", "status": "success", "tokens_in": 6, "tokens_out": 3, "latency_ms": 145.2}
+{"id": "rep-003", "query": "Explain quantum entanglement briefly", "output_text": "A physical phenomenon where particles remain connected regardless of distance.", "status": "success", "tokens_in": 5, "tokens_out": 12, "latency_ms": 190.0}

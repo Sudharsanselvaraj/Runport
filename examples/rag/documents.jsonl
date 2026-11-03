@@ -1,0 +1,3 @@
+{"doc_id": "doc-01", "title": "Refund Window", "content": "Customers can request full refunds within 30 days of initial purchase."}
+{"doc_id": "doc-02", "title": "Password Reset", "content": "Password reset links expire 15 minutes after issuance."}
+{"doc_id": "doc-03", "title": "API Rate Limits", "content": "The standard API tier permits up to 120 requests per minute."}

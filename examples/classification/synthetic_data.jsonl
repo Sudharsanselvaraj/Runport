@@ -1,0 +1,5 @@
+{"id": "case-001", "query": "I need to reset my account password", "ground_truth": "ACCOUNT_SECURITY"}
+{"id": "case-002", "query": "Can you refund my last charge from yesterday?", "ground_truth": "BILLING"}
+{"id": "case-003", "query": "The API endpoint returns a 500 error on POST", "ground_truth": "TECHNICAL_SUPPORT"}
+{"id": "case-004", "query": "Where can I update my corporate billing address?", "ground_truth": "BILLING"}
+{"id": "case-005", "query": "I suspect my session was hijacked", "ground_truth": "ACCOUNT_SECURITY"}

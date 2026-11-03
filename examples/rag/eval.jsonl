@@ -1,0 +1,3 @@
+{"query": "How many days do I have to ask for a refund?", "expected_doc": "doc-01", "ground_truth": "30 days"}
+{"query": "When does my password link expire?", "expected_doc": "doc-02", "ground_truth": "15 minutes"}
+{"query": "What is the standard API rate limit?", "expected_doc": "doc-03", "ground_truth": "120 requests per minute"}
