@@ -45,7 +45,7 @@ class TelemetryConfig(BaseModel):
     local_logging: bool = Field(default=True, description="Enable local SQLite append-only event logging")
     redact_secrets: bool = Field(default=True, description="Automatically scrub API keys and auth bearer tokens")
     forbidden_fields: List[str] = Field(
-        default_factory=lambda: ["restricted_user_id", "phone", "email", "ssn", "national_id"],
+        default_factory=lambda: ["phone", "email", "ssn", "password", "token", "api_key"],
         description="Field names forbidden from payload ingestion or exports",
     )
 

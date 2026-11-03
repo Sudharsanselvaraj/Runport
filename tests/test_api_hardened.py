@@ -40,7 +40,8 @@ def test_setup_endpoint(client):
     data = res.json()
     assert data["app_name"] == "Runport"
     assert data["mode"] == "local_first"
-    assert "user4" in data["forbidden_fields"]
+    assert "phone" in data["forbidden_fields"]
+    assert "password" in data["forbidden_fields"]
     assert "required_fields" in data["dataset_schema"]
     assert data["budget_policy"]["total_budget_usd"] > 0
 

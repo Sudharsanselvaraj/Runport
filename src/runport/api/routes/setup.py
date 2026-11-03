@@ -48,7 +48,10 @@ def get_setup_info() -> SetupResponse:
     except Exception:
         pass
 
-    forbidden = getattr(settings, "forbidden_fields", ["user4", "phone", "ssn", "email", "password", "token", "secret"])
+    from runport.core.workspace import load_workspace_config
+    default_forbidden = ["phone", "email", "ssn", "password", "token", "api_key"]
+    cfg_telemetry = load_workspace_config().telemetry
+    forbidden = cfg_telemetry.forbidden_fields if cfg_telemetry.forbidden_fields else default_forbidden
 
     schema_info = {
         "required_fields": [
