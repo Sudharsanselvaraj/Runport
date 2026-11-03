@@ -23,25 +23,41 @@ from rich.table import Table
 from rich.text import Text
 
 from runport.tui.input import KeyReader
+from runport.tui.logo_ascii import RUNPORT_EMBLEM, RUNPORT_EMBLEM_SOLID
 from runport.tui.theme import BG_DARK
 
 
-# Precise Braille artwork matching vector logo geometry (26 columns x 13 lines)
-LOGO_BRAILLE_STRIPPED: List[str] = [
-    "                 ⢸⣶⣤⣀",
-    "        ⢠⣄⡀      ⢸⣿⣿⣿⣿⣶⣤⣀",
-    "        ⢸⣿⣿⣷⣦⣄⡀  ⢸⣿⣿⣿⣿⣿⣿⣿⣿",
-    "⣷⣦⣤⣀    ⢸⣿⣿⣿⣿⣿⣿⣷⡆⢸⣿⣿⡿⠿⠻⣿⣿⣿",
-    "⣿⣿⣿⣿⣿⣶⣤⣀⢸⣿⣿⣿⣿⣿⣿⣿⡇⢸⣿⡿⠃  ⣿⣿⣿",
-    "⣿⣿⣿⣿⣿⣿⣿⣿⢸⣿⣿⣿⠟⢉⣉⣉⣀⣈⣉⣠⣾⣿⣿⣿⣿⣿",
-    "⣿⣿⠛⠛⢻⣿⣿⣿⠘⠿⠛⢁⣴⣿⣿⣿⡇⢹⣿⣿⣿⣿⣿⣿⣿⣿",
-    "⣿⣿⣀⣀⣠⣤⣤⣤⢠⣤⣤⡈⠻⣿⣿⣿⣇⣸⣿⣿⣿⣿⣿⣿⣿⣿",
-    "⣿⣿⣿⣿⣿⣿⣿⣿⢸⣿⣿⣿⣦⣄⣀⣀⡀⢀⣀⠙⢿⣿⣿⣿⣿⣿",
-    "⣿⣿⣿⣿⣿⣿⣿⣿⢸⣿⣿⣿⣿⣿⣿⣿⡇⢸⣿⣷⡄  ⣿⣿⣿",
-    "⠈⠙⠻⠿⣿⣿⣿⣿ ⠈⠙⠻⢿⣿⣿⣿⡇⢸⣿⣿⣷⣶⣶⣿⣿⣿",
-    "     ⠉⠛⠿     ⠈⠙⠻⠇ ⠈⠙⠻⢿⣿⣿⣿⣿",
-    "                      ⠈⠙⠻⢿",
-]
+def _should_show_emblem(console: Console, compact: bool, cols: int, rows: int) -> bool:
+    """Size and terminal capability rule for displaying the full hexagonal logo art.
+
+    Shows emblem only if:
+    - terminal is at least 70 columns wide and 40 rows tall
+    - output encoding is UTF-8
+    - NO_COLOR is not set
+    - TERM is not 'dumb'
+    - not compact mode
+    Never raises an exception.
+    """
+    try:
+        if compact:
+            return False
+        if cols < 70 or rows < 40:
+            return False
+        enc = (
+            getattr(console.file, "encoding", None)
+            or getattr(sys.stdout, "encoding", None)
+            or "utf-8"
+        )
+        if str(enc).lower().replace("-", "").replace("_", "") not in ("utf8",):
+            return False
+        if bool(os.environ.get("NO_COLOR")) or getattr(console, "no_color", False):
+            return False
+        if os.environ.get("TERM", "").lower().strip() == "dumb":
+            return False
+        return True
+    except Exception:
+        return False
+
 
 MENU_ITEMS: List[Tuple[str, str, Optional[str]]] = [
     ("1.  Launch Full-Screen TUI Dashboard", "Live telemetry and monitors", None),
@@ -80,8 +96,10 @@ def launcher_status() -> Dict[str, str]:
     except Exception:
         pass
     try:
+        from runport.core.workspace import load_workspace_config
+        b_pol = load_workspace_config().budget.to_budget_policy()
         from runport.core.budget import BudgetService
-        b = BudgetService().get_status()
+        b = BudgetService(policy=b_pol).get_status()
         status["spend"] = f"${b.cumulative_spend_usd:.2f} / ${b.total_ceiling_usd:.0f} cap"
         status["ledger"] = f"${b.cumulative_spend_usd:.2f} actual (cap: ${b.total_ceiling_usd:.2f})"
     except Exception:
@@ -106,7 +124,7 @@ class WelcomeScreen:
         self.key_reader = key_reader or KeyReader()
         self.selected_index: int = 0
 
-    def _build(self, compact: bool = False):
+    def _build(self, compact: bool = False, rows: Optional[int] = None):
         """Builds the launcher layout. `compact` drops decorative lines so the frame fits short terminals."""
         status = launcher_status()
         self.status = status
@@ -115,20 +133,35 @@ class WelcomeScreen:
                  for i, (t, sub, b) in enumerate(MENU_ITEMS)]
 
         # Determine terminal and content width matching compact OpenSRE proportion
-        term_cols, _ = shutil.get_terminal_size((100, 30))
+        term_cols, term_rows = shutil.get_terminal_size((100, 30))
         if self.console.width:
-            term_cols = max(term_cols, self.console.width)
+            term_cols = self.console.width
+        if self.console.height:
+            term_rows = self.console.height
+        env_cols = os.environ.get("COLUMNS")
+        if env_cols and env_cols.isdigit():
+            term_cols = int(env_cols)
+        env_rows = os.environ.get("LINES")
+        if env_rows and env_rows.isdigit():
+            term_rows = int(env_rows)
+        if rows is not None:
+            term_rows = rows
+
         content_width = min(max(74, term_cols - 4), 88)
 
         container = Table.grid(padding=(0, 0))
         container.add_column("main", width=content_width)
 
-        # 1. Centered Braille Logo (26 cols wide, matching OpenSRE)
-        logo_pad = max(0, (content_width - 26) // 2)
-        if not compact:
-            for line in LOGO_BRAILLE_STRIPPED:
-                container.add_row(Text.from_markup(f"[bold #c4b5fd]{' ' * logo_pad}{line}[/]"))
+        # 1. Hexagonal Emblem or Compact Title
+        if _should_show_emblem(self.console, compact, term_cols, term_rows):
+            style_choice = os.environ.get("RUNPORT_LOGO_STYLE", "dotted").lower().strip()
+            emblem_text = RUNPORT_EMBLEM_SOLID if style_choice == "solid" else RUNPORT_EMBLEM
+            container.add_row(Align.center(Text(emblem_text, style="bold #c4b5fd", no_wrap=True, overflow="crop")))
             container.add_row(Text(""))
+        else:
+            container.add_row(Align.center(Text("RUNPORT", style="bold #c4b5fd")))
+            if not compact:
+                container.add_row(Text(""))
 
         # 2. Version, Title, and Subtitle (matching OpenSRE restrained hierarchy)
         container.add_row(Align.center(Text.from_markup(f"[dim #a78bfa]{status['version']}[/]")))
@@ -211,7 +244,7 @@ class WelcomeScreen:
         """The frame as terminal lines that are guaranteed to fit `rows`: the full layout, else compact, else truncated."""
         for compact in (False, True):
             with self.console.capture() as cap:
-                self.console.print(self._build(compact=compact))
+                self.console.print(self._build(compact=compact, rows=rows))
             lines = cap.get().rstrip("\n").split("\n")
             if len(lines) <= rows:
                 return lines
