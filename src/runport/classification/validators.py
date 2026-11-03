@@ -1,12 +1,10 @@
-"""Strict output validators for the two classifiers."""
+"""Strict output validators for classification targets."""
 
 import json
 from enum import Enum
-from typing import Optional
+from typing import List, Optional, Set
 
 from pydantic import BaseModel
-
-from runport.classification.contracts import IntentLabel
 
 
 class InvalidReason(str, Enum):
@@ -19,65 +17,33 @@ class InvalidReason(str, Enum):
     NOT_OBJECT = "NOT_OBJECT"
     MISSING_KEY = "MISSING_KEY"
     EXTRA_KEYS = "EXTRA_KEYS"
-    DUPLICATE_KEYS = "DUPLICATE_KEYS"
     NON_BOOLEAN = "NON_BOOLEAN"
 
 
-class IntentValidation(BaseModel):
+class ClassificationValidation(BaseModel):
     valid: bool
-    label: Optional[IntentLabel] = None
+    label: Optional[str] = None
     reason: Optional[InvalidReason] = None
 
 
-class LeadValidation(BaseModel):
-    valid: bool
-    need_cta: Optional[bool] = None
-    reason: Optional[InvalidReason] = None
-
-
-_LABELS = {l.value: l for l in IntentLabel}
-_UPPER = {l.value.upper() for l in IntentLabel}
-
-
-def validate_intent_output(raw: Optional[str]) -> IntentValidation:
-    """Exactly one label, case-sensitive. Only leading/trailing whitespace is tolerated."""
+def validate_classification_output(
+    raw: Optional[str],
+    allowed_labels: Optional[List[str]] = None,
+) -> ClassificationValidation:
+    """Validate a classification output against an allowed vocabulary. Case-sensitive; leading/trailing whitespace tolerated."""
     if raw is None or not raw.strip():
-        return IntentValidation(valid=False, reason=InvalidReason.EMPTY_OUTPUT)
+        return ClassificationValidation(valid=False, reason=InvalidReason.EMPTY_OUTPUT)
     text = raw.strip()
-    if text in _LABELS:
-        return IntentValidation(valid=True, label=_LABELS[text])
-    if text.upper() in _UPPER:
-        return IntentValidation(valid=False, reason=InvalidReason.WRONG_CASE)
-    if any(lbl in text.upper() for lbl in _UPPER):
-        return IntentValidation(valid=False, reason=InvalidReason.EXTRA_TEXT)
-    return IntentValidation(valid=False, reason=InvalidReason.UNKNOWN_LABEL)
+    if allowed_labels is None:
+        return ClassificationValidation(valid=True, label=text)
 
+    label_map = {l: l for l in allowed_labels}
+    upper_map = {l.upper(): l for l in allowed_labels}
 
-def _reject_duplicates(pairs):
-    keys = [k for k, _ in pairs]
-    if len(keys) != len(set(keys)):
-        raise ValueError("duplicate keys")
-    return dict(pairs)
-
-
-def validate_lead_output(raw: Optional[str]) -> LeadValidation:
-    """Exactly `{"need_cta": <bool>}`: no fences, no prose, no extra keys, real boolean only."""
-    if raw is None or not raw.strip():
-        return LeadValidation(valid=False, reason=InvalidReason.EMPTY_OUTPUT)
-    text = raw.strip()
-    if text.startswith("```"):
-        return LeadValidation(valid=False, reason=InvalidReason.CODE_FENCE)
-    try:
-        obj = json.loads(text, object_pairs_hook=_reject_duplicates)
-    except ValueError as e:
-        reason = InvalidReason.DUPLICATE_KEYS if "duplicate keys" in str(e) else InvalidReason.INVALID_JSON
-        return LeadValidation(valid=False, reason=reason)
-    if not isinstance(obj, dict):
-        return LeadValidation(valid=False, reason=InvalidReason.NOT_OBJECT)
-    if "need_cta" not in obj:
-        return LeadValidation(valid=False, reason=InvalidReason.MISSING_KEY)
-    if set(obj) != {"need_cta"}:
-        return LeadValidation(valid=False, reason=InvalidReason.EXTRA_KEYS)
-    if not isinstance(obj["need_cta"], bool):
-        return LeadValidation(valid=False, reason=InvalidReason.NON_BOOLEAN)
-    return LeadValidation(valid=True, need_cta=obj["need_cta"])
+    if text in label_map:
+        return ClassificationValidation(valid=True, label=label_map[text])
+    if text.upper() in upper_map:
+        return ClassificationValidation(valid=False, reason=InvalidReason.WRONG_CASE)
+    if any(lbl in text.upper() for lbl in upper_map):
+        return ClassificationValidation(valid=False, reason=InvalidReason.EXTRA_TEXT)
+    return ClassificationValidation(valid=False, reason=InvalidReason.UNKNOWN_LABEL)

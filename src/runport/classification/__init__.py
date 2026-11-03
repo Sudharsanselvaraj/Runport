@@ -1,26 +1,65 @@
-"""Offline classification-benchmark foundations (input_contract_v1). No network, no model adapters.
-
-PRODUCTION PARITY IS NOT ESTABLISHED for anything in this package.
-"""
+"""Classification evaluation modules for Runport."""
 
 from runport.classification.contracts import (
     CONTRACT_VERSION,
     PARITY_STATUS,
-    AmbiguityRecord,
-    ExclusionReason,
-    ExtractedAction,
+    ClassificationCase,
     HistoryStatus,
-    IntentCase,
-    IntentLabel,
-    LeadCase,
     ReviewStatus,
     Role,
     Turn,
 )
-from runport.classification.validators import validate_intent_output, validate_lead_output
+from runport.classification.metrics import (
+    BinaryMetrics,
+    ClassificationItem,
+    ClassificationMetrics,
+    compute_binary_metrics,
+    compute_classification_metrics,
+)
+from runport.classification.records import AdapterResult, PredictionRecord, PredictionStore, Task
+from runport.classification.runner import ClassificationRunSummary, ClassificationRunner
+from runport.classification.threshold import (
+    FrozenThreshold,
+    HeldOutReport,
+    ProbItem,
+    evaluate_at,
+    evaluate_held_out,
+    select_threshold_on_dev,
+    sweep,
+)
+from runport.classification.validators import (
+    ClassificationValidation,
+    InvalidReason,
+    validate_classification_output,
+)
 
 __all__ = [
-    "CONTRACT_VERSION", "PARITY_STATUS", "AmbiguityRecord", "ExclusionReason", "ExtractedAction", "HistoryStatus",
-    "IntentCase", "IntentLabel", "LeadCase", "ReviewStatus", "Role", "Turn",
-    "validate_intent_output", "validate_lead_output",
+    "CONTRACT_VERSION",
+    "PARITY_STATUS",
+    "ClassificationCase",
+    "HistoryStatus",
+    "ReviewStatus",
+    "Role",
+    "Turn",
+    "ClassificationItem",
+    "ClassificationMetrics",
+    "BinaryMetrics",
+    "compute_classification_metrics",
+    "compute_binary_metrics",
+    "AdapterResult",
+    "PredictionRecord",
+    "PredictionStore",
+    "Task",
+    "ClassificationRunSummary",
+    "ClassificationRunner",
+    "FrozenThreshold",
+    "HeldOutReport",
+    "ProbItem",
+    "evaluate_at",
+    "evaluate_held_out",
+    "select_threshold_on_dev",
+    "sweep",
+    "ClassificationValidation",
+    "InvalidReason",
+    "validate_classification_output",
 ]

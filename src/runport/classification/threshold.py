@@ -1,8 +1,8 @@
-"""Probability-based Lead Qualifier analysis: threshold sweep, dev-only threshold selection, frozen evaluation.
+"""Probability-based classification analysis: threshold sweep, dev-only threshold selection, frozen evaluation.
 
-Jev's Noul answer is P(yes) only. No threshold is documented, so one is chosen here from the DEVELOPMENT split
-only (initial criterion: maximum F1), frozen, and then applied unchanged to held-out data. Nothing in this module
-ever selects a threshold from held-out data. 0.5 is always reported as a reference.
+When an endpoint or model returns probabilities rather than discrete labels, a threshold is chosen
+from the DEVELOPMENT split only (initial criterion: maximum F1), frozen, and then applied unchanged
+to held-out data. Nothing in this module ever selects a threshold from held-out data. 0.5 is always reported as a reference.
 """
 
 import hashlib
