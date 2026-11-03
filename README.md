@@ -6,8 +6,6 @@
   </picture>
 </p>
 
-<h1 align="center">Runport</h1>
-
 <p align="center">
   <b>Universal local-first LLM, prompt, and workflow benchmarking platform.</b>
 </p>
