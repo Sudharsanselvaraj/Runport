@@ -120,7 +120,8 @@ def test_lead_without_a_frozen_threshold_gives_undecided_not_yes_no():
 def test_repeatability_and_latest_run_selection():
     p1 = [intent_pred("C1", "QUERY", run="r1", created="2026-10-15T12:00:00+00:00"), intent_pred("C2", "QUERY", run="r1", created="2026-10-15T12:00:00+00:00")]
     p2 = [intent_pred("C1", "QUERY", run="r2", created="2026-10-15T13:00:00+00:00"), intent_pred("C2", "GREETING", run="r2", created="2026-10-15T13:00:00+00:00")]
-    assert {r.run_id for r in A.latest_runs(p1 + p2)[("candidate-1", "classification")]} == {"r2"}
+    task_key = p1[0].task.value if hasattr(p1[0].task, "value") else str(p1[0].task)
+    assert {r.run_id for r in A.latest_runs(p1 + p2)[(p1[0].model_key, task_key)]} == {"r2"}
     rep = A.repeatability(p1 + p2)[0]
     assert (rep.n_cases_repeated, rep.n_identical) == (2, 1)
 

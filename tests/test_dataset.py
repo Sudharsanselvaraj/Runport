@@ -134,3 +134,22 @@ def test_cli_validate_dataset_command():
     assert result.exit_code == 0
     assert "DATASET VALIDATION PASSED" in result.stdout
     assert "Zero Leakage Detected" in result.stdout
+
+
+def test_immutable_source_hashing_verifies_before_and_after(tmp_path: Path):
+    """Source datasets are hashed (SHA-256) before and after evaluation to guarantee immutability."""
+    test_file = tmp_path / "immutable_dataset.jsonl"
+    test_file.write_text('{"id": "case-01", "query": "test query"}\n', encoding="utf-8")
+
+    # 1. Pre-execution hash
+    pre_hash = DatasetManager.compute_sha256(test_file)
+    assert len(pre_hash) == 64
+
+    # 2. Verification passes when file is untouched
+    DatasetManager.verify_source_integrity(test_file, pre_hash)
+
+    # 3. Verification raises fail-closed if source dataset is modified
+    test_file.write_text('{"id": "case-01", "query": "tampered query"}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="Source dataset mutated during evaluation"):
+        DatasetManager.verify_source_integrity(test_file, pre_hash)
+

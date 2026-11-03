@@ -56,6 +56,28 @@ class DatasetManager:
         return cases
 
     @staticmethod
+    def compute_sha256(path: Path) -> str:
+        """Computes SHA-256 hash of a dataset file."""
+        import hashlib
+        if not path.exists():
+            raise FileNotFoundError(f"Dataset file not found: {path}")
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        return h.hexdigest()
+
+    @staticmethod
+    def verify_source_integrity(path: Path, expected_hash: str) -> None:
+        """Verifies that the dataset file has not mutated (immutable source invariant)."""
+        current_hash = DatasetManager.compute_sha256(path)
+        if current_hash != expected_hash:
+            raise ValueError(
+                f"Source dataset mutated during evaluation! "
+                f"Expected: {expected_hash}, Actual: {current_hash}"
+            )
+
+    @staticmethod
     def save_jsonl(cases: List[EvaluationCase], path: Path) -> None:
         """Serializes evaluation cases to a JSONL file."""
         path.parent.mkdir(parents=True, exist_ok=True)

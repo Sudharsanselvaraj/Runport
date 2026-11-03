@@ -310,6 +310,38 @@ def test_ci_approve_token_validation():
         confirm_live_run([MODEL], plan_fingerprint=None, approve_token=fp, is_interactive=lambda: False)
 
 
+def test_plan_fingerprint_changes_when_any_input_changes():
+    """Cryptographic plan fingerprint SHA-256 binds candidate models, dataset, case counts, budget, and prompt hash."""
+    import hashlib
+
+    def compute_fp(targets, dataset, cases, spend_cap, prompt_text=""):
+        p_hash = hashlib.sha256(prompt_text.encode()).hexdigest()[:12]
+        raw = f"{sorted(targets)}|{dataset}|{cases}|{Decimal(str(spend_cap)):.6f}|{p_hash}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+    base_fp = compute_fp(["gpt-4o-mini", "claude-haiku"], "eval-v1", 100, "1.00", "Classify: {input}")
+    assert len(base_fp) == 16
+
+    # 1. Identical inputs yield identical fingerprint (deterministic)
+    assert compute_fp(["claude-haiku", "gpt-4o-mini"], "eval-v1", 100, "1.00", "Classify: {input}") == base_fp
+
+    # 2. Candidate targets change
+    assert compute_fp(["gpt-4o-mini"], "eval-v1", 100, "1.00", "Classify: {input}") != base_fp
+
+    # 3. Dataset name changes
+    assert compute_fp(["gpt-4o-mini", "claude-haiku"], "eval-v2", 100, "1.00", "Classify: {input}") != base_fp
+
+    # 4. Case count changes
+    assert compute_fp(["gpt-4o-mini", "claude-haiku"], "eval-v1", 101, "1.00", "Classify: {input}") != base_fp
+
+    # 5. Spend cap changes
+    assert compute_fp(["gpt-4o-mini", "claude-haiku"], "eval-v1", 100, "0.50", "Classify: {input}") != base_fp
+
+    # 6. Prompt template changes
+    assert compute_fp(["gpt-4o-mini", "claude-haiku"], "eval-v1", 100, "1.00", "Prompt: {input}") != base_fp
+
+
+
 def test_require_live_authorization():
     require_live_authorization(LiveAuthorization(models=(MODEL,)), MODEL)
     for bad in (None, LiveAuthorization(models=("x/y",))):

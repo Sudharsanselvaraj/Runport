@@ -37,7 +37,7 @@ def probs(label, top=0.9):
     return {l: (top if l == label else rest) for l in LABELS}
 
 
-def intent_pred(case, label, model="candidate-1", run="run1", top=None, status="OK", created="2026-10-15T12:00:00+00:00", dataset_version="test-ds", task="classification", **kw):
+def intent_pred(case, label, model="jev-1.14", run="run1", top=None, status="OK", created="2026-10-15T12:00:00+00:00", dataset_version="test-ds", task="INTENT", **kw):
     dist = probs(label, top) if top is not None else None
     return PredictionRecord(
         record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.CHAT_COMPLETIONS,
@@ -46,7 +46,7 @@ def intent_pred(case, label, model="candidate-1", run="run1", top=None, status="
         confidence_source="NATIVE_DISTRIBUTION" if dist else "NONE", created_at=created, **kw)
 
 
-def lead_pred(case, yes_prob=None, need_cta=None, model="candidate-1", run="lrun", status="OK", created="2026-10-15T12:00:00+00:00", task="binary", **kw):
+def lead_pred(case, yes_prob=None, need_cta=None, model="jev-1.14", run="lrun", status="OK", created="2026-10-15T12:00:00+00:00", task="LEAD", **kw):
     pred_label = "YES" if need_cta is True else ("NO" if need_cta is False else None)
     return PredictionRecord(
         record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.CHAT_COMPLETIONS,

@@ -14,7 +14,7 @@ from runport.classification.threshold import (
     CRITERION_MAX_F1, FrozenThreshold, ProbItem, evaluate_held_out, select_threshold_on_dev,
 )
 from runport.classification.validators import validate_classification_output
-from runport.core.budget import BudgetService
+from runport.core.budget import BudgetExceededError, BudgetService
 from runport.core.live_guard import LiveAuthorization
 from runport.models.registry import Protocol
 from runport.providers.base import BaseProvider, LiveNotAuthorizedError, ProviderRequest, ProviderResponse
@@ -212,4 +212,88 @@ def test_splits_group_assignment_and_privacy():
     assert len(assigned1) == 10
     assert sum(1 for s in assigned1.values() if s == DatasetSplit.DEV) == 5
     assert sum(1 for s in assigned1.values() if s == DatasetSplit.TEST) == 5
+
+
+def test_whole_batch_privacy_gate_rejects_before_any_request(tmp_path):
+    """Whole-batch privacy gate: if any case in the batch violates privacy, zero requests are sent."""
+    from runport.schemas.evaluation import DataClassification
+
+    provider = MockClassificationProvider({"c1": "QUERY"})
+    store = PredictionStore(tmp_path / "preds.jsonl")
+    runner = ClassificationRunner(provider=provider, store=store)
+
+    cases = [
+        ClassificationCase(case_id="c1", input_text="Safe query 1", data_classification=DataClassification.SYNTHETIC),
+        ClassificationCase(case_id="c2", input_text="Confidential inquiry", data_classification=DataClassification.CONFIDENTIAL),
+    ]
+
+    # Without live authorization covering the batch, entire batch fails before ANY request
+    with pytest.raises(LiveNotAuthorizedError, match="live authorization required"):
+        runner.run_batch(cases=cases, target_id="mock-target")
+
+    # Invariant check: Transport was NEVER called
+    assert len(provider.recorded_requests) == 0
+    # Store remains empty
+    assert len(store.read_all()) == 0
+
+
+def test_runner_strict_guard_order(tmp_path):
+    """Runner guard order: Authorization -> Privacy Gate -> Preflight Budget -> Transport -> Validation -> Store."""
+    from runport.core.config import BudgetPolicy
+    from runport.storage.db import DatabaseManager
+    from runport.schemas.evaluation import DataClassification
+
+    db = DatabaseManager(tmp_path / "guard_test.db")
+    db.init_db()
+    # Zero budget policy to trigger budget preflight failure
+    budget_zero = BudgetService(db=db, policy=BudgetPolicy(total_budget_usd=Decimal("0.00")))
+
+    provider = MockClassificationProvider({"c1": "QUERY"})
+    store = PredictionStore(tmp_path / "preds.jsonl")
+
+    runner = ClassificationRunner(provider=provider, budget_service=budget_zero, store=store)
+
+    # 1. Authorization Guard Check
+    # Providing an invalid LiveAuthorization for a different model fails at Step 1
+    bad_auth = LiveAuthorization(models=("other-model",))
+    with pytest.raises(LiveNotAuthorizedError, match="live run refused"):
+        runner.run_batch(
+            cases=[ClassificationCase(case_id="c1", input_text="Hello")],
+            target_id="mock-target",
+            live_auth=bad_auth,
+        )
+    assert len(provider.recorded_requests) == 0
+
+    # 2. Privacy Gate Check (Step 2)
+    # Even if authorization covers mock-target, an unauthorized confidential case fails Step 2
+    conf_case = ClassificationCase(case_id="c1", input_text="Sensitive text", data_classification=DataClassification.CONFIDENTIAL)
+    runner_no_auth = ClassificationRunner(provider=provider, store=store)
+    with pytest.raises(LiveNotAuthorizedError, match="CONFIDENTIAL"):
+        runner_no_auth.run_batch(cases=[conf_case], target_id="mock-target")
+    assert len(provider.recorded_requests) == 0
+
+    # 3. Preflight Budget Check (Step 3)
+    # Valid auth, public data, but zero remaining budget fails before transport
+    good_auth = LiveAuthorization(models=("mock-target",))
+    with pytest.raises(BudgetExceededError, match="Budget limit exhausted"):
+        runner.run_batch(
+            cases=[ClassificationCase(case_id="c1", input_text="Public text")],
+            target_id="mock-target",
+            live_auth=good_auth,
+        )
+    assert len(provider.recorded_requests) == 0
+
+    # 4. Successful execution passing all guards
+    budget_ok = BudgetService(db=db, policy=BudgetPolicy(total_budget_usd=Decimal("10.00")))
+    runner_ok = ClassificationRunner(provider=provider, budget_service=budget_ok, store=store)
+    summary = runner_ok.run_batch(
+        cases=[ClassificationCase(case_id="c1", input_text="Public text")],
+        target_id="mock-target",
+        live_auth=good_auth,
+        allowed_labels=["QUERY"],
+    )
+    assert summary.n_ok == 1
+    assert len(provider.recorded_requests) == 1
+    assert len(store.read_all()) == 1
+
 
