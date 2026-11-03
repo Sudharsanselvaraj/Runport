@@ -28,10 +28,10 @@ from runport.tui.theme import BG_DARK
 
 
 def _should_show_emblem(console: Console, compact: bool, cols: int, rows: int) -> bool:
-    """Size and terminal capability rule for displaying the full hexagonal logo art.
+    """Size and terminal capability rule for displaying the hexagonal logo art.
 
     Shows emblem only if:
-    - terminal is at least 70 columns wide and 40 rows tall
+    - terminal is at least 60 columns wide and 32 rows tall
     - output encoding is UTF-8
     - NO_COLOR is not set
     - TERM is not 'dumb'
@@ -41,7 +41,7 @@ def _should_show_emblem(console: Console, compact: bool, cols: int, rows: int) -
     try:
         if compact:
             return False
-        if cols < 70 or rows < 40:
+        if cols < 60 or rows < 32:
             return False
         enc = (
             getattr(console.file, "encoding", None)

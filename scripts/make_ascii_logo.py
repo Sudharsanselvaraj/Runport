@@ -1,7 +1,7 @@
 """Generate terminal art from a logo image (emblem only).
 
 Usage:
-  python scripts/make_ascii_logo.py <image> [--mode braille|solid] [--cols 60] [--aspect 2.1] [--threshold 110]
+  python scripts/make_ascii_logo.py <image> [--mode braille|solid] [--cols 28] [--aspect 2.1] [--threshold 110]
 
 braille: dotted look (2x4 dots per character). solid: half-block look (crisp fill).
 --aspect is terminal cell height / cell width (about 2.0-2.3) and keeps proportions.
@@ -36,7 +36,7 @@ def emblem_mask(path: str) -> Image.Image:
     return Image.fromarray((mask[ys[0] : ys[-1] + 1] * 255).astype("uint8"))
 
 
-def make(path: str, mode: str = "braille", cols: int = 60, aspect: float = 2.1, thr: int = 110) -> list[str]:
+def make(path: str, mode: str = "braille", cols: int = 28, aspect: float = 2.1, thr: int = 110) -> list[str]:
     crop = emblem_mask(path)
     ratio = crop.height / crop.width
     rows: list[str] = []
@@ -69,8 +69,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("image")
     ap.add_argument("--mode", choices=["braille", "solid"], default="braille")
-    ap.add_argument("--cols", type=int, default=60)
+    ap.add_argument("--cols", type=int, default=28)
     ap.add_argument("--aspect", type=float, default=2.1)
     ap.add_argument("--threshold", type=int, default=110)
     a = ap.parse_args()
     print("\n".join(make(a.image, a.mode, a.cols, a.aspect, a.threshold)))
+

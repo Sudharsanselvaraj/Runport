@@ -54,7 +54,7 @@ html_welcome = f'''<!DOCTYPE html>
 <head><meta charset=\"utf-8\"><style>
 * {{ margin: 0; padding: 0; }}
 body {{ margin: 0; padding: 0; background: transparent; overflow: hidden; }}
-svg {{ width: 1360px; height: 1417px; display: block; }}
+svg {{ width: 1360px; height: auto; display: block; }}
 </style></head>
 <body>{svg_welcome}</body>
 </html>'''
@@ -64,7 +64,7 @@ with open('/tmp/welcome_tight.html', 'w') as f:
 
 subprocess.run([
     chrome, '--headless=new', '--disable-gpu', '--user-data-dir=/tmp/cprofile_w_tight',
-    '--window-size=1400,1460', '--hide-scrollbars', '--default-background-color=00000000',
+    '--window-size=1400,1200', '--hide-scrollbars', '--default-background-color=00000000',
     '--screenshot=/tmp/welcome_raw_tight.png',
     '/tmp/welcome_tight.html'
 ], check=True)
