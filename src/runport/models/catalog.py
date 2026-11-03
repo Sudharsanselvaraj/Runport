@@ -35,7 +35,7 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         input_price_per_1m_usd=Decimal("0.0750"),
         output_price_per_1m_usd=Decimal("0.3000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="High-throughput multimodal baseline for evaluation tasks.",
+        experimental_purpose="High-throughput multimodal baseline for evaluation triage.",
     ),
     ModelCandidate(
         model_id="anthropic/claude-haiku-5.5",
@@ -47,7 +47,7 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         input_price_per_1m_usd=Decimal("0.8000"),
         output_price_per_1m_usd=Decimal("4.0000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Fast hosted candidate for benchmarking.",
+        experimental_purpose="Fast candidate for evaluation comparison.",
     ),
     ModelCandidate(
         model_id="openai/gpt-4o-mini",
@@ -59,7 +59,7 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         input_price_per_1m_usd=Decimal("0.1500"),
         output_price_per_1m_usd=Decimal("0.6000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Low-cost reference candidate.",
+        experimental_purpose="Compact commercial frontier candidate.",
     ),
     ModelCandidate(
         model_id="openai/gpt-4.1-nano",
@@ -71,7 +71,7 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         input_price_per_1m_usd=Decimal("0.1000"),
         output_price_per_1m_usd=Decimal("0.4000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Ultra-compact candidate for fast evaluations.",
+        experimental_purpose="Lightweight low-cost reference model.",
     ),
     ModelCandidate(
         model_id="qwen/qwen3-8b",
