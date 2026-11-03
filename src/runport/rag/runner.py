@@ -96,7 +96,7 @@ class RAGBenchmarkRunner:
             # Format grounded RAG prompt
             context_block = "\n---\n".join(ret_result.chunks) if ret_result.chunks else "NO_CONTEXT_RETRIEVED"
             system_prompt = (
-                "You are an AI assistant and knowledge retrieval counsellor. "
+                "You are an AI assistant and knowledge retrieval agent. "
                 "Answer the student's question accurately, grounded strictly in the provided Context. "
                 "Never invent fees or qualification criteria. If the context does not contain sufficient details, state that clearly."
             )

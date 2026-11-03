@@ -144,16 +144,16 @@ class TraceDiagnosticAnalyzer:
         route_lower = routing_info.lower()
 
         # Check domain mismatch between query and route
-        is_postgrad_query = any(k in q_lower for k in ("phd", "doctor of philosophy", "master", "postgraduate"))
-        is_undergrad_route = "undergraduate" in route_lower or "diploma" in route_lower or "foundation" in route_lower
+        is_tier_query = any(k in q_lower for k in ("phd", "master", "postgraduate", "enterprise", "dedicated cluster"))
+        is_entry_route = any(k in route_lower for k in ("undergraduate", "diploma", "starter", "basic", "community"))
 
-        if is_postgrad_query and is_undergrad_route:
+        if is_tier_query and is_entry_route:
             return (
                 True,
                 0.90,
-                "Candidate Routing Mismatch: Postgraduate inquiry misrouted to undergraduate flow.",
+                "Candidate Routing Mismatch: Specialized inquiry misrouted to entry-level flow.",
                 [f"Query terms: '{q_lower[:60]}...'", f"Assigned Route: '{routing_info}'"],
-                "Retrain routing classifier with explicit intent discriminators.",
+                "Retrain routing classifier with explicit domain intent discriminators.",
             )
 
         is_billing_query = any(k in q_lower for k in ("invoice", "payment", "refund", "billing", "receipt"))

@@ -101,7 +101,7 @@ class BenchmarkRunner:
                 {
                     "role": "system",
                     "content": (
-                        "You are an AI counsellor and evaluator. "
+                        "You are an AI benchmark evaluator. "
                         "Answer accurately, ground all answers in academic guidelines, and never invent fees or policies."
                     ),
                 },

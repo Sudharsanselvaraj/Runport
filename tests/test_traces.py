@@ -48,7 +48,7 @@ def test_importer_anonymization():
     """TraceImporter redacts student email addresses and phone numbers."""
     raw_dict = {
         "id": "trace-pii-test",
-        "input": "Contact student at john.doe@example.com or 012-3456789 about admission.",
+        "input": "Contact user at john.doe@example.com or 012-3456789 about account status.",
         "output": "Notification sent to john.doe@example.com.",
         "latency": 0.5,
     }
@@ -91,7 +91,7 @@ def test_analyzer_failure_categories():
         input_query="What are the PhD supervisor requirements in computer science?",
         output_response="For Diploma in IT, you need 3 SPM credits.",
         spans=[
-            ObservationSpan(id="s1", name="router", type="span", output_data="undergraduate_admissions")
+            ObservationSpan(id="s1", name="router", type="span", output_data="undergraduate_router")
         ],
     )
     d_route = analyzer.analyze_trace(t_route)

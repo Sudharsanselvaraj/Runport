@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class FailureCategory(str, Enum):
-    """Production failure modes across the RAG student counsellor stack."""
+    """Production failure modes across the RAG workflow stack."""
     ROUTING_FAILURE = "ROUTING_FAILURE"
     RETRIEVAL_FAILURE = "RETRIEVAL_FAILURE"
     GENERATION_FAILURE = "GENERATION_FAILURE"
