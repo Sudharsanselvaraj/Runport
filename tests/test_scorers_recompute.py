@@ -122,3 +122,4 @@ def test_recompute_proof_per_case_rows_equal_reported_metrics():
     cost_res = CostPer1kScorer().evaluate(reported_total_cost, total_cases)
     # (0.0009 / 5) * 1000 = $0.18 per 1k
     assert cost_res.score == pytest.approx(0.18)
+

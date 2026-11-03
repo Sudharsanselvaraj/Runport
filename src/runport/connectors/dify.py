@@ -186,3 +186,233 @@ def post_chat_stream(
             "wall_ms": ms(),
             "body_text": scrub_dify_secrets(str(e.reason)),
         }
+
+
+from runport.core.security import validate_safe_url
+from runport.targets.base import (
+    CostBasis,
+    Target,
+    TargetPricing,
+    TargetResult,
+    TargetStatus,
+    TargetType,
+)
+
+
+class DifyConnector(Target):
+    """Benchmarks Dify Chat Applications and Workflow Applications.
+    
+    Supports both blocking and streaming modes for:
+    - Chat Apps: POST /v1/chat-messages
+    - Workflow Apps: POST /v1/workflows/run
+    """
+
+    def __init__(
+        self,
+        target_id: str,
+        name: str,
+        api_key: str,
+        base_url: str = "https://api.dify.ai/v1",
+        app_type: str = "chat",  # 'chat' or 'workflow'
+        response_mode: str = "blocking",  # 'blocking' or 'streaming'
+        user: str = "runport-benchmark",
+        conversation_id: Optional[str] = None,
+        pricing: Optional[TargetPricing] = None,
+        timeout_seconds: float = 30.0,
+        max_retries: int = 3,
+        allow_localhost: bool = False,
+        host_allowlist: Optional[List[str]] = None,
+    ) -> None:
+        safe_url = validate_safe_url(
+            base_url,
+            allow_localhost=allow_localhost,
+            host_allowlist=host_allowlist,
+        )
+        caps = ["streaming", "usage"]
+        if app_type.lower() == "workflow":
+            caps.append("per_step_trace")
+
+        super().__init__(
+            target_id=target_id,
+            name=name,
+            target_type=TargetType.WORKFLOW_DIFY,
+            capabilities=caps,
+            pricing=pricing,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+        self.api_key = api_key
+        self.base_url = safe_url.rstrip("/")
+        self.app_type = app_type.lower()
+        self.response_mode = response_mode.lower()
+        self.user = user
+        self.conversation_id = conversation_id
+
+    def execute(
+        self,
+        input_payload: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> TargetResult:
+        if self.app_type == "workflow":
+            url = f"{self.base_url}/workflows/run"
+            inputs = input_payload.get("inputs")
+            if inputs is None:
+                inputs = {k: v for k, v in input_payload.items() if k not in ("user", "conversation_id")}
+            req_payload: Dict[str, Any] = {
+                "inputs": inputs,
+                "response_mode": self.response_mode,
+                "user": input_payload.get("user") or self.user,
+            }
+        else:
+            url = f"{self.base_url}/chat-messages"
+            inputs = input_payload.get("inputs", {})
+            query = str(input_payload.get("query") or input_payload.get("input") or "")
+            req_payload = {
+                "inputs": inputs,
+                "query": query,
+                "response_mode": self.response_mode,
+                "user": input_payload.get("user") or self.user,
+            }
+            conv_id = input_payload.get("conversation_id") or self.conversation_id
+            if conv_id:
+                req_payload["conversation_id"] = conv_id
+
+        if self.response_mode == "streaming":
+            res = post_chat_stream(
+                url=url,
+                api_key=self.api_key,
+                payload=req_payload,
+                timeout_s=self.timeout_seconds,
+            )
+        else:
+            res = post_chat_message(
+                url=url,
+                api_key=self.api_key,
+                payload=req_payload,
+                timeout_s=self.timeout_seconds,
+            )
+
+        outcome = res.get("outcome")
+        http_status = res.get("http_status")
+        wall_ms = res.get("wall_ms", 0.0)
+
+        if outcome == "AMBIGUOUS_TIMEOUT":
+            return TargetResult(
+                target_id=self.target_id,
+                status=TargetStatus.TIMEOUT,
+                latency_ms=wall_ms,
+                error_message="Request timed out",
+            )
+        if outcome == "CONNECTION_ERROR":
+            return TargetResult(
+                target_id=self.target_id,
+                status=TargetStatus.FAILED,
+                latency_ms=wall_ms,
+                error_message=res.get("body_text", "Connection error"),
+            )
+
+        if http_status == 429:
+            return TargetResult(
+                target_id=self.target_id,
+                status=TargetStatus.RATE_LIMITED,
+                latency_ms=wall_ms,
+                error_code="429",
+                error_message="Dify rate limit exceeded",
+            )
+        if http_status in (401, 403):
+            return TargetResult(
+                target_id=self.target_id,
+                status=TargetStatus.UNAUTHORIZED,
+                latency_ms=wall_ms,
+                error_code=str(http_status),
+                error_message="Unauthorized Dify API key",
+            )
+        if http_status != 200:
+            return TargetResult(
+                target_id=self.target_id,
+                status=TargetStatus.FAILED,
+                latency_ms=wall_ms,
+                error_code=str(http_status),
+                error_message=res.get("body_text", f"HTTP {http_status}"),
+            )
+
+        # Parse 200 OK responses
+        output_text = None
+        tokens_in = None
+        tokens_out = None
+        metadata: Dict[str, Any] = {}
+
+        if self.response_mode == "streaming":
+            events = res.get("events", [])
+            text_chunks = []
+            per_node_data = []
+            for _, ev in events:
+                ev_type = ev.get("event")
+                if ev_type == "message":
+                    text_chunks.append(ev.get("answer", ""))
+                elif ev_type == "message_end":
+                    usage = ev.get("metadata", {}).get("usage", {})
+                    tokens_in = usage.get("prompt_tokens")
+                    tokens_out = usage.get("completion_tokens")
+                elif ev_type == "node_finished":
+                    per_node_data.append(ev.get("data", {}))
+                elif ev_type == "workflow_finished":
+                    outputs = ev.get("data", {}).get("outputs", {})
+                    if outputs:
+                        output_text = outputs.get("result") or outputs.get("output") or json.dumps(outputs)
+                    usage = ev.get("data", {})
+                    tokens_out = usage.get("total_tokens")
+
+            if text_chunks and output_text is None:
+                output_text = "".join(text_chunks)
+            if per_node_data:
+                metadata["per_node_data"] = per_node_data
+        else:
+            try:
+                body = json.loads(res.get("body_text", "{}"))
+            except Exception:
+                return TargetResult(
+                    target_id=self.target_id,
+                    status=TargetStatus.INVALID_OUTPUT,
+                    latency_ms=wall_ms,
+                    error_message="Malformed non-JSON response from Dify",
+                )
+
+            if self.app_type == "workflow":
+                data = body.get("data", {})
+                outputs = data.get("outputs", {})
+                if isinstance(outputs, dict):
+                    output_text = outputs.get("result") or outputs.get("output") or json.dumps(outputs)
+                else:
+                    output_text = str(outputs) if outputs else None
+                tokens_out = data.get("total_tokens")
+                metadata["workflow_run_id"] = data.get("id")
+                metadata["total_steps"] = data.get("total_steps")
+                if "node_executions" in data:
+                    metadata["per_node_data"] = data.get("node_executions")
+            else:
+                output_text = body.get("answer")
+                usage = body.get("metadata", {}).get("usage", {})
+                tokens_in = usage.get("prompt_tokens")
+                tokens_out = usage.get("completion_tokens")
+                metadata["conversation_id"] = body.get("conversation_id")
+                metadata["message_id"] = body.get("message_id")
+
+        cost_usd = None
+        cost_basis = CostBasis.UNAVAILABLE
+        if self.pricing:
+            cost_usd = self.pricing.calculate_cost(tokens_in, tokens_out)
+            if cost_usd is not None:
+                cost_basis = CostBasis.ESTIMATED
+
+        return TargetResult(
+            target_id=self.target_id,
+            status=TargetStatus.SUCCESS if output_text is not None else TargetStatus.INVALID_OUTPUT,
+            output_text=output_text,
+            latency_ms=wall_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost_usd,
+            cost_basis=cost_basis,
+            metadata=metadata,
+        )

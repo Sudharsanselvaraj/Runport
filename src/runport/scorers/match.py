@@ -109,3 +109,4 @@ class RegexMatchScorer(BaseScorer):
                 "matched": matched,
             },
         )
+

@@ -96,3 +96,4 @@ $$\text{Cost per 1k} = \left(\frac{\text{Total Spend USD}}{N_{\text{total}}}\rig
 
 - **Denominator ($N_{\text{total}}$)**: Number of evaluation cases in the run.
 - If total spend is unpriced or `UNAVAILABLE`, Cost per 1k remains `None`.
+

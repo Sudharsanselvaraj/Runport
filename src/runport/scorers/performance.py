@@ -129,3 +129,4 @@ class CostPer1kScorer(BaseScorer):
         if cost is None:
             return ScoreResult(metric_name=self.name, score=None, details={"reason": "Missing cost"})
         return self.evaluate(Decimal(str(cost)), count)
+

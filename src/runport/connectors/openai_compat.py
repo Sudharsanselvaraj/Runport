@@ -8,6 +8,7 @@ import time
 import urllib.error
 from typing import Any, Dict, List, Optional
 
+from runport.core.security import validate_safe_url
 from runport.providers.base import ProviderError, RateLimitError, scrub_secrets
 from runport.providers.http import RetryingPoster
 from runport.targets.base import (
@@ -35,18 +36,27 @@ class OpenAICompatConnector(Target):
         pricing: Optional[TargetPricing] = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 3,
+        allow_localhost: bool = False,
+        allow_private: bool = False,
+        host_allowlist: Optional[List[str]] = None,
     ) -> None:
+        safe_url = validate_safe_url(
+            base_url,
+            allow_localhost=allow_localhost,
+            allow_private=allow_private,
+            host_allowlist=host_allowlist,
+        )
         super().__init__(
             target_id=target_id,
             name=name,
             target_type=TargetType.RAW_MODEL,
-            capabilities=["chat", "text"],
+            capabilities=["streaming", "logprobs", "structured_output", "usage"],
             pricing=pricing,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
         )
         self.model = model
-        self.base_url = base_url.rstrip("/")
+        self.base_url = safe_url.rstrip("/")
         self.api_key = api_key
         self.custom_headers = custom_headers or {}
         self.default_params = default_params or {}
@@ -143,11 +153,12 @@ class OpenAICompatConnector(Target):
             )
         except ProviderError as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+            is_to = any("TIMEOUT" in str(err) for err in (e.errors or [])) or "timeout" in str(e).lower()
             return TargetResult(
                 target_id=self.target_id,
-                status=TargetStatus.FAILED,
+                status=TargetStatus.TIMEOUT if is_to else TargetStatus.FAILED,
                 latency_ms=elapsed_ms,
-                error_code=str(e.status) if e.status else None,
+                error_code="TIMEOUT" if is_to else (str(e.status) if e.status else None),
                 error_message=str(e),
             )
         except Exception as e:

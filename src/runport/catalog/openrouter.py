@@ -169,3 +169,4 @@ class OpenRouterCatalogSource:
             registered_records.append(record)
 
         return registered_records
+
