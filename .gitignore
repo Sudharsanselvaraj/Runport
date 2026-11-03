@@ -63,24 +63,9 @@ experiments/
 node_modules/
 web/node_modules/
 web/dist/
-package-lock.json
-web/package-lock.json
 
 # Progress and local scratch docs
 docs/PROGRESS.md
 docs/SCAN_NOTES.md
 docs/PROGRESS_LOGO.md
-
-# Local evaluation datasets, private fixtures, and raw documents (NEVER COMMIT)
-september_to_october.csv
-main_intent_classifier.md
-lead_qualification_prompt.md
-main_intent_prompt_v2.md
-lead_qualification*.csv
-intent_test_cases*.csv
-jev_wrong_cases*.csv
-legacy_eval_*.csv
-legacy_rag_*.csv
-legacy_kb_*.md
-PDF/
-Intent:lead dataset/
+docs/PROGRESS_FINISH.md

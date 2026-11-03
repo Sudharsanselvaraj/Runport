@@ -10,7 +10,7 @@ Runport uses [`uv`](https://docs.astral.sh/uv/) for high-speed, reproducible Pyt
 
 ```bash
 # Clone the repository
-git clone https://github.com/Sudharsanselvaraj/Runport.git
+git clone https://github.com/Sudharsanselvaraj/runport.git
 cd Runport
 
 # Install all development and reporting dependencies

@@ -11,11 +11,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Sudharsanselvaraj/Runport/actions/workflows/ci.yml"><img src="https://github.com/Sudharsanselvaraj/Runport/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/Sudharsanselvaraj/Runport"><img src="https://img.shields.io/badge/status-public%20alpha-orange.svg" alt="Status"></a>
+  <a href="https://github.com/Sudharsanselvaraj/runport/actions/workflows/ci.yml"><img src="https://github.com/Sudharsanselvaraj/runport/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Sudharsanselvaraj/runport"><img src="https://img.shields.io/badge/status-public%20alpha-orange.svg" alt="Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg" alt="Python"></a>
-  <a href="https://github.com/Sudharsanselvaraj/Runport/stargazers"><img src="https://img.shields.io/github/stars/Sudharsanselvaraj/Runport?style=flat" alt="GitHub Stars"></a>
+  <a href="https://github.com/Sudharsanselvaraj/runport/stargazers"><img src="https://img.shields.io/github/stars/Sudharsanselvaraj/runport?style=flat" alt="GitHub Stars"></a>
 </p>
 
 <p align="center">
@@ -53,8 +53,8 @@ Runport is a developer-first platform for evaluating and comparing large languag
 uv tool install runport
 
 # Option B: Clone and run locally
-git clone https://github.com/Sudharsanselvaraj/Runport.git
-cd Runport
+git clone https://github.com/Sudharsanselvaraj/runport.git
+cd runport
 uv sync
 
 # Launch the interactive workbench launcher
