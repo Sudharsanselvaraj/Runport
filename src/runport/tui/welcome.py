@@ -61,11 +61,11 @@ def _should_show_emblem(console: Console, compact: bool, cols: int, rows: int) -
 
 MENU_ITEMS: List[Tuple[str, str, Optional[str]]] = [
     ("1.  Launch Full-Screen TUI Dashboard", "Live telemetry and monitors", None),
-    ("2.  Knowledge Base Audit Plugin", "Plugin example under examples/plugins/kb_audit", None),
+    ("2.  Knowledge Base Audit Plugin (Example)", "Plugin example under examples/plugins/kb_audit", None),
     ("3.  Validate Evaluation Dataset", "Schema validation & leakage checks", None),
     ("4.  Model Comparison Roster", "Readiness, routes and blockers", "NEW"),
     ("5.  API Preflight", "Key present? No request is sent", None),
-    ("6.  Run RAG Benchmark", "Retrieval & answer verification", None),
+    ("6.  Run Benchmark", "Evaluation under fail-closed spend caps", None),
     ("7.  Inspect Budget & Spend Ceilings", "actual spend vs ceilings", None),
     ("8.  Settings & Environment", "Providers, paths, storage configuration", None),
     ("9.  Exit to Shell", "", None),
@@ -88,10 +88,17 @@ def launcher_status() -> Dict[str, str]:
     sha, branch, date = _git("rev-parse", "--short", "HEAD"), _git("rev-parse", "--abbrev-ref", "HEAD"), _git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d")
     if sha:
         ver = f"{ver}-{date or 'dev'}+{branch or 'detached'}.{sha}"
-    status: Dict[str, str] = {"version": ver, "corpus": "n/a", "records": "n/a", "spend": "n/a", "key": "n/a", "models": "n/a"}
+    status: Dict[str, str] = {"version": ver, "dataset": "none loaded", "records": "n/a", "spend": "n/a", "key": "n/a", "models": "n/a"}
+    try:
+        from runport.datasets.loader import list_local_datasets
+        dsets = list_local_datasets()
+        if dsets:
+            status["dataset"] = f"{len(dsets)} available"
+    except Exception:
+        pass
     try:
         m = json.loads(Path("reports/rag_corpus_manifest.json").read_text())
-        status["corpus"] = f"{int(m['indexed_records_count']):,} clean"
+        status["dataset"] = f"{int(m['indexed_records_count']):,} clean"
         status["records"] = f"{int(m['total_records_scanned']):,} parsed records"
     except Exception:
         pass
@@ -174,7 +181,7 @@ class WelcomeScreen:
 
         # 3. Telemetry Status Row (Zero Emojis, Clean Minimalist Monospace)
         key_style = "green" if status["key"] == "set" else "yellow"
-        pills = Text.from_markup(f"Corpus: {status['corpus']}    │    Models: {status['models']}")
+        pills = Text.from_markup(f"Dataset: {status['dataset']}    │    Models: {status['models']}")
         pills2 = Text.from_markup(f"Spend: {status['spend']}    │    API key: [{key_style}]{status['key']}[/]    │    Mode: [bold #38bdf8]DRY-RUN[/]")
         container.add_row(Align.center(pills))
         container.add_row(Align.center(pills2))
@@ -199,7 +206,7 @@ class WelcomeScreen:
             container.add_row(Text(""))
 
         # 5. Menu Section
-        container.add_row(Text.from_markup("[bold #f1f3f9]Select a workbench workflow:[/]"))
+        container.add_row(Text.from_markup("[bold #f1f3f9]Select a workflow:[/]"))
         if not compact:
             container.add_row(Text(""))
 

@@ -83,7 +83,7 @@ def test_short_terminals_get_a_compact_frame_instead_of_scrolling():
     text, _ = run_launcher([QUIT], rows=20)
     frames = re.split(r"\x1b\[H", text)[1:]
     assert frames and all(f.split("\x1b[?25h")[0].count("\x1b[K\n") + 1 <= 20 for f in frames)
-    assert "Select a workbench workflow" in re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text)
+    assert "Select a workflow:" in re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text)
 
 
 ENTER = b"\r"
