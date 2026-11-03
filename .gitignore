@@ -69,6 +69,7 @@ web/package-lock.json
 # Progress and local scratch docs
 docs/PROGRESS.md
 docs/SCAN_NOTES.md
+docs/PROGRESS_LOGO.md
 
 # Local evaluation datasets, private fixtures, and raw documents (NEVER COMMIT)
 september_to_october.csv
