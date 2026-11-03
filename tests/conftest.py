@@ -16,6 +16,7 @@ def tmp_kb_dir(tmp_path: Path) -> Path:
 def _isolate_local_state(tmp_path_factory, monkeypatch):
     """Tests never read or write the real ledger/database under data/: point the settings at a private temp location."""
     from runport.core.config import settings
+
     base = tmp_path_factory.mktemp("isolated_state")
     monkeypatch.setattr(settings, "data_dir", base / "data")
     monkeypatch.setattr(settings, "reports_dir", base / "reports")

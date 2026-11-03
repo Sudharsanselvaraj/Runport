@@ -44,7 +44,7 @@ class GroupStats:
     tps_tokens: int = 0
     tps_seconds: float = 0.0
     tps_n: int = 0
-    tps_source: Optional[str] = None          # MODEL_REPORTED_LATENCY or CLIENT_E2E_LATENCY
+    tps_source: Optional[str] = None  # MODEL_REPORTED_LATENCY or CLIENT_E2E_LATENCY
     actual_cost: Decimal = Decimal("0")
     estimated_cost: Decimal = Decimal("0")
     n_actual_cost: int = 0
@@ -152,8 +152,9 @@ def _apply_terminal(g: GroupStats, ev: RequestEvent) -> None:
         g.n_cost_unresolved += 1
 
 
-def aggregate(events: Iterable[RequestEvent], now: float, window_s: float = 300.0, bucket_s: float = 10.0,
-              stale_after_s: float = DEFAULT_STALE_AFTER_S) -> Aggregate:
+def aggregate(
+    events: Iterable[RequestEvent], now: float, window_s: float = 300.0, bucket_s: float = 10.0, stale_after_s: float = DEFAULT_STALE_AFTER_S
+) -> Aggregate:
     agg = Aggregate(now=now, window_s=window_s, bucket_s=bucket_s)
     starts: Dict[str, float] = {}
     ends: Dict[str, float] = {}
@@ -211,18 +212,51 @@ def aggregate(events: Iterable[RequestEvent], now: float, window_s: float = 300.
         mls = [e.model_latency_ms for e in in_b if e.model_latency_ms is not None]
         lat.append((lo, sum(lats) / len(lats) if lats else None))
         mlat.append((lo, sum(mls) / len(mls) if mls else None))
-        tk = [(e.completion_tokens, (e.model_latency_ms or e.latency_ms)) for e in in_b
-              if e.status == "OK" and e.completion_tokens is not None and (e.model_latency_ms or e.latency_ms)]
+        tk = [
+            (e.completion_tokens, (e.model_latency_ms or e.latency_ms))
+            for e in in_b
+            if e.status == "OK" and e.completion_tokens is not None and (e.model_latency_ms or e.latency_ms)
+        ]
         tps.append((lo, (sum(a for a, _ in tk) / (sum(s for _, s in tk) / 1000.0)) if tk else None))
         # concurrency at the bucket end, from real start/terminal times
         c = sum(1 for rid, t0 in starts.items() if t0 < hi and (rid not in ends or ends[rid] >= hi) and hi - t0 <= stale_after_s)
         conc.append((lo, float(c) if starts else None))
         err.append((lo, (100.0 * sum(1 for e in in_b if e.status == "ERROR") / len(in_b)) if in_b else None))
-        cost_a.append((lo, float(sum((e.actual_cost_usd for e in in_b if e.actual_cost_usd is not None), Decimal("0"))) if any(e.actual_cost_usd is not None for e in in_b) else None))
-        cost_e.append((lo, float(sum((e.estimated_cost_usd for e in in_b if e.estimated_cost_usd is not None), Decimal("0"))) if any(e.estimated_cost_usd is not None for e in in_b) else None))
+        cost_a.append(
+            (
+                lo,
+                float(sum((e.actual_cost_usd for e in in_b if e.actual_cost_usd is not None), Decimal("0")))
+                if any(e.actual_cost_usd is not None for e in in_b)
+                else None,
+            )
+        )
+        cost_e.append(
+            (
+                lo,
+                float(sum((e.estimated_cost_usd for e in in_b if e.estimated_cost_usd is not None), Decimal("0")))
+                if any(e.estimated_cost_usd is not None for e in in_b)
+                else None,
+            )
+        )
         cost_u.append((lo, float(sum(1 for e in in_b if e.cost_basis == "UNAVAILABLE")) if in_b else None))
-    agg.series = {"latency_e2e": lat, "latency_model": mlat, "tokens_per_second": tps, "concurrency": conc,
-                  "error_rate": err, "cost_actual": cost_a, "cost_estimated": cost_e, "cost_unresolved": cost_u}
-    agg.series_units = {"latency_e2e": "ms", "latency_model": "ms", "tokens_per_second": "tok/s", "concurrency": "requests",
-                        "error_rate": "%", "cost_actual": "USD/bucket", "cost_estimated": "USD/bucket", "cost_unresolved": "requests/bucket"}
+    agg.series = {
+        "latency_e2e": lat,
+        "latency_model": mlat,
+        "tokens_per_second": tps,
+        "concurrency": conc,
+        "error_rate": err,
+        "cost_actual": cost_a,
+        "cost_estimated": cost_e,
+        "cost_unresolved": cost_u,
+    }
+    agg.series_units = {
+        "latency_e2e": "ms",
+        "latency_model": "ms",
+        "tokens_per_second": "tok/s",
+        "concurrency": "requests",
+        "error_rate": "%",
+        "cost_actual": "USD/bucket",
+        "cost_estimated": "USD/bucket",
+        "cost_unresolved": "requests/bucket",
+    }
     return agg

@@ -33,15 +33,16 @@ class TargetStatus(str, Enum):
 
 
 class CostBasis(str, Enum):
-    ACTUAL = "ACTUAL"            # Exact provider-reported cost
-    ESTIMATED = "ESTIMATED"      # Catalog price * reported tokens
-    UNRESOLVED = "UNRESOLVED"    # Billed request with unknown cost
+    ACTUAL = "ACTUAL"  # Exact provider-reported cost
+    ESTIMATED = "ESTIMATED"  # Catalog price * reported tokens
+    UNRESOLVED = "UNRESOLVED"  # Billed request with unknown cost
     UNAVAILABLE = "UNAVAILABLE"  # Zero-cost unpriced / local execution
 
 
 @dataclass(frozen=True)
 class TargetPricing:
     """Pricing configuration for a target in USD per 1M tokens or per request."""
+
     input_usd_per_1m: Optional[Decimal] = None
     output_usd_per_1m: Optional[Decimal] = None
     fixed_usd_per_request: Optional[Decimal] = None
@@ -73,6 +74,7 @@ class TargetPricing:
 @dataclass
 class TargetResult:
     """Standardized result returned by any target execution."""
+
     target_id: str
     status: TargetStatus
     output_text: Optional[str] = None
@@ -96,6 +98,7 @@ class TargetResult:
 @dataclass
 class TargetChunk:
     """Streaming chunk emitted by a streaming target."""
+
     target_id: str
     delta_text: str
     is_final: bool = False
@@ -145,4 +148,3 @@ class Target(ABC):
             is_final=True,
             metadata=res.metadata,
         )
-

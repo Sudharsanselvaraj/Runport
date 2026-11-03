@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class BudgetConfig(BaseModel):
     """Budget ceilings and pricing verification settings."""
+
     total_usd: Decimal = Field(default=Decimal("5.00"), description="Total lifetime experiment ceiling in USD")
     per_run_usd: Decimal = Field(default=Decimal("1.00"), description="Maximum spend allowed per single evaluation run in USD")
     per_case_usd: Decimal = Field(default=Decimal("0.05"), description="Maximum spend allowed per individual evaluation case in USD")
@@ -18,6 +19,7 @@ class BudgetConfig(BaseModel):
 
     def to_budget_policy(self):
         from runport.core.config import BudgetPolicy
+
         return BudgetPolicy(
             total_budget_usd=self.total_usd,
             pilot_budget_usd=self.pilot_usd,
@@ -30,6 +32,7 @@ class BudgetConfig(BaseModel):
 
 class ApproverConfig(BaseModel):
     """Execution approval model configuration."""
+
     default_mode: Literal["interactive", "token", "modal"] = Field(
         default="interactive",
         description="Default approval mode for live runs (interactive, token, or modal)",
@@ -42,6 +45,7 @@ class ApproverConfig(BaseModel):
 
 class TelemetryConfig(BaseModel):
     """Local privacy and telemetry settings."""
+
     local_logging: bool = Field(default=True, description="Enable local SQLite append-only event logging")
     redact_secrets: bool = Field(default=True, description="Automatically scrub API keys and auth bearer tokens")
     forbidden_fields: List[str] = Field(
@@ -52,6 +56,7 @@ class TelemetryConfig(BaseModel):
 
 class StorageConfig(BaseModel):
     """Database and file output locations."""
+
     data_dir: Path = Field(default=Path("data"), description="Directory for database and datasets")
     db_filename: str = Field(default="runport.db", description="SQLite WAL database filename")
     reports_dir: Path = Field(default=Path("reports"), description="Directory for trace and report exports")
@@ -59,6 +64,7 @@ class StorageConfig(BaseModel):
 
 class TargetConfig(BaseModel):
     """Target configuration entry within the workspace."""
+
     id: str = Field(description="Unique identifier for the target")
     type: str = Field(description="Target connector type (e.g. openai_compat, openrouter, dify, http_workflow, ollama)")
     endpoint: Optional[str] = Field(default=None, description="HTTP endpoint or base URL")
@@ -69,6 +75,7 @@ class TargetConfig(BaseModel):
 
 class WorkspaceConfig(BaseModel):
     """Top-level Runport workspace configuration model."""
+
     schema_version: str = Field(default="1.0", description="Workspace schema version")
 
     @classmethod
@@ -77,6 +84,7 @@ class WorkspaceConfig(BaseModel):
             obj = dict(obj)
             obj["schema_version"] = str(obj["schema_version"])
         return super().model_validate(obj, *args, **kwargs)
+
     name: str = Field(default="runport-workspace", description="Human-readable workspace or project name")
     root_dir: Optional[Path] = Field(default=None, description="Anchored workspace root directory")
     budget: BudgetConfig = Field(default_factory=BudgetConfig, description="Spend limits and policies")
@@ -100,9 +108,16 @@ def _check_no_secrets(data: Any, path: str = "") -> None:
     """Invariant: API keys, bearer tokens, and credentials must NEVER be committed to YAML files."""
     forbidden_keys = {"api_key", "secret", "private_key", "password", "access_token"}
     safe_exceptions = {
-        "token_approver_enabled", "redact_secrets", "est_prompt_tokens",
-        "est_completion_tokens", "context_length", "tokens_in", "tokens_out",
-        "max_tokens", "prompt_tokens", "completion_tokens"
+        "token_approver_enabled",
+        "redact_secrets",
+        "est_prompt_tokens",
+        "est_completion_tokens",
+        "context_length",
+        "tokens_in",
+        "tokens_out",
+        "max_tokens",
+        "prompt_tokens",
+        "completion_tokens",
     }
     if isinstance(data, dict):
         for k, v in data.items():
@@ -131,7 +146,7 @@ def find_workspace_file(root_dir: Optional[Path] = None) -> Optional[Path]:
 
 def load_workspace_config(path: Optional[Path] = None) -> WorkspaceConfig:
     """Load and validate workspace configuration from YAML/JSON file or defaults.
-    
+
     All storage and dataset paths are anchored to target_path.parent, independent of CWD.
     API keys and bearer tokens are strictly forbidden from YAML content.
     """
@@ -140,13 +155,14 @@ def load_workspace_config(path: Optional[Path] = None) -> WorkspaceConfig:
         return WorkspaceConfig()
 
     content = target_path.read_text(encoding="utf-8")
-    
+
     # Try parsing as JSON first, then YAML via custom parser or simple key-value/json
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
         try:
-            import yaml  # type: ignore
+            import yaml
+
             data = yaml.safe_load(content)
         except ImportError:
             # Simple fallback parser for basic YAML if PyYAML is not installed

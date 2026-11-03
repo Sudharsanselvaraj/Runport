@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 KEPT_HEADERS = ("retry-after", "x-ratelimit-remaining", "x-ratelimit-limit", "x-ratelimit-reset", "content-length", "content-type")
 _DIFY_KEY_PATTERN = re.compile(r"app-[A-Za-z0-9]{8,}")
@@ -27,7 +27,7 @@ def scrub_dify_secrets(text: str) -> str:
 
 def post_chat_message(url: str, api_key: str, payload: Dict[str, Any], timeout_s: float) -> Dict[str, Any]:
     """Execute one blocking Dify Chat Messages call.
-    
+
     Returns:
         {outcome, http_status, body_text, wall_ms, client_start_utc, headers, response_bytes, request_bytes}.
         outcome: HTTP, CONNECTION_ERROR, AMBIGUOUS_TIMEOUT.
@@ -95,7 +95,7 @@ def post_chat_stream(
     max_total_s: float = 600.0,
 ) -> Dict[str, Any]:
     """Execute one streaming Dify Chat Messages call consuming Server-Sent Events (SSE).
-    
+
     Returns:
         {outcome, http_status, events, wall_ms, client_start_utc, request_bytes, response_bytes, malformed_lines, body_text}.
     """
@@ -201,7 +201,7 @@ from runport.targets.base import (
 
 class DifyConnector(Target):
     """Benchmarks Dify Chat Applications and Workflow Applications.
-    
+
     Supports both blocking and streaming modes for:
     - Chat Apps: POST /v1/chat-messages
     - Workflow Apps: POST /v1/workflows/run

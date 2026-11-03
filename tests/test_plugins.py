@@ -16,4 +16,3 @@ def test_load_plugin_targets_and_scorers():
     scorers = load_plugin_scorers()
     assert isinstance(targets, dict)
     assert isinstance(scorers, dict)
-

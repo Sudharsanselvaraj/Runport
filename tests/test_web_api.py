@@ -38,10 +38,13 @@ def test_test_target_http(client, monkeypatch):
     class FakeResp:
         def read(self):
             return json.dumps({"output": "Workflow response from test"}).encode()
+
         def close(self):
             pass
+
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             pass
 
@@ -148,4 +151,3 @@ def test_execute_run_live_rejects_mismatched_token(client):
     res = client.post("/api/runs", json=payload)
     # Fail closed: mismatched token
     assert res.status_code == 403
-

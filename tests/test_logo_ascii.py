@@ -139,4 +139,3 @@ def test_logo_capability_rule_never_raises():
     """Assert _should_show_emblem never raises an exception under invalid inputs."""
     assert not _should_show_emblem(None, True, -1, -1)
     assert not _should_show_emblem(Console(file=io.StringIO()), False, 0, 0)
-

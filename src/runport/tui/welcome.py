@@ -43,11 +43,7 @@ def _should_show_emblem(console: Console, compact: bool, cols: int, rows: int) -
             return False
         if cols < 60 or rows < 32:
             return False
-        enc = (
-            getattr(console.file, "encoding", None)
-            or getattr(sys.stdout, "encoding", None)
-            or "utf-8"
-        )
+        enc = getattr(console.file, "encoding", None) or getattr(sys.stdout, "encoding", None) or "utf-8"
         if str(enc).lower().replace("-", "").replace("_", "") not in ("utf8",):
             return False
         if bool(os.environ.get("NO_COLOR")) or getattr(console, "no_color", False):
@@ -85,12 +81,17 @@ def launcher_status() -> Dict[str, str]:
     from runport import __version__
 
     ver = f"v{__version__}"
-    sha, branch, date = _git("rev-parse", "--short", "HEAD"), _git("rev-parse", "--abbrev-ref", "HEAD"), _git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d")
+    sha, branch, date = (
+        _git("rev-parse", "--short", "HEAD"),
+        _git("rev-parse", "--abbrev-ref", "HEAD"),
+        _git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"),
+    )
     if sha:
         ver = f"{ver}-{date or 'dev'}+{branch or 'detached'}.{sha}"
     status: Dict[str, str] = {"version": ver, "dataset": "none loaded", "records": "n/a", "spend": "n/a", "key": "n/a", "models": "n/a"}
     try:
         from runport.datasets.loader import list_local_datasets
+
         dsets = list_local_datasets()
         if dsets:
             status["dataset"] = f"{len(dsets)} available"
@@ -104,8 +105,10 @@ def launcher_status() -> Dict[str, str]:
         pass
     try:
         from runport.core.workspace import load_workspace_config
+
         b_pol = load_workspace_config().budget.to_budget_policy()
         from runport.core.budget import BudgetService
+
         b = BudgetService(policy=b_pol).get_status()
         status["spend"] = f"${b.cumulative_spend_usd:.2f} / ${b.total_ceiling_usd:.0f} cap"
         status["ledger"] = f"${b.cumulative_spend_usd:.2f} actual (cap: ${b.total_ceiling_usd:.2f})"
@@ -115,6 +118,7 @@ def launcher_status() -> Dict[str, str]:
     status["key"] = "set" if key and key.strip() else "not set"
     try:
         from runport.models.registry import roster_status
+
         rows = roster_status()
         ready, smoke = sum(r["readiness"] == "READY" for r in rows), sum(r["readiness"] == "SMOKE_READY" for r in rows)
         status["models"] = f"{ready} ready, {smoke} smoke-ready, {len(rows) - ready - smoke} blocked"
@@ -135,9 +139,20 @@ class WelcomeScreen:
         """Builds the launcher layout. `compact` drops decorative lines so the frame fits short terminals."""
         status = launcher_status()
         self.status = status
-        items = [(t, (status.get("records") if i == 1 and status.get("records") not in (None, "n/a") else
-                      status.get("ledger") if i == 6 and status.get("ledger") else sub), b)
-                 for i, (t, sub, b) in enumerate(MENU_ITEMS)]
+        items = [
+            (
+                t,
+                (
+                    status.get("records")
+                    if i == 1 and status.get("records") not in (None, "n/a")
+                    else status.get("ledger")
+                    if i == 6 and status.get("ledger")
+                    else sub
+                ),
+                b,
+            )
+            for i, (t, sub, b) in enumerate(MENU_ITEMS)
+        ]
 
         # Determine terminal and content width matching compact OpenSRE proportion
         term_cols, term_rows = shutil.get_terminal_size((100, 30))
@@ -173,9 +188,7 @@ class WelcomeScreen:
         # 2. Version, Title, and Subtitle (matching OpenSRE restrained hierarchy)
         container.add_row(Align.center(Text.from_markup(f"[dim #a78bfa]{status['version']}[/]")))
         container.add_row(Align.center(Text.from_markup("[bold #d8b4fe]Welcome to Runport[/]")))
-        container.add_row(
-            Align.center(Text.from_markup("[dim #9ca3af]The universal open-source LLM, prompt, and workflow benchmarking platform.[/]"))
-        )
+        container.add_row(Align.center(Text.from_markup("[dim #9ca3af]The universal open-source LLM, prompt, and workflow benchmarking platform.[/]")))
         if not compact:
             container.add_row(Text(""))
 
@@ -211,7 +224,7 @@ class WelcomeScreen:
             container.add_row(Text(""))
 
         for idx, (title, subtitle, badge) in enumerate(items):
-            is_active = (idx == self.selected_index)
+            is_active = idx == self.selected_index
             prefix = " > " if is_active else "   "
             badge_str = f"  [bold #f5d0fe on #432874] {badge} [/]" if badge else ""
 
@@ -307,7 +320,7 @@ class WelcomeScreen:
         finally:
             try:
                 sys.stdout.write("\033[?25h\033[?1049l")  # show cursor, leave the alternate screen
-                sys.stdout.write("\033]111\007")           # restore the original terminal background
+                sys.stdout.write("\033]111\007")  # restore the original terminal background
                 sys.stdout.flush()
             except Exception:
                 pass

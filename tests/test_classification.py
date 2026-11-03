@@ -5,13 +5,20 @@ import pytest
 
 from runport.classification.contracts import ClassificationCase, Role, Turn
 from runport.classification.metrics import (
-    ClassificationItem, brier_multiclass, compute_classification_metrics, expected_calibration_error,
+    ClassificationItem,
+    brier_multiclass,
+    compute_classification_metrics,
+    expected_calibration_error,
 )
 from runport.scorers.stats import wilson
 from runport.classification.records import PredictionRecord, PredictionStore
 from runport.classification.runner import ClassificationRunner, ClassificationRunSummary
 from runport.classification.threshold import (
-    CRITERION_MAX_F1, FrozenThreshold, ProbItem, evaluate_held_out, select_threshold_on_dev,
+    CRITERION_MAX_F1,
+    FrozenThreshold,
+    ProbItem,
+    evaluate_held_out,
+    select_threshold_on_dev,
 )
 from runport.classification.validators import validate_classification_output
 from runport.core.budget import BudgetExceededError, BudgetService
@@ -85,11 +92,13 @@ def test_validate_classification_output():
 
 def test_classification_runner_offline_execution(tmp_path):
     """ClassificationRunner dispatches offline batch, records predictions, and tracks spend."""
-    provider = MockClassificationProvider({
-        "c1": "QUERY",
-        "c2": "GREETING",
-        "c3": "INVALID_OUTPUT_TEST",
-    })
+    provider = MockClassificationProvider(
+        {
+            "c1": "QUERY",
+            "c2": "GREETING",
+            "c3": "INVALID_OUTPUT_TEST",
+        }
+    )
     store = PredictionStore(tmp_path / "preds.jsonl")
     budget = BudgetService()
     runner = ClassificationRunner(provider=provider, budget_service=budget, store=store)
@@ -132,7 +141,7 @@ def test_supervised_metrics_computation():
         ClassificationItem(expected="QUERY", predicted="QUERY"),
         ClassificationItem(expected="GREETING", predicted="GREETING"),
         ClassificationItem(expected="GREETING", predicted="QUERY"),  # Error
-        ClassificationItem(expected="OTHER", predicted=None),        # Invalid output
+        ClassificationItem(expected="OTHER", predicted=None),  # Invalid output
     ]
 
     metrics = compute_classification_metrics(items)
@@ -295,5 +304,3 @@ def test_runner_strict_guard_order(tmp_path):
     assert summary.n_ok == 1
     assert len(provider.recorded_requests) == 1
     assert len(store.read_all()) == 1
-
-

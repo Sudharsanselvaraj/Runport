@@ -85,7 +85,7 @@ def test_recompute_proof_per_case_rows_equal_reported_metrics():
         {"case_id": "c2", "pred": "POSITIVE", "truth": "POSITIVE", "latency_ms": 60.0, "cost": Decimal("0.0002")},
         {"case_id": "c3", "pred": "NEGATIVE", "truth": "NEGATIVE", "latency_ms": 40.0, "cost": Decimal("0.0001")},
         {"case_id": "c4", "pred": "POSITIVE", "truth": "NEGATIVE", "latency_ms": 70.0, "cost": Decimal("0.0003")},
-        {"case_id": "c5", "pred": None,       "truth": "POSITIVE", "latency_ms": 80.0, "cost": Decimal("0.0001")},  # Invalid
+        {"case_id": "c5", "pred": None, "truth": "POSITIVE", "latency_ms": 80.0, "cost": Decimal("0.0001")},  # Invalid
     ]
 
     # Reported summary metrics
@@ -122,4 +122,3 @@ def test_recompute_proof_per_case_rows_equal_reported_metrics():
     cost_res = CostPer1kScorer().evaluate(reported_total_cost, total_cases)
     # (0.0009 / 5) * 1000 = $0.18 per 1k
     assert cost_res.score == pytest.approx(0.18)
-

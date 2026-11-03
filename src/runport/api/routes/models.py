@@ -46,18 +46,19 @@ def list_catalog_models(
         if max_input_price is not None and float(m.input_price_per_1m_usd) > max_input_price:
             continue
 
-        results.append(ModelCatalogItem(
-            model_id=m.model_id,
-            display_name=m.display_name,
-            provider=m.provider,
-            deployment_mode=m.deployment_mode,
-            license=m.license,
-            context_length=m.context_length,
-            input_price_per_1m_usd=float(m.input_price_per_1m_usd),
-            output_price_per_1m_usd=float(m.output_price_per_1m_usd),
-            verification_status=m.verification_status,
-            experimental_purpose=m.experimental_purpose,
-        ))
+        results.append(
+            ModelCatalogItem(
+                model_id=m.model_id,
+                display_name=m.display_name,
+                provider=m.provider,
+                deployment_mode=m.deployment_mode,
+                license=m.license,
+                context_length=m.context_length,
+                input_price_per_1m_usd=float(m.input_price_per_1m_usd),
+                output_price_per_1m_usd=float(m.output_price_per_1m_usd),
+                verification_status=m.verification_status,
+                experimental_purpose=m.experimental_purpose,
+            )
+        )
 
     return results
-

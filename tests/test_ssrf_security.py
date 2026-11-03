@@ -47,7 +47,4 @@ def test_ssrf_allows_public_domains_and_allowlist():
     assert validate_safe_url("https://openrouter.ai/api/v1") == "https://openrouter.ai/api/v1"
 
     # Allowlisted host bypasses default private block
-    assert validate_safe_url(
-        "http://192.168.1.50:5000/workflow",
-        host_allowlist=["192.168.1.50"]
-    ) == "http://192.168.1.50:5000/workflow"
+    assert validate_safe_url("http://192.168.1.50:5000/workflow", host_allowlist=["192.168.1.50"]) == "http://192.168.1.50:5000/workflow"

@@ -34,7 +34,7 @@ def rng_for(label: str, seed: int = SEED) -> np.random.Generator:
 
 def wilson(k: int, n: int, z: float = 1.959964) -> Tuple[float, float]:
     """Wilson score confidence interval for a binomial proportion.
-    
+
     Returns (lo, hi) clamped to [0.0, 1.0]. Returns (NaN, NaN) if n <= 0.
     """
     if n <= 0:

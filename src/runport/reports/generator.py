@@ -13,6 +13,7 @@ from runport.scorers.stats import wilson
 @dataclass
 class RunManifest:
     """Cryptographic run manifest establishing provenance and verification."""
+
     run_id: str
     plan_id: str
     plan_fingerprint: str
@@ -45,12 +46,10 @@ def generate_caveats(
             lo, hi = wilson(k, total_cases)
             caveats.append(
                 f"Small sample size (N={total_cases}): 95% Wilson confidence interval spans "
-                f"[{lo*100:.1f}%, {hi*100:.1f}%]. Do not treat point accuracy as a statistically stable threshold."
+                f"[{lo * 100:.1f}%, {hi * 100:.1f}%]. Do not treat point accuracy as a statistically stable threshold."
             )
         else:
-            caveats.append(
-                f"Small sample size (N={total_cases} < 30): Underpowered for high-confidence statistical significance."
-            )
+            caveats.append(f"Small sample size (N={total_cases} < 30): Underpowered for high-confidence statistical significance.")
 
     # 2. Ground-truth approval caveats (Invariant 8)
     if unverified_cases > 0:
@@ -124,35 +123,41 @@ class ReportGenerator:
         else:
             lines.append("- No spend recorded.")
 
-        lines.extend([
-            "",
-            "## Summary Metrics",
-            "",
-            "| Metric | Value |",
-            "|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Summary Metrics",
+                "",
+                "| Metric | Value |",
+                "|---|---|",
+            ]
+        )
 
         for k, v in summary_metrics.items():
             fmt_v = f"{v:.4f}" if isinstance(v, float) else str(v)
             lines.append(f"| {k} | {fmt_v} |")
 
         if caveats:
-            lines.extend([
-                "",
-                "## Statistical & Methodological Caveats",
-                "",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "## Statistical & Methodological Caveats",
+                    "",
+                ]
+            )
             for c in caveats:
                 lines.append(f"> [!WARNING]\n> {c}\n")
 
         if case_rows:
-            lines.extend([
-                "",
-                "## Per-Case Results Breakdown",
-                "",
-                "| Case ID | Status | Output Snippet | Latency (ms) |",
-                "|---|---|---|---|",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "## Per-Case Results Breakdown",
+                    "",
+                    "| Case ID | Status | Output Snippet | Latency (ms) |",
+                    "|---|---|---|---|",
+                ]
+            )
             for r in case_rows[:25]:
                 cid = r.get("case_id", "—")
                 st = r.get("status", "—")
@@ -200,4 +205,3 @@ class ReportGenerator:
         json_path.write_text(json.dumps(json_data, indent=2), encoding="utf-8")
 
         return md_path
-

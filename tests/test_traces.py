@@ -90,9 +90,7 @@ def test_analyzer_failure_categories():
         timestamp="2026-10-14T01:00:00Z",
         input_query="What are the PhD supervisor requirements in computer science?",
         output_response="For Diploma in IT, you need 3 SPM credits.",
-        spans=[
-            ObservationSpan(id="s1", name="router", type="span", output_data="undergraduate_router")
-        ],
+        spans=[ObservationSpan(id="s1", name="router", type="span", output_data="undergraduate_router")],
     )
     d_route = analyzer.analyze_trace(t_route)
     assert d_route.category == FailureCategory.ROUTING_FAILURE
@@ -104,9 +102,7 @@ def test_analyzer_failure_categories():
         timestamp="2026-10-14T01:00:00Z",
         input_query="What are the scholarship requirements for Bachelor of Design?",
         output_response="I cannot answer that.",
-        spans=[
-            ObservationSpan(id="s2", name="retrieval", type="retrieval", output_data=[])
-        ],
+        spans=[ObservationSpan(id="s2", name="retrieval", type="retrieval", output_data=[])],
     )
     d_ret = analyzer.analyze_trace(t_ret)
     assert d_ret.category == FailureCategory.RETRIEVAL_FAILURE

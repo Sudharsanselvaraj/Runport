@@ -15,6 +15,7 @@ from runport.providers.base import LiveNotAuthorizedError
 @dataclass(frozen=True)
 class ApprovalDecision:
     """Outcome of an approval request."""
+
     approved: bool
     plan_fingerprint: str
     approver_kind: str
@@ -66,8 +67,7 @@ class InteractiveApprover(BaseApprover):
     ) -> ApprovalDecision:
         if not self.is_tty_fn():
             raise LiveNotAuthorizedError(
-                "Non-interactive terminal cannot provide live confirmation; "
-                "live runs require interactive confirmation and are refused fail-closed."
+                "Non-interactive terminal cannot provide live confirmation; live runs require interactive confirmation and are refused fail-closed."
             )
 
         expected = self.expected_phrase(plan_fingerprint)
@@ -90,9 +90,7 @@ class InteractiveApprover(BaseApprover):
             raise LiveNotAuthorizedError("Approval prompt aborted by user.")
 
         if entered != expected:
-            raise LiveNotAuthorizedError(
-                f"Confirmation phrase mismatch: expected '{expected}', got '{entered}'."
-            )
+            raise LiveNotAuthorizedError(f"Confirmation phrase mismatch: expected '{expected}', got '{entered}'.")
 
         return ApprovalDecision(
             approved=True,
@@ -104,7 +102,7 @@ class InteractiveApprover(BaseApprover):
 
 class TokenApprover(BaseApprover):
     """CI/Automation approver validating a pre-generated plan fingerprint token.
-    
+
     Valid ONLY if enabled=True and token matches the freshly recomputed plan.
     Enforces single-use: once consumed, cannot be reused.
     """
@@ -127,14 +125,10 @@ class TokenApprover(BaseApprover):
         candidate_count: int = 1,
     ) -> ApprovalDecision:
         if not self.enabled:
-            raise LiveNotAuthorizedError(
-                "Token approver is disabled by policy in workspace configuration; live run refused."
-            )
+            raise LiveNotAuthorizedError("Token approver is disabled by policy in workspace configuration; live run refused.")
 
         if self._consumed:
-            raise LiveNotAuthorizedError(
-                "Approval token has already been consumed; cannot be reused."
-            )
+            raise LiveNotAuthorizedError("Approval token has already been consumed; cannot be reused.")
 
         if not plan_fingerprint:
             raise LiveNotAuthorizedError("Approve token provided but no plan fingerprint was computed.")
@@ -181,4 +175,3 @@ class ModalApprover(BaseApprover):
             approver_kind="MODAL",
             operator=self.operator,
         )
-

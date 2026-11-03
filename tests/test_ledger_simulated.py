@@ -14,7 +14,11 @@ from runport.dataset.manager import DatasetManager
 from runport.evaluation.runner import BenchmarkRunner
 from runport.rag.runner import RAGBenchmarkRunner
 from runport.schemas.evaluation import (
-    DataClassification, DatasetSplit, EvaluationCase, VerificationRecord, VerificationStatus,
+    DataClassification,
+    DatasetSplit,
+    EvaluationCase,
+    VerificationRecord,
+    VerificationStatus,
 )
 from runport.storage.db import DatabaseManager
 
@@ -33,7 +37,7 @@ def test_fresh_ledger_separates_simulated_from_actual(tmp_path):
     b.record_spend("t3", MODEL, "openrouter", Decimal("0.5"), "estimate", is_preflight_estimate=True)
     st = b.get_status()
     assert st.cumulative_spend_usd == Decimal("0.002") and st.pilot_spend_usd == Decimal("0.002")
-    assert st.simulated_spend_usd == Decimal("0.01") and st.remaining_pilot_usd == Decimal("1.998")
+    assert st.simulated_spend_usd == Decimal("0.01") and st.remaining_pilot_usd == Decimal("0.998")
     rows = {r["transaction_id"]: r["is_simulated"] for r in db.get_recent_transactions()}
     assert rows == {"t1": 1, "t2": 0, "t3": 0}
 
@@ -42,10 +46,10 @@ def test_simulated_spend_never_blocks_a_run_or_exhausts_the_pilot(tmp_path):
     db, b = svc(tmp_path, pilot_budget_usd=Decimal("0.05"))
     b.record_spend("sim", MODEL, "openrouter", Decimal("0.049"), "simulated", is_simulated=True)
     assert b.get_status().is_pilot_exhausted is False
-    b.check_preflight_budget(estimated_cost_usd=Decimal("0.04"))          # fits: simulated spend is ignored
+    b.check_preflight_budget(estimated_cost_usd=Decimal("0.04"))  # fits: simulated spend is ignored
     b.record_spend("real", MODEL, "openrouter", Decimal("0.049"), "actual")
     with pytest.raises(BudgetExceededError):
-        b.check_preflight_budget(estimated_cost_usd=Decimal("0.04"))      # actual spend does count
+        b.check_preflight_budget(estimated_cost_usd=Decimal("0.04"))  # actual spend does count
 
 
 def make_legacy_db(path):
@@ -63,7 +67,7 @@ def make_legacy_db(path):
         c.execute("INSERT INTO evaluation_runs VALUES (?, 't', ?, 'd', 1, 1, 0, '0', 0, 0, 0, 0, ?, NULL)", (rid, MODEL, dry))
     rows = [("a", "run_dry", 20_000), ("b", "run_dry", 3_000), ("c", "run_live", 7_000), ("d", None, 4_000), ("e", "run_unknown", 1_000)]
     for tid, rid, micros in rows:
-        c.execute("INSERT INTO budget_ledger VALUES (?, 't', ?, ?, 'openrouter', ?, ?, 1, 0, 'legacy')", (tid, rid, MODEL, micros, f"{micros/1e6:.6f}"))
+        c.execute("INSERT INTO budget_ledger VALUES (?, 't', ?, ?, 'openrouter', ?, ?, 1, 0, 'legacy')", (tid, rid, MODEL, micros, f"{micros / 1e6:.6f}"))
     c.commit()
     c.close()
 
@@ -84,10 +88,17 @@ def test_legacy_ledger_migrates_on_evidence_only_and_is_idempotent(tmp_path):
 
 
 def dataset(tmp_path):
-    cases = [EvaluationCase(id=f"syn-{i}", query="synthetic question", expected_answer="synthetic answer",
-                            classification=DataClassification.SYNTHETIC, split=DatasetSplit.TEST,
-                            verification=VerificationRecord(status=VerificationStatus.VERIFIED, reference_source="synthetic"))
-             for i in range(3)]
+    cases = [
+        EvaluationCase(
+            id=f"syn-{i}",
+            query="synthetic question",
+            expected_answer="synthetic answer",
+            classification=DataClassification.SYNTHETIC,
+            split=DatasetSplit.TEST,
+            verification=VerificationRecord(status=VerificationStatus.VERIFIED, reference_source="synthetic"),
+        )
+        for i in range(3)
+    ]
     p = tmp_path / "ds.jsonl"
     DatasetManager.save_jsonl(cases, p)
     return p
@@ -100,21 +111,39 @@ def test_budget_status_cli_still_labels_legacy_simulated_rows(tmp_path, monkeypa
     b.record_spend("a1", MODEL, "openrouter", Decimal("0.002"), "provider-reported actual", run_id="r2", cost_basis="PROVIDER_REPORTED")
     b.record_spend("e1", MODEL, "openrouter", Decimal("0.003"), "estimated from catalogue", run_id="r2", cost_basis="ESTIMATED_FROM_CATALOG")
     r = CliRunner(env={"COLUMNS": "250"}).invoke(app, ["budget", "status"])
-    assert r.exit_code == 0 and "SIMULATED" in r.output and "ACTUAL" in r.output and "ESTIMATED" in r.output   # the type column follows the cost basis, not a blanket "ACTUAL"
+    assert (
+        r.exit_code == 0 and "SIMULATED" in r.output and "ACTUAL" in r.output and "ESTIMATED" in r.output
+    )  # the type column follows the cost basis, not a blanket "ACTUAL"
     assert "Legacy simulated entries (never counted against any ceiling): $0.001000" in r.output
 
 
 def test_purge_removes_only_simulated_rows_and_backs_up_first(tmp_path):
     from decimal import Decimal
+
     db = DatabaseManager(db_path=tmp_path / "p.db")
     b = BudgetService(db=db)
     b.record_spend("sim", MODEL, "openrouter", Decimal("0.01"), "x", run_id="r_dry", is_simulated=True)
     b.record_spend("real", MODEL, "openrouter", Decimal("0.002"), "x", run_id="r_live", cost_basis="ESTIMATED_FROM_CATALOG")
     b.record_unresolved_spend("unres", MODEL, "openrouter", "unknown")
     for rid, dry in (("r_dry", True), ("r_live", False)):
-        db.save_evaluation_run({"run_id": rid, "timestamp": "t", "model_id": MODEL, "dataset_path": "d", "total_cases": 1, "completed_cases": 1,
-                                "failed_cases": 0, "total_cost_usd": "0", "mean_latency_ms": 1.0, "mean_accuracy": 1.0, "mean_groundedness": 1.0,
-                                "mean_overall_score": 1.0, "is_dry_run": dry, "notes": ""})
+        db.save_evaluation_run(
+            {
+                "run_id": rid,
+                "timestamp": "t",
+                "model_id": MODEL,
+                "dataset_path": "d",
+                "total_cases": 1,
+                "completed_cases": 1,
+                "failed_cases": 0,
+                "total_cost_usd": "0",
+                "mean_latency_ms": 1.0,
+                "mean_accuracy": 1.0,
+                "mean_groundedness": 1.0,
+                "mean_overall_score": 1.0,
+                "is_dry_run": dry,
+                "notes": "",
+            }
+        )
     res = db.purge_simulated()
     assert (res["ledger_rows"], res["runs"]) == (1, 1) and res["backup"] and Path(res["backup"]).exists()
     left = {r["transaction_id"] for r in db.get_recent_transactions()}

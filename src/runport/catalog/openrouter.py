@@ -81,7 +81,7 @@ class OpenRouterCatalogSource:
 
     def get_model_candidates(self, force_refresh: bool = False) -> List[ModelCandidate]:
         """Convert raw OpenRouter catalog data into validated ModelCandidate instances.
-        
+
         Converts OpenRouter per-token pricing to per-1M tokens USD.
         """
         payload = self.fetch_raw_catalog(force_refresh=force_refresh)
@@ -169,4 +169,3 @@ class OpenRouterCatalogSource:
             registered_records.append(record)
 
         return registered_records
-

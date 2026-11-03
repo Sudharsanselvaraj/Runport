@@ -83,4 +83,3 @@ def test_remediation_cli_command():
     assert "OFFICIAL_VERIF_PENDING" in res.stdout
     assert "DRY-RUN (In-Memory Evaluation)" in res.stdout
     assert "Verified 100% Immutable" in res.stdout
-

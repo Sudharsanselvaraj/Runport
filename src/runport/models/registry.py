@@ -15,10 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class FactStatus(str, Enum):
     VERIFIED_PRIMARY = "VERIFIED_PRIMARY"  # stated on the provider's or OpenRouter's own documentation
-    USER_SUPPLIED = "USER_SUPPLIED"        # figure supplied by the project owner; must be re-verified before any live run
-    LIVE_OBSERVED = "LIVE_OBSERVED"        # seen in a stored real response (evidence recorded); NOT a primary-source verification
-    SECONDARY_ONLY = "SECONDARY_ONLY"      # only third-party or summarized sources; not confirmed on a primary page
-    CONFLICTING = "CONFLICTING"            # sources disagree
+    USER_SUPPLIED = "USER_SUPPLIED"  # figure supplied by the project owner; must be re-verified before any live run
+    LIVE_OBSERVED = "LIVE_OBSERVED"  # seen in a stored real response (evidence recorded); NOT a primary-source verification
+    SECONDARY_ONLY = "SECONDARY_ONLY"  # only third-party or summarized sources; not confirmed on a primary page
+    CONFLICTING = "CONFLICTING"  # sources disagree
     UNKNOWN = "UNKNOWN"
 
 
@@ -35,7 +35,7 @@ class Fact(BaseModel):
     source_urls: List[str] = Field(default_factory=list)
     checked_on: Optional[date] = None
     note: str = ""
-    evidence: Optional[Dict[str, Any]] = None   # required for LIVE_OBSERVED: run ids, resolved model, fields, observation time
+    evidence: Optional[Dict[str, Any]] = None  # required for LIVE_OBSERVED: run ids, resolved model, fields, observation time
 
     @model_validator(mode="after")
     def _honest(self):
@@ -80,6 +80,7 @@ def schema_fact_ok(f: "Fact") -> bool:
 
 class RouteOption(BaseModel):
     """One provider endpoint as listed by provider public endpoints metadata."""
+
     model_config = ConfigDict(extra="forbid")
 
     provider: str
@@ -103,6 +104,7 @@ class RouteStatus(str, Enum):
 
 class RouteRecord(BaseModel):
     """Provider-route assumptions for one model. A route is BLOCKED until the provider and its policy are verified."""
+
     model_config = ConfigDict(extra="forbid")
 
     status: RouteStatus = RouteStatus.BLOCKED
@@ -148,16 +150,22 @@ class ModelRecord(BaseModel):
         return next((r for r in self.candidate_routes if r.tag == self.pinned_tag), None)
 
     def readiness_blockers(self) -> List[str]:
-        required = ("requested_model_id", "endpoint", "request_fields", "response_shape", "usage_fields",
-                    "input_price_per_1m_usd", "output_price_per_1m_usd", "data_policy")
+        required = (
+            "requested_model_id",
+            "endpoint",
+            "request_fields",
+            "response_shape",
+            "usage_fields",
+            "input_price_per_1m_usd",
+            "output_price_per_1m_usd",
+            "data_policy",
+        )
         schema_facts = {"response_shape", "usage_fields"}
-        out = [n for n in required if not (getattr(self, n).status == FactStatus.VERIFIED_PRIMARY
-                                           or (n in schema_facts and schema_fact_ok(getattr(self, n))))]
+        out = [n for n in required if not (getattr(self, n).status == FactStatus.VERIFIED_PRIMARY or (n in schema_facts and schema_fact_ok(getattr(self, n))))]
         return out + (["route"] if self.route.status != RouteStatus.READY else [])
 
     def synthetic_blockers(self, stage: str = "pilot") -> List[str]:
-        required = ("requested_model_id", "endpoint", "request_fields", "response_shape", "usage_fields",
-                    "input_price_per_1m_usd", "output_price_per_1m_usd")
+        required = ("requested_model_id", "endpoint", "request_fields", "response_shape", "usage_fields", "input_price_per_1m_usd", "output_price_per_1m_usd")
         schema_facts = {"response_shape", "usage_fields"}
         out = []
         for n in required:
@@ -183,11 +191,13 @@ class ModelRecord(BaseModel):
 
     def roster_summary(self) -> Dict[str, Any]:
         ready = not self.synthetic_blockers()
-        r_price = (f"${self.route.route_input_price_per_1m_usd.value}/${self.route.route_output_price_per_1m_usd.value} per 1M"
-                   if self.route.route_input_price_per_1m_usd.value is not None else (
-                       f"${self.input_price_per_1m_usd.value}/${self.output_price_per_1m_usd.value} per 1M"
-                       if self.input_price_per_1m_usd.value is not None else None
-                   ))
+        r_price = (
+            f"${self.route.route_input_price_per_1m_usd.value}/${self.route.route_output_price_per_1m_usd.value} per 1M"
+            if self.route.route_input_price_per_1m_usd.value is not None
+            else (
+                f"${self.input_price_per_1m_usd.value}/${self.output_price_per_1m_usd.value} per 1M" if self.input_price_per_1m_usd.value is not None else None
+            )
+        )
         return {
             "key": self.key,
             "display_name": self.display_name,
@@ -234,6 +244,7 @@ def list_records() -> List[ModelRecord]:
 
 def _candidate_to_record(cand) -> ModelRecord:
     from datetime import date
+
     d = date(2026, 1, 1)
     urls = [f"https://openrouter.ai/models/{cand.model_id}"]
     key = cand.model_id.split("/")[-1] if "/" in cand.model_id else cand.model_id
@@ -265,6 +276,7 @@ def init_registry_from_portfolio(candidates: Optional[List[Any]] = None) -> None
     if candidates is None:
         try:
             from runport.models.catalog import get_portfolio
+
             candidates = get_portfolio()
         except Exception:
             candidates = []
@@ -282,6 +294,7 @@ def record_for_model_id(model_id: str) -> Optional[ModelRecord]:
             return r
     try:
         from runport.models.catalog import get_portfolio
+
         for cand in get_portfolio():
             if cand.model_id == model_id or cand.model_id.split("/")[-1] == model_id:
                 rec = _candidate_to_record(cand)
@@ -333,9 +346,7 @@ def estimate_permitted(model_id: str) -> bool:
     return route_price_ok or model_price_ok
 
 
-OPENROUTER_COST_UNIT = unknown(
-    "OpenRouter usage-accounting cost unit (credits vs USD unverified)."
-)
+OPENROUTER_COST_UNIT = unknown("OpenRouter usage-accounting cost unit (credits vs USD unverified).")
 NATIVE_COST_UNIT_LABEL = "OPENROUTER_CREDITS_USD_RATE_UNVERIFIED"
 
 

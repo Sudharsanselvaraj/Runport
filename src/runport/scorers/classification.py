@@ -11,6 +11,7 @@ from runport.scorers.stats import prf, wilson
 @dataclass
 class ClassificationReport:
     """Detailed multiclass evaluation report with per-class metrics and confusion matrix."""
+
     accuracy: float
     macro_precision: float
     macro_recall: float
@@ -63,10 +64,7 @@ class ClassificationReportScorer(BaseScorer):
         labels = sorted(list(labels_set))
 
         # Build confusion matrix: confusion_matrix[expected][predicted]
-        cm: Dict[str, Dict[str, int]] = {
-            exp: {pred: 0 for pred in labels + ["INVALID_OUTPUT"]}
-            for exp in labels
-        }
+        cm: Dict[str, Dict[str, int]] = {exp: {pred: 0 for pred in labels + ["INVALID_OUTPUT"]} for exp in labels}
 
         n_valid = 0
         n_invalid = 0
@@ -163,7 +161,7 @@ class ClassificationReportScorer(BaseScorer):
         # Single case fallback
         if predicted is None or expected is None:
             return ScoreResult(metric_name=self.name, score=None, details={"reason": "Missing prediction or reference"})
-        is_match = (str(predicted).strip().upper() == str(expected).strip().upper())
+        is_match = str(predicted).strip().upper() == str(expected).strip().upper()
         return ScoreResult(metric_name=self.name, score=1.0 if is_match else 0.0, passed=is_match)
 
 
@@ -184,7 +182,7 @@ class AccuracyScorer(BaseScorer):
 
         pred_str = str(predicted).strip().upper()
         exp_str = str(expected).strip().upper()
-        match = (pred_str == exp_str)
+        match = pred_str == exp_str
         return ScoreResult(
             metric_name=self.name,
             score=1.0 if match else 0.0,
@@ -195,7 +193,7 @@ class AccuracyScorer(BaseScorer):
 
 class BrierScoreScorer(BaseScorer):
     """Computes Brier score for probabilistic binary classification.
-    
+
     (probability - outcome)^2
     """
 
@@ -224,4 +222,3 @@ class BrierScoreScorer(BaseScorer):
             )
         except (ValueError, TypeError):
             return ScoreResult(metric_name=self.name, score=None, details={"reason": "Invalid probability format"})
-

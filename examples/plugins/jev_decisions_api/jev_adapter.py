@@ -23,7 +23,7 @@ from runport.providers.http import RetryingPoster
 JEV_ENDPOINT = "https://openrouter.ai/api/alpha/decisions"
 JEV_MODEL_ID = "typesafe/jev-1.14"
 QUESTION_KEYS = {Task.INTENT: "intent", Task.LEAD: "lead"}
-LEAD_CHOICE_KEY = "need_cta"          # question key of the choice-type Lead payload (the key the operator's payload uses)
+LEAD_CHOICE_KEY = "need_cta"  # question key of the choice-type Lead payload (the key the operator's payload uses)
 
 
 def _num(v: Any) -> bool:
@@ -63,7 +63,12 @@ def version_consistent(requested: str, resolved: str) -> bool:
 
 
 def parse_decisions_response(
-    task: Task, requested_model_id: str, data: Any, *, price_estimator: Optional[Callable[[int, int], Optional[Decimal]]] = None, lead_mode: str = "noul",
+    task: Task,
+    requested_model_id: str,
+    data: Any,
+    *,
+    price_estimator: Optional[Callable[[int, int], Optional[Decimal]]] = None,
+    lead_mode: str = "noul",
 ) -> AdapterResult:
     """Strictly parse one Decisions-API response body (already JSON-decoded) into an AdapterResult."""
     base = dict(task=task, protocol=Protocol.DECISIONS_API, requested_model_id=requested_model_id)
@@ -122,8 +127,9 @@ def parse_decisions_response(
             warnings.append("COST_MISSING")
         if p_tok is None and c_tok is None and "input_tokens" not in usage and "output_tokens" not in usage:
             warnings.append("TOKEN_COUNTS_MISSING")
-    usage_source = "PROVIDER_REPORTED" if (p_tok is not None and c_tok is not None) else (
-        "PARTIAL" if (p_tok is not None or c_tok is not None) else "UNAVAILABLE")
+    usage_source = (
+        "PROVIDER_REPORTED" if (p_tok is not None and c_tok is not None) else ("PARTIAL" if (p_tok is not None or c_tok is not None) else "UNAVAILABLE")
+    )
     estimated = price_estimator(p_tok, c_tok) if (price_estimator and p_tok is not None and c_tok is not None) else None
     if actual is not None:
         cost, basis = actual, "PROVIDER_REPORTED"
@@ -133,9 +139,18 @@ def parse_decisions_response(
         cost, basis = Decimal("0"), "UNAVAILABLE"
 
     telemetry = dict(
-        resolved_model_id=resolved, serving_provider=provider, prompt_tokens=p_tok, completion_tokens=c_tok, usage_source=usage_source,
-        native_cost=native, native_cost_unit=registry.NATIVE_COST_UNIT_LABEL if native is not None else None,
-        actual_cost_usd=actual, estimated_cost_usd=estimated, cost_usd=cost, cost_basis=basis, warnings=warnings,
+        resolved_model_id=resolved,
+        serving_provider=provider,
+        prompt_tokens=p_tok,
+        completion_tokens=c_tok,
+        usage_source=usage_source,
+        native_cost=native,
+        native_cost_unit=registry.NATIVE_COST_UNIT_LABEL if native is not None else None,
+        actual_cost_usd=actual,
+        estimated_cost_usd=estimated,
+        cost_usd=cost,
+        cost_basis=basis,
+        warnings=warnings,
     )
 
     # --- answers
@@ -156,16 +171,24 @@ def parse_decisions_response(
         if chk.ok:
             label = validate_intent_output(chk.values["label"].value)  # authoritative validator on the chosen option
             if label.valid:
-                out = dict(predicted_label=label.label, label_probs={k: float(v) for k, v in chk.values["probabilities"].items()},
-                           native_confidence=float(chk.values["confidence"]), confidence_source="NATIVE_DISTRIBUTION")
+                out = dict(
+                    predicted_label=label.label,
+                    label_probs={k: float(v) for k, v in chk.values["probabilities"].items()},
+                    native_confidence=float(chk.values["confidence"]),
+                    confidence_source="NATIVE_DISTRIBUTION",
+                )
             else:
                 issues.append("CHOICE_REJECTED_BY_INTENT_VALIDATOR")
     elif key in answers and task == Task.LEAD and lead_mode == "choice":
         chk = jp.check_binary_choice_answer(answer)
         issues += chk.issues
         if chk.ok:
-            out = dict(predicted_need_cta=chk.values["need_cta"], yes_prob=chk.values["yes_prob"], native_confidence=chk.values["confidence"],
-                       confidence_source="NATIVE_DISTRIBUTION" if chk.values["yes_prob"] is not None else "NONE")  # the chosen option is the prediction; no threshold
+            out = dict(
+                predicted_need_cta=chk.values["need_cta"],
+                yes_prob=chk.values["yes_prob"],
+                native_confidence=chk.values["confidence"],
+                confidence_source="NATIVE_DISTRIBUTION" if chk.values["yes_prob"] is not None else "NONE",
+            )  # the chosen option is the prediction; no threshold
     elif key in answers and task == Task.LEAD:
         chk = jp.check_noul_answer(answer)
         issues += chk.issues
@@ -214,6 +237,7 @@ class JevDecisionsAdapter:
             if prices is None:
                 return None
             return ((Decimal(p) * prices[0] + Decimal(c) * prices[1]) / Decimal("1000000")).quantize(Decimal("0.000001"))
+
         return estimate
 
     def classify(self, task: Task, state_text: str, prompt_text: str, *, live_authorized: bool) -> AdapterResult:
@@ -232,13 +256,22 @@ class JevDecisionsAdapter:
         try:
             data = json.loads(posted.body.decode("utf-8"))
         except ValueError as e:
-            raise ProviderError("Decisions API returned an unreadable (non-JSON) response.", attempts=posted.attempts,
-                                errors=posted.errors + ["INVALID_RESPONSE"], retryable=False) from e
+            raise ProviderError(
+                "Decisions API returned an unreadable (non-JSON) response.",
+                attempts=posted.attempts,
+                errors=posted.errors + ["INVALID_RESPONSE"],
+                retryable=False,
+            ) from e
         result = parse_decisions_response(task, self.model_id, data, price_estimator=self._estimator(), lead_mode=self.lead_mode)
-        return result.model_copy(update=dict(
-            latency_ms=round(posted.e2e_ms, 2), attempt_latency_ms=round(posted.attempt_ms, 2),
-            model_latency_ms=None, attempts=posted.attempts, retry_errors=list(posted.errors),
-        ))
+        return result.model_copy(
+            update=dict(
+                latency_ms=round(posted.e2e_ms, 2),
+                attempt_latency_ms=round(posted.attempt_ms, 2),
+                model_latency_ms=None,
+                attempts=posted.attempts,
+                retry_errors=list(posted.errors),
+            )
+        )
 
 
 class JevLeadChoiceAdapter(JevDecisionsAdapter):

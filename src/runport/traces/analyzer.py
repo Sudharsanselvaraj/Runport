@@ -14,7 +14,7 @@ from runport.traces.models import (
 
 class TraceDiagnosticAnalyzer:
     """Diagnoses production trace failures across the 4 RAG failure categories.
-    
+
     Acceptance Criteria: All findings are formulated as candidate hypotheses with
     explicit confidence scores and supporting evidence, never as unverified ground truth.
     """
@@ -137,9 +137,7 @@ class TraceDiagnosticAnalyzer:
                 return str(s.output_data or s.metadata.get("route") or "")
         return " ".join(trace.tags)
 
-    def _check_routing_failure(
-        self, trace: TraceRecord, q_lower: str, routing_info: str
-    ) -> Tuple[bool, float, str, List[str], str]:
+    def _check_routing_failure(self, trace: TraceRecord, q_lower: str, routing_info: str) -> Tuple[bool, float, str, List[str], str]:
         """Checks for category/level/domain routing mismatch."""
         route_lower = routing_info.lower()
 
@@ -182,9 +180,7 @@ class TraceDiagnosticAnalyzer:
 
         return False, 0.0, "", [], ""
 
-    def _check_retrieval_failure(
-        self, trace: TraceRecord, q_lower: str, retrieval_text: str
-    ) -> Tuple[bool, float, str, List[str], str]:
+    def _check_retrieval_failure(self, trace: TraceRecord, q_lower: str, retrieval_text: str) -> Tuple[bool, float, str, List[str], str]:
         """Checks for empty chunks, low similarity, or missing context."""
         ret_lower = retrieval_text.lower().strip()
 
@@ -214,9 +210,7 @@ class TraceDiagnosticAnalyzer:
 
         return False, 0.0, "", [], ""
 
-    def _check_source_knowledge_failure(
-        self, trace: TraceRecord, retrieval_text: str, ans_lower: str
-    ) -> Tuple[bool, float, str, List[str], str]:
+    def _check_source_knowledge_failure(self, trace: TraceRecord, retrieval_text: str, ans_lower: str) -> Tuple[bool, float, str, List[str], str]:
         """Checks if response faithfully mirrors defective or contradictory knowledge-base text."""
         # 1. Contradictory pricing or numeric figures in retrieved context
         price_matches = re.findall(r"(?:rm|\$)\s*[\d,]+", retrieval_text.lower())
@@ -245,9 +239,7 @@ class TraceDiagnosticAnalyzer:
 
         return False, 0.0, "", [], ""
 
-    def _check_generation_failure(
-        self, trace: TraceRecord, q_lower: str, retrieval_text: str, ans_lower: str
-    ) -> Tuple[bool, float, str, List[str], str]:
+    def _check_generation_failure(self, trace: TraceRecord, q_lower: str, retrieval_text: str, ans_lower: str) -> Tuple[bool, float, str, List[str], str]:
         """Checks for hallucinations, ungrounded figures, or model refusals."""
         # 1. False refusal despite context present
         refusal_phrases = ("i do not have access", "i don't know", "information is not available", "cannot find")

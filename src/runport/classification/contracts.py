@@ -25,6 +25,7 @@ DEFAULT_FORBIDDEN_FIELDS = {
 
 class ClassificationSpec(BaseModel):
     """Config-driven specification for a classification task."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str = "classification"
@@ -41,6 +42,7 @@ class ClassificationSpec(BaseModel):
 
 class Task(str, Enum):
     """Evaluation task identifier (superseded by workload specifications)."""
+
     CLASSIFICATION = "classification"
     BINARY = "binary"
     TASK_A = "TASK_A"
@@ -55,6 +57,7 @@ class Role(str, Enum):
 
 class HistoryStatus(str, Enum):
     """How much history the case carries. UNKNOWN is never treated as 'none happened'."""
+
     COMPLETE = "COMPLETE"
     INCOMPLETE = "INCOMPLETE"
     NONE_AVAILABLE = "NONE_AVAILABLE"
@@ -77,6 +80,7 @@ class Turn(BaseModel):
 
 class ClassificationCase(BaseModel):
     """Universal classification evaluation case."""
+
     model_config = ConfigDict(extra="forbid")
 
     case_id: str = Field(min_length=1)

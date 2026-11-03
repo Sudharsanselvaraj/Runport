@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class ConfidentialityViolationError(Exception):
     """Raised when an unapproved or confidential case is dispatched to an external network provider."""
+
     pass
 
 
@@ -37,21 +38,25 @@ class ProviderError(Exception):
 
 class RateLimitError(ProviderError):
     """Raised on HTTP 429 rate limit errors."""
+
     pass
 
 
 class LiveNotAuthorizedError(ProviderError):
     """Raised when a request is attempted without explicit live authorization."""
+
     pass
 
 
 class UsageUnavailableError(ProviderError):
     """Raised by runners when a live response lacks usage or cost, so spend cannot be recorded honestly."""
+
     pass
 
 
 class ProviderRequest(BaseModel):
     """Standardized model request payload."""
+
     model_id: str
     messages: List[Dict[str, str]] = Field(description="List of role/content chat messages")
     temperature: Optional[float] = Field(default=0.0, ge=0.0, le=2.0, description="None omits the field (for routes that do not list it)")
@@ -63,19 +68,20 @@ class ProviderRequest(BaseModel):
     provider_preferences: Optional[Dict[str, Any]] = Field(
         default=None, description="OpenRouter `provider` routing object (e.g. pin + no fallbacks); sent only when set"
     )
-    extra_fields: Optional[Dict[str, Any]] = Field(default=None, description="Owner-approved per-model request fields (whitelisted by the adapter, e.g. `reasoning`)")
+    extra_fields: Optional[Dict[str, Any]] = Field(
+        default=None, description="Owner-approved per-model request fields (whitelisted by the adapter, e.g. `reasoning`)"
+    )
     case_id: Optional[str] = None
 
 
 class ProviderResponse(BaseModel):
     """Standardized model response telemetry. Unavailable values are None, never zero or estimated."""
+
     output_text: str
     prompt_tokens: Optional[int] = Field(default=None, description="None when the provider did not report it")
     completion_tokens: Optional[int] = Field(default=None, description="None when the provider did not report it")
     usage_source: Literal["PROVIDER_REPORTED", "PARTIAL", "UNAVAILABLE"] = "UNAVAILABLE"
-    latency_ms: float = Field(
-        description="End-to-end request duration measured by this client (including retry waits)"
-    )
+    latency_ms: float = Field(description="End-to-end request duration measured by this client (including retry waits)")
     latency_source: Literal["MEASURED_CLIENT"] = "MEASURED_CLIENT"
     attempt_latency_ms: Optional[float] = Field(default=None, description="Measured duration of the final, successful attempt")
     model_latency_ms: Optional[float] = Field(default=None, description="Only when the provider reports it; never derived")
@@ -87,7 +93,9 @@ class ProviderResponse(BaseModel):
     native_cost: Optional[Decimal] = Field(default=None, description="Provider-reported usage.cost in its own unit (credits); preserved as received")
     native_cost_unit: Optional[str] = Field(default=None, description="Unit label of native_cost; it is booked as USD only once the unit is verified")
     finish_reason: Optional[str] = Field(default=None, description="choices[0].finish_reason exactly as the provider reported it; None when absent")
-    reasoning_tokens: Optional[int] = Field(default=None, description="usage.completion_tokens_details.reasoning_tokens when the provider reports it; None otherwise")
+    reasoning_tokens: Optional[int] = Field(
+        default=None, description="usage.completion_tokens_details.reasoning_tokens when the provider reports it; None otherwise"
+    )
     actual_cost_usd: Optional[Decimal] = Field(default=None, description="USD cost, only when the provider's cost unit is verified as USD; never derived")
     estimated_cost_usd: Optional[Decimal] = Field(
         default=None, description="Catalog price x PROVIDER-REPORTED tokens; None unless both token counts were reported"
@@ -102,11 +110,23 @@ class ProviderResponse(BaseModel):
 
 
 # Standard provider usage counters that are numeric and must survive scrubbing.
-USAGE_KEYS = frozenset({
-    "prompt_tokens", "completion_tokens", "total_tokens", "input_tokens", "output_tokens",
-    "cached_tokens", "reasoning_tokens", "audio_tokens", "image_tokens",
-    "prompt_tokens_details", "completion_tokens_details", "input_tokens_details", "output_tokens_details",
-})
+USAGE_KEYS = frozenset(
+    {
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "input_tokens",
+        "output_tokens",
+        "cached_tokens",
+        "reasoning_tokens",
+        "audio_tokens",
+        "image_tokens",
+        "prompt_tokens_details",
+        "completion_tokens_details",
+        "input_tokens_details",
+        "output_tokens_details",
+    }
+)
 _SENSITIVE_KEY_PARTS = ("key", "secret", "token", "auth", "password", "credential", "bearer", "cookie")
 
 
@@ -173,4 +193,3 @@ class BaseProvider(ABC):
 
 
 scrub_secrets = BaseProvider.scrub_secrets
-

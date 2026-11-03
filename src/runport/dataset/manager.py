@@ -17,6 +17,7 @@ from runport.schemas.evaluation import (
 
 class DatasetValidationSummary(BaseModel):
     """Statistical summary of dataset validation."""
+
     source_path: str
     total_cases: int
     train_count: int
@@ -59,6 +60,7 @@ class DatasetManager:
     def compute_sha256(path: Path) -> str:
         """Computes SHA-256 hash of a dataset file."""
         import hashlib
+
         if not path.exists():
             raise FileNotFoundError(f"Dataset file not found: {path}")
         h = hashlib.sha256()
@@ -72,10 +74,7 @@ class DatasetManager:
         """Verifies that the dataset file has not mutated (immutable source invariant)."""
         current_hash = DatasetManager.compute_sha256(path)
         if current_hash != expected_hash:
-            raise ValueError(
-                f"Source dataset mutated during evaluation! "
-                f"Expected: {expected_hash}, Actual: {current_hash}"
-            )
+            raise ValueError(f"Source dataset mutated during evaluation! Expected: {expected_hash}, Actual: {current_hash}")
 
     @staticmethod
     def save_jsonl(cases: List[EvaluationCase], path: Path) -> None:
@@ -123,9 +122,7 @@ class DatasetManager:
             DatasetSplit.TEST: test_cases,
         }
 
-    def validate_dataset(
-        self, cases: List[EvaluationCase], source_path: str = "", check_leakage: bool = True
-    ) -> DatasetValidationSummary:
+    def validate_dataset(self, cases: List[EvaluationCase], source_path: str = "", check_leakage: bool = True) -> DatasetValidationSummary:
         """Validates schema invariants, confidentiality boundaries, and cross-split leakage."""
         errors: List[str] = []
 
@@ -160,9 +157,7 @@ class DatasetManager:
             detector = LeakageDetector()
             leak_report = detector.analyze(cases)
             if leak_report.has_leakage:
-                errors.append(
-                    f"Cross-split leakage detected: {len(leak_report.findings)} contaminating case pairs."
-                )
+                errors.append(f"Cross-split leakage detected: {len(leak_report.findings)} contaminating case pairs.")
 
         is_valid = len(errors) == 0
 

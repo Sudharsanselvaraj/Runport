@@ -49,6 +49,7 @@ def get_setup_info() -> SetupResponse:
         pass
 
     from runport.core.workspace import load_workspace_config
+
     default_forbidden = ["phone", "email", "ssn", "password", "token", "api_key"]
     cfg_telemetry = load_workspace_config().telemetry
     forbidden = cfg_telemetry.forbidden_fields if cfg_telemetry.forbidden_fields else default_forbidden
@@ -85,4 +86,3 @@ def get_setup_info() -> SetupResponse:
         forbidden_fields=forbidden,
         dataset_schema=schema_info,
     )
-

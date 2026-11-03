@@ -23,8 +23,9 @@ def run_launcher(keys, rows=55, cols=207, settle=0.6):
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     env = {**os.environ, "TERM": "xterm-256color", "COLUMNS": str(cols), "LINES": str(rows), "RUNPORT_SKIP_DOTENV": "1", "PYTHONPATH": str(ROOT / "src")}
     env.pop("OPENROUTER_API_KEY", None)
-    proc = subprocess.Popen([sys.executable, "-c", "from runport.cli import app; app()"], stdin=slave, stdout=slave, stderr=slave,
-                            cwd=ROOT, env=env, close_fds=True)
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "from runport.cli import app; app()"], stdin=slave, stdout=slave, stderr=slave, cwd=ROOT, env=env, close_fds=True
+    )
     os.close(slave)
     out = b""
 
@@ -61,10 +62,10 @@ DOWN, UP, QUIT = b"\x1b[B", b"\x1b[A", b"q"
 def test_moving_through_the_menu_redraws_in_place_on_the_alternate_screen():
     text, code = run_launcher([DOWN, DOWN, UP, DOWN, QUIT])
     assert code == 0
-    assert text.count("\x1b[?1049h") == 1 and text.count("\x1b[?1049l") == 1      # one alternate-screen session, closed cleanly
-    assert "\x1b[2J" not in text and "\x1b[3J" not in text                         # never a full clear that pushes frames into scrollback
-    assert len(re.findall(r"\x1b\[H", text)) >= 5                                   # every frame starts from the home position
-    assert text.count("\x1b[?25l") == 1 and text.count("\x1b[?25h") == 1            # cursor hidden once, restored once
+    assert text.count("\x1b[?1049h") == 1 and text.count("\x1b[?1049l") == 1  # one alternate-screen session, closed cleanly
+    assert "\x1b[2J" not in text and "\x1b[3J" not in text  # never a full clear that pushes frames into scrollback
+    assert len(re.findall(r"\x1b\[H", text)) >= 5  # every frame starts from the home position
+    assert text.count("\x1b[?25l") == 1 and text.count("\x1b[?25h") == 1  # cursor hidden once, restored once
 
 
 def test_each_frame_fits_the_terminal_height_and_shows_live_status_not_hard_coded_claims():
@@ -98,7 +99,7 @@ def test_a_workflow_returns_to_the_menu_instead_of_exiting_and_never_crashes():
     text, code = run_launcher([b"3", ENTER, b"5", ENTER, QUIT], settle=1.2)
     p = plain(text)
     assert code == 0 and "Traceback" not in p and "AttributeError" not in p and "OptionInfo" not in p
-    assert text.count("\x1b[?1049h") == 3 and text.count("\x1b[?1049l") == 3          # menu, menu again, menu again: it came back each time
+    assert text.count("\x1b[?1049h") == 3 and text.count("\x1b[?1049l") == 3  # menu, menu again, menu again: it came back each time
     assert p.count("Press Enter to return to the menu") == 2
     assert "DATASET VALIDATION" in p or "Dataset Validation" in p or "expected labels: ALL NULL" in p or "No prepared classification dataset" in p
     assert "API preflight" in p and "Exiting Runport" in p

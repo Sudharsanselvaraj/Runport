@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field, model_validator
 
 class DataClassification(str, Enum):
     """Fail-closed confidentiality classification levels.
-    
+
     Only PUBLIC and SYNTHETIC records may ever be routed to external model APIs.
     INTERNAL, CONFIDENTIAL, and UNCLASSIFIED records are blocked before network dispatch.
     """
+
     PUBLIC = "PUBLIC"
     SYNTHETIC = "SYNTHETIC"
     INTERNAL = "INTERNAL"
@@ -24,6 +25,7 @@ CaseConfidentiality = DataClassification
 
 class VerificationStatus(str, Enum):
     """Verification state for evaluation ground truths."""
+
     UNVERIFIED = "UNVERIFIED"
     VERIFIED = "VERIFIED"
     DISPUTED = "DISPUTED"
@@ -31,6 +33,7 @@ class VerificationStatus(str, Enum):
 
 class SourceProvenanceStatus(str, Enum):
     """Source provenance status for evaluation cases."""
+
     SOURCE_VERIFIED = "SOURCE_VERIFIED"
     SYNTHETIC = "SYNTHETIC"
     UNRESOLVED = "UNRESOLVED"
@@ -38,6 +41,7 @@ class SourceProvenanceStatus(str, Enum):
 
 class DifficultyLevel(str, Enum):
     """Categorized query complexity level."""
+
     EASY = "EASY"
     MEDIUM = "MEDIUM"
     HARD = "HARD"
@@ -46,6 +50,7 @@ class DifficultyLevel(str, Enum):
 
 class DatasetSplit(str, Enum):
     """Target partition for model evaluation."""
+
     TRAIN = "TRAIN"
     DEV = "DEV"
     TEST = "TEST"
@@ -54,19 +59,14 @@ class DatasetSplit(str, Enum):
 
 class VerificationRecord(BaseModel):
     """Verification provenance for ground truth citations.
-    
+
     Acceptance Criteria: Any record claiming VERIFIED status MUST provide an explicit,
     authoritative reference source citation.
     """
+
     status: VerificationStatus = Field(default=VerificationStatus.UNVERIFIED)
-    reference_source: Optional[str] = Field(
-        default=None,
-        description="Authoritative citation (e.g. Official Policy 2026, Technical Reference Documentation)."
-    )
-    verifier: Optional[str] = Field(
-        default=None,
-        description="Identity of the human reviewer or domain expert."
-    )
+    reference_source: Optional[str] = Field(default=None, description="Authoritative citation (e.g. Official Policy 2026, Technical Reference Documentation).")
+    verifier: Optional[str] = Field(default=None, description="Identity of the human reviewer or domain expert.")
     verified_at: Optional[datetime] = Field(default=None)
     notes: Optional[str] = Field(default=None)
 
@@ -74,66 +74,37 @@ class VerificationRecord(BaseModel):
     def validate_verified_source(self) -> "VerificationRecord":
         if self.status == VerificationStatus.VERIFIED:
             if not self.reference_source or not self.reference_source.strip():
-                raise ValueError(
-                    "Records claiming VERIFIED status must specify an authoritative reference_source."
-                )
+                raise ValueError("Records claiming VERIFIED status must specify an authoritative reference_source.")
         return self
 
 
 class EvaluationCase(BaseModel):
     """Standard evaluation test case for benchmark queries."""
+
     id: str = Field(description="Unique case identifier (e.g. eval-case-001)")
     query: str = Field(description="Query prompt")
-    expected_answer: Optional[str] = Field(
-        default=None,
-        description="Authoritative ground truth answer"
-    )
-    programme_category: str = Field(
-        default="General",
-        description="Category or domain (e.g. Technical, Billing, General)"
-    )
+    expected_answer: Optional[str] = Field(default=None, description="Authoritative ground truth answer")
+    programme_category: str = Field(default="General", description="Category or domain (e.g. Technical, Billing, General)")
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
     classification: DataClassification = Field(
-        default=DataClassification.UNCLASSIFIED,
-        description="Confidentiality classification. Defaults to UNCLASSIFIED (fail-closed)."
+        default=DataClassification.UNCLASSIFIED, description="Confidentiality classification. Defaults to UNCLASSIFIED (fail-closed)."
     )
     split: DatasetSplit = Field(default=DatasetSplit.UNASSIGNED)
     verification: VerificationRecord = Field(default_factory=VerificationRecord)
-    
+
     # Grounded Provenance Tracking
     source_status: SourceProvenanceStatus = Field(
         default=SourceProvenanceStatus.SYNTHETIC,
-        description="SOURCE_VERIFIED (grounded in audited KB), SYNTHETIC (fixture), or UNRESOLVED (missing/unsupported in KB)"
+        description="SOURCE_VERIFIED (grounded in audited KB), SYNTHETIC (fixture), or UNRESOLVED (missing/unsupported in KB)",
     )
-    relevant_record_ids: List[str] = Field(
-        default_factory=list,
-        description="Stable parsed-KB record IDs that ground the correct answer."
-    )
-    source_file: Optional[str] = Field(
-        default=None,
-        description="Source KB Markdown filename containing grounding records."
-    )
-    source_line_range: Optional[str] = Field(
-        default=None,
-        description="Line range in source KB Markdown file (e.g. '11333-11354')."
-    )
-    abstention_expected: bool = Field(
-        default=False,
-        description="True if the KB lacks the facts and the system is expected to abstain/refer."
-    )
-    expected_claims: List[str] = Field(
-        default_factory=list,
-        description="Factual assertions that must be present in the answer."
-    )
-    
-    expected_context: Optional[str] = Field(
-        default=None,
-        description="Authoritative grounding context/chunks that the retriever is expected to fetch."
-    )
-    expected_retrieval_keywords: List[str] = Field(
-        default_factory=list,
-        description="Key terms or section headings expected to be returned by retriever."
-    )
+    relevant_record_ids: List[str] = Field(default_factory=list, description="Stable parsed-KB record IDs that ground the correct answer.")
+    source_file: Optional[str] = Field(default=None, description="Source KB Markdown filename containing grounding records.")
+    source_line_range: Optional[str] = Field(default=None, description="Line range in source KB Markdown file (e.g. '11333-11354').")
+    abstention_expected: bool = Field(default=False, description="True if the KB lacks the facts and the system is expected to abstain/refer.")
+    expected_claims: List[str] = Field(default_factory=list, description="Factual assertions that must be present in the answer.")
+
+    expected_context: Optional[str] = Field(default=None, description="Authoritative grounding context/chunks that the retriever is expected to fetch.")
+    expected_retrieval_keywords: List[str] = Field(default_factory=list, description="Key terms or section headings expected to be returned by retriever.")
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 

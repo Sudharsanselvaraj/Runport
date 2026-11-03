@@ -98,4 +98,3 @@ class FieldMatchScorer(BaseScorer):
             except Exception:
                 pass
         return None
-

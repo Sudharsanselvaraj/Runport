@@ -18,9 +18,9 @@ def discover_plugins(group: str = PLUGIN_GROUP) -> Dict[str, Any]:
         eps = importlib.metadata.entry_points()
         # Python 3.12+ / 3.10+ entry_points select API
         if hasattr(eps, "select"):
-            matches = eps.select(group=group)
+            matches = list(eps.select(group=group))
         else:
-            matches = eps.get(group, [])
+            matches = list(getattr(eps, "get", lambda *a: [])(group, []))
 
         for ep in matches:
             try:
@@ -41,4 +41,3 @@ def load_plugin_targets() -> Dict[str, Any]:
 def load_plugin_scorers() -> Dict[str, Any]:
     """Load custom statistical or heuristic scorers provided by external plugins."""
     return discover_plugins(SCORER_GROUP)
-

@@ -19,7 +19,14 @@ from runport.tui.input import KeyReader
 from runport.tui.telemetry import SystemTelemetry, InferenceTelemetry, LogBuffer
 from runport.observability.monitor import LiveMonitor
 from runport.tui.live_views import (
-    FORMAT_CHOICES, ExplorerState, LiveContext, VIEWS, ViewModel, build_execution_header, render_view, view_explorer,
+    FORMAT_CHOICES,
+    ExplorerState,
+    LiveContext,
+    VIEWS,
+    ViewModel,
+    build_execution_header,
+    render_view,
+    view_explorer,
 )
 from runport.tui.theme import BG_DARK
 from runport.tui.screens import (
@@ -81,17 +88,18 @@ class WorkbenchTUI:
         self.live_ctx: Optional[LiveContext] = None
         self._view_cache: Dict[str, Any] = {}
         from runport.core.config import settings as _settings
+
         self.ex = ExplorerState(dest=_settings.reports_dir / "exports")
         self._trace_cache: Optional[tuple] = None
         self._redraw_hook = None
 
         # State
-        self.nav_index: int = 0          # Active loaded section (0-7)
-        self.sidebar_cursor: int = 0     # Cursor position in sidebar list (0-7)
-        self.focused_pane: str = "NAV"   # "NAV", "MAIN", or "COMMAND"
-        self.model_cursor: int = 0       # Cursor for Model Catalogue table
-        self.show_roster: bool = True    # the verified comparison roster is the default home; :catalogue shows the legacy planning table
-        self.content_cursor: int = 0     # Cursor for current active main panel table rows
+        self.nav_index: int = 0  # Active loaded section (0-7)
+        self.sidebar_cursor: int = 0  # Cursor position in sidebar list (0-7)
+        self.focused_pane: str = "NAV"  # "NAV", "MAIN", or "COMMAND"
+        self.model_cursor: int = 0  # Cursor for Model Catalogue table
+        self.show_roster: bool = True  # the verified comparison roster is the default home; :catalogue shows the legacy planning table
+        self.content_cursor: int = 0  # Cursor for current active main panel table rows
         self.input_mode: InputMode = InputMode.NORMAL
 
         # Editable Command / Search Bar State
@@ -133,6 +141,7 @@ class WorkbenchTUI:
     def refresh_live(self) -> int:
         """Poll the event log once (read-only), recompute the aggregate, refresh ledger and system samples. Returns new event count."""
         from runport.models.registry import roster_status
+
         new = self.monitor.poll()
         agg = self.monitor.aggregate()
         self.inf_telemetry.update_from(agg)
@@ -144,9 +153,16 @@ class WorkbenchTUI:
         review_ids: List[str] = []
         review_count: Optional[int] = None
         self.live_ctx = LiveContext(
-            now=time.time(), width=self.console.size[0], budget=self.budget_status, agg=agg, analysis=self.monitor.analysis,
-            dataset=self.monitor.dataset, roster=roster_status(), events_malformed=self.monitor.tail.malformed,
-            review_ids=review_ids, review_count=review_count,
+            now=time.time(),
+            width=self.console.size[0],
+            budget=self.budget_status,
+            agg=agg,
+            analysis=self.monitor.analysis,
+            dataset=self.monitor.dataset,
+            roster=roster_status(),
+            events_malformed=self.monitor.tail.malformed,
+            review_ids=review_ids,
+            review_count=review_count,
         )
         self.live_version += 1
         self._view_cache.clear()
@@ -161,6 +177,7 @@ class WorkbenchTUI:
     def _trace_set(self):
         """Selected trace rows for the explorer, cached until the data or the filters change. Read-only."""
         from runport.observability.export import build_trace_rows
+
         key = (self.live_version,) + self.ex.key()
         if self._trace_cache is None or self._trace_cache[0] != key:
             preds, events, labels, frozen = self.monitor.trace_inputs()
@@ -170,28 +187,42 @@ class WorkbenchTUI:
     def _plans(self):
         from runport.core.config import settings
         from runport.observability.export import load_bench_plans
+
         return load_bench_plans(settings.data_dir / "benchmarks")
 
     def _explorer_choices(self):
         """Models, runs, error classes and data kinds present in ALL stored traces (unfiltered), cached per refresh."""
         from runport.observability.export import build_trace_rows
+
         if getattr(self, "_choices_cache", (None,))[0] != self.live_version:
             preds, events, labels, frozen = self.monitor.trace_inputs()
             rows = build_trace_rows(preds, events, labels, frozen).rows
-            self._choices_cache = (self.live_version, {
-                "models": sorted({r["identity"]["model_key"] for r in rows}), "runs": sorted({r["identity"]["run_id"] for r in rows}),
-                "errors": sorted({r["request"]["error_category"] for r in rows if r["request"]["error_category"]}),
-                "kinds": sorted({r["markers"]["data_kind"] for r in rows})})
+            self._choices_cache = (
+                self.live_version,
+                {
+                    "models": sorted({r["identity"]["model_key"] for r in rows}),
+                    "runs": sorted({r["identity"]["run_id"] for r in rows}),
+                    "errors": sorted({r["request"]["error_category"] for r in rows if r["request"]["error_category"]}),
+                    "kinds": sorted({r["markers"]["data_kind"] for r in rows}),
+                },
+            )
         return self._choices_cache[1]
 
     def get_view(self) -> Optional[ViewModel]:
         if self.section == "explorer" and self.live_ctx is not None:
             if "explorer" not in self._view_cache:
                 from runport.observability.export import load_bench_plans, participant_coverage, run_summaries
+
                 ts = self._trace_set()
                 plans = self._plans()
-                self._view_cache["explorer"] = view_explorer(self.live_ctx, self.ex, ts, participant_coverage(self.live_ctx.roster, ts.rows),
-                                                             self.monitor.analysis.labels.status, run_summaries(ts.rows, plans))
+                self._view_cache["explorer"] = view_explorer(
+                    self.live_ctx,
+                    self.ex,
+                    ts,
+                    participant_coverage(self.live_ctx.roster, ts.rows),
+                    self.monitor.analysis.labels.status,
+                    run_summaries(ts.rows, plans),
+                )
             return self._view_cache["explorer"]
         builder = VIEWS.get(self.section)
         if builder is None or self.live_ctx is None:
@@ -250,18 +281,13 @@ class WorkbenchTUI:
         if not self.search_query:
             return self.candidates
         q = self.search_query.lower()
-        return [
-            m
-            for m in self.candidates
-            if q in m.model_id.lower()
-            or q in m.display_name.lower()
-            or q in m.provider.lower()
-        ]
+        return [m for m in self.candidates if q in m.model_id.lower() or q in m.display_name.lower() or q in m.provider.lower()]
 
     def _model_rows(self) -> list:
         """Rows the Model pane is currently showing: registered model candidates, or the filtered catalogue."""
         if self.show_roster:
             from runport.models.registry import list_records
+
             return list_records()
         return self.get_filtered_candidates()
 
@@ -269,6 +295,7 @@ class WorkbenchTUI:
         """Ensures model_cursor remains within bounds of current filtered list."""
         if self.show_roster and self.section == "roster":
             from runport.models.registry import list_records
+
             recs = list_records()
             self.model_cursor = max(0, min(self.model_cursor, len(recs) - 1)) if recs else 0
             return
@@ -282,6 +309,7 @@ class WorkbenchTUI:
         """Loads latest data from SQLite ledger, portfolio registry, diagnostics, benchmarks, and traces."""
         self.candidates = get_portfolio()
         from runport.models.registry import init_registry_from_portfolio
+
         init_registry_from_portfolio(self.candidates)
         self.budget_status = self.budget_service.get_status()
         self.health_items = run_system_health_checks()
@@ -293,11 +321,7 @@ class WorkbenchTUI:
             self.eval_runs = self.budget_service.db.get_all_evaluation_runs(limit=50)
             if self.eval_runs and 0 <= self.content_cursor < len(self.eval_runs):
                 sel_id = self.eval_runs[self.content_cursor].get("run_id")
-                self.selected_run_results = (
-                    self.budget_service.db.get_evaluation_results_for_run(sel_id)
-                    if sel_id
-                    else []
-                )
+                self.selected_run_results = self.budget_service.db.get_evaluation_results_for_run(sel_id) if sel_id else []
             else:
                 self.selected_run_results = []
         except Exception:
@@ -431,10 +455,12 @@ class WorkbenchTUI:
             return build_help_main_panel(focused)
         if sec == "settings":
             from rich.console import Group
+
             return Panel(Group(build_settings_main_panel(focused), build_help_main_panel(False)), title="SETTINGS & HELP", border_style="grey50")
         if sec == "roster":
             if self.show_roster:
                 from runport.models.registry import roster_status
+
                 return build_roster_panel(roster_status(), self.model_cursor, focused, self.console.size[0])
             return build_model_catalogue_panel(self.candidates, self.model_cursor, self.search_query, focused)
         if sec == "budget":
@@ -531,10 +557,7 @@ class WorkbenchTUI:
                 self.cursor_pos = 0
             elif key == "BACKSPACE":
                 if self.cursor_pos > 0:
-                    self.text_buffer = (
-                        self.text_buffer[: self.cursor_pos - 1]
-                        + self.text_buffer[self.cursor_pos :]
-                    )
+                    self.text_buffer = self.text_buffer[: self.cursor_pos - 1] + self.text_buffer[self.cursor_pos :]
                     self.cursor_pos -= 1
                 elif not self.text_buffer:
                     self.input_mode = InputMode.NORMAL
@@ -561,11 +584,7 @@ class WorkbenchTUI:
                     self.text_buffer = ""
                     self.cursor_pos = 0
             elif len(key) == 1 and key.isprintable():
-                self.text_buffer = (
-                    self.text_buffer[: self.cursor_pos]
-                    + key
-                    + self.text_buffer[self.cursor_pos :]
-                )
+                self.text_buffer = self.text_buffer[: self.cursor_pos] + key + self.text_buffer[self.cursor_pos :]
                 self.cursor_pos += 1
             return
 
@@ -582,17 +601,10 @@ class WorkbenchTUI:
                 self.search_query = self.text_buffer.strip()
                 self.input_mode = InputMode.NORMAL
                 self._clamp_model_cursor()
-                self.feedback_message = (
-                    f"Filter applied: '{self.search_query}'"
-                    if self.search_query
-                    else "Filter cleared"
-                )
+                self.feedback_message = f"Filter applied: '{self.search_query}'" if self.search_query else "Filter cleared"
             elif key == "BACKSPACE":
                 if self.cursor_pos > 0:
-                    self.text_buffer = (
-                        self.text_buffer[: self.cursor_pos - 1]
-                        + self.text_buffer[self.cursor_pos :]
-                    )
+                    self.text_buffer = self.text_buffer[: self.cursor_pos - 1] + self.text_buffer[self.cursor_pos :]
                     self.cursor_pos -= 1
                     self.search_query = self.text_buffer
                     self._clamp_model_cursor()
@@ -605,11 +617,7 @@ class WorkbenchTUI:
             elif key == "RIGHT":
                 self.cursor_pos = min(len(self.text_buffer), self.cursor_pos + 1)
             elif len(key) == 1 and key.isprintable():
-                self.text_buffer = (
-                    self.text_buffer[: self.cursor_pos]
-                    + key
-                    + self.text_buffer[self.cursor_pos :]
-                )
+                self.text_buffer = self.text_buffer[: self.cursor_pos] + key + self.text_buffer[self.cursor_pos :]
                 self.cursor_pos += 1
                 self.search_query = self.text_buffer
                 self._clamp_model_cursor()
@@ -768,11 +776,14 @@ class WorkbenchTUI:
             return
         self.content_cursor = 0
         self._view_cache.pop("explorer", None)
-        self.feedback_message = (f"Trace filters: model {ex.model or 'ALL'}, task {ex.task or 'ALL'}, run {ex.run or 'ALL'}, status {ex.status or 'ALL'}, "
-                                 f"error class {ex.error_class or 'ALL'}, data {ex.kind or 'ALL'}; format {ex.fmt.upper()}")
+        self.feedback_message = (
+            f"Trace filters: model {ex.model or 'ALL'}, task {ex.task or 'ALL'}, run {ex.run or 'ALL'}, status {ex.status or 'ALL'}, "
+            f"error class {ex.error_class or 'ALL'}, data {ex.kind or 'ALL'}; format {ex.fmt.upper()}"
+        )
 
     def _run_export(self) -> None:
         from runport.observability.export import ExportError, build_trace_rows, export_traces
+
         ex = self.ex
         ex.last_error, ex.last_result = None, None
         preds, events, labels, frozen = self.monitor.trace_inputs()
@@ -786,6 +797,7 @@ class WorkbenchTUI:
                 ex.progress = f"preparing {done}/{total} records"
                 if self._redraw_hook:
                     self._redraw_hook()
+
         try:
             ex.progress = "starting"
             ts = build_trace_rows(preds, events, labels, frozen, sel, progress=progress)
@@ -823,10 +835,7 @@ class WorkbenchTUI:
                     ctx = getattr(cand, "context_length", 0)
                     in_p = getattr(cand, "input_price_per_1m_usd", 0)
                     out_p = getattr(cand, "output_price_per_1m_usd", 0)
-                    self.feedback_message = (
-                        f"Inspected: {m_id} ({prov}) | Context: {ctx:,} tokens | "
-                        f"Price: ${in_p:.2f}/${out_p:.2f} per 1M"
-                    )
+                    self.feedback_message = f"Inspected: {m_id} ({prov}) | Context: {ctx:,} tokens | Price: ${in_p:.2f}/${out_p:.2f} per 1M"
                 self.log_buffer.add("INFO", "Inspected a roster entry")
             else:
                 self.feedback_message = "No model selected"
@@ -842,7 +851,7 @@ class WorkbenchTUI:
             ]
             idx = min(self.content_cursor, len(budget_rules) - 1)
             self.feedback_message = budget_rules[idx]
-            self.log_buffer.add("INFO", f"Inspected budget rule #{idx+1}")
+            self.log_buffer.add("INFO", f"Inspected budget rule #{idx + 1}")
         elif sec == "evaluations":
             if self.eval_runs and 0 <= self.content_cursor < len(self.eval_runs):
                 sel_run = self.eval_runs[self.content_cursor]
@@ -863,8 +872,9 @@ class WorkbenchTUI:
         elif sec == "traces":
             if self.traces and 0 <= self.content_cursor < len(self.traces):
                 trace = self.traces[self.content_cursor]
-                diag = (self.trace_report.diagnoses[self.content_cursor]
-                        if (self.trace_report and self.content_cursor < len(self.trace_report.diagnoses)) else None)
+                diag = (
+                    self.trace_report.diagnoses[self.content_cursor] if (self.trace_report and self.content_cursor < len(self.trace_report.diagnoses)) else None
+                )
                 cat_str = diag.category.value if diag else "UNANALYZED"
                 self.feedback_message = f"Inspected Trace: {trace.id} [{cat_str}] | Latency: {trace.latency_ms:.0f}ms | Tokens: {trace.total_tokens}"
                 self.log_buffer.add("INFO", f"Inspected trace {trace.id}")
@@ -883,22 +893,48 @@ class WorkbenchTUI:
                 self.feedback_message = f"Viewing {NAV_ITEMS[self.nav_index][1]}"
 
     COMMAND_SECTIONS = {
-        "overview": "overview", "o": "overview", "home": "overview",
-        "roster": "roster", "models": "roster", "m": "roster",
-        "quality": "quality", "classification": "quality", "q1": "quality",
-        "calibration": "calibration", "confidence": "calibration", "cal": "calibration",
-        "agreement": "agreement", "agree": "agreement",
+        "overview": "overview",
+        "o": "overview",
+        "home": "overview",
+        "roster": "roster",
+        "models": "roster",
+        "m": "roster",
+        "quality": "quality",
+        "classification": "quality",
+        "q1": "quality",
+        "calibration": "calibration",
+        "confidence": "calibration",
+        "cal": "calibration",
+        "agreement": "agreement",
+        "agree": "agreement",
         "binary": "binary",
-        "latency": "latency", "cost": "latency", "reliability": "latency", "live": "latency",
-        "robustness": "robustness", "readiness": "robustness",
-        "dataset": "dataset", "labels": "dataset", "d": "dataset",
-        "budget": "budget", "spend": "budget", "b": "budget",
-        "traces": "traces", "t": "traces",
-        "settings": "settings", "s": "settings",
-        "eval": "evaluations", "evals": "evaluations", "e": "evaluations", "rag": "evaluations",
-        "health": "health", "h": "health",
-        "explorer": "explorer", "export": "explorer", "trace": "explorer",
-        "validation": "validation", "validate": "validation",
+        "latency": "latency",
+        "cost": "latency",
+        "reliability": "latency",
+        "live": "latency",
+        "robustness": "robustness",
+        "readiness": "robustness",
+        "dataset": "dataset",
+        "labels": "dataset",
+        "d": "dataset",
+        "budget": "budget",
+        "spend": "budget",
+        "b": "budget",
+        "traces": "traces",
+        "t": "traces",
+        "settings": "settings",
+        "s": "settings",
+        "eval": "evaluations",
+        "evals": "evaluations",
+        "e": "evaluations",
+        "rag": "evaluations",
+        "health": "health",
+        "h": "health",
+        "explorer": "explorer",
+        "export": "explorer",
+        "trace": "explorer",
+        "validation": "validation",
+        "validate": "validation",
     }
 
     def execute_command(self, cmd_line: str) -> None:
@@ -948,6 +984,7 @@ class WorkbenchTUI:
     def _execute_audit_check(self) -> None:
         """Executes live workspace health verification and updates feedback."""
         from runport.tui.health import run_system_health_checks
+
         items = run_system_health_checks()
         passed = sum(1 for item in items if item.status == "PASS")
         self.feedback_message = f"Health check: {passed}/{len(items)} components verified"

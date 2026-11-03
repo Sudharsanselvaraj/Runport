@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-and-publish:
+    name: Build & Publish Release to PyPI and GitHub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Web Dashboard
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          mkdir -p ../src/runport/_web
+          cp -r dist/* ../src/runport/_web/
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build Distributions (sdist and wheel)
+        run: uv build
+
+      - name: Publish Package to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+      - name: Extract Changelog Entry
+        id: changelog
+        run: |
+          TAG=${{ github.ref_name }}
+          VERSION=${TAG#v}
+          echo "Extracting release notes for version $VERSION..."
+          python3 -c "
+          import re, sys
+          content = open('CHANGELOG.md').read()
+          pattern = r'## \[' + re.escape('$VERSION') + r'\].*?\n(.*?)(?=\n## \[|\Z)'
+          match = re.search(pattern, content, re.DOTALL)
+          if match:
+              with open('RELEASE_NOTES.md', 'w') as f:
+                  f.write(match.group(1).strip() + '\n')
+          else:
+              with open('RELEASE_NOTES.md', 'w') as f:
+                  f.write('Release ' + '$TAG' + '\n')
+          "
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: dist/*
+          draft: false
+          prerelease: false

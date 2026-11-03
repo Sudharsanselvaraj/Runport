@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 class EvaluationScore(BaseModel):
     """Rubric-based evaluation scores for model output against ground truth."""
+
     score_id: str = Field(description="Unique evaluation score ID")
     execution_id: str = Field(description="Associated ModelExecutionRecord ID")
     accuracy: float = Field(ge=0.0, le=1.0, description="Factual correctness against verified reference")

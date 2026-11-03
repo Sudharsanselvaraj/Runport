@@ -38,7 +38,7 @@ def test_reconciling_with_a_real_amount_unblocks_and_books_it_as_a_distinct_basi
     assert st.spend_by_basis == {"RECONCILED_MANUAL": Decimal("0.000321")}
     assert svc.check_spend_permitted(Decimal("0.0001"))[0] is True
     with pytest.raises(ValueError):
-        svc.db.reconcile_transaction("tx-1", Decimal("1"))   # already resolved
+        svc.db.reconcile_transaction("tx-1", Decimal("1"))  # already resolved
     with pytest.raises(KeyError):
         svc.db.reconcile_transaction("nope", Decimal("1"))
 
@@ -56,10 +56,13 @@ def test_actual_estimated_simulated_and_unresolved_spend_stay_distinct(svc):
 
 def test_legacy_ledgers_gain_the_new_columns_without_losing_rows(tmp_path):
     import sqlite3
+
     path = tmp_path / "legacy.db"
     c = sqlite3.connect(path)
-    c.execute("CREATE TABLE budget_ledger (transaction_id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, run_id TEXT, model_id TEXT NOT NULL, provider TEXT NOT NULL, "
-              "amount_micros INTEGER NOT NULL, amount_usd TEXT NOT NULL, is_pilot INTEGER NOT NULL DEFAULT 1, is_preflight_estimate INTEGER NOT NULL DEFAULT 0, description TEXT NOT NULL)")
+    c.execute(
+        "CREATE TABLE budget_ledger (transaction_id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, run_id TEXT, model_id TEXT NOT NULL, provider TEXT NOT NULL, "
+        "amount_micros INTEGER NOT NULL, amount_usd TEXT NOT NULL, is_pilot INTEGER NOT NULL DEFAULT 1, is_preflight_estimate INTEGER NOT NULL DEFAULT 0, description TEXT NOT NULL)"
+    )
     c.execute("INSERT INTO budget_ledger VALUES ('t', 'now', NULL, 'm', 'p', 5000, '0.005000', 1, 0, 'old')")
     c.commit()
     c.close()

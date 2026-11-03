@@ -55,9 +55,7 @@ def test_unknown_price_model_runs_with_unavailable_estimate_and_requires_per_cas
     db.init_db()
 
     # Case 1: require_priced is enabled -> fails preflight
-    ws_strict = WorkspaceConfig(
-        budget=BudgetConfig(require_priced=True, per_case_usd=Decimal("0.05"))
-    )
+    ws_strict = WorkspaceConfig(budget=BudgetConfig(require_priced=True, per_case_usd=Decimal("0.05")))
     runner_strict = GenericRunner(
         budget_service=BudgetService(db=db, policy=ws_strict.budget.to_budget_policy()),
         db=db,
@@ -79,9 +77,7 @@ def test_unknown_price_model_runs_with_unavailable_estimate_and_requires_per_cas
         runner_strict.execute_plan(plan, {"unpriced-model": target}, [{"id": 1, "input": "hi"}], approver=approver)
 
     # Case 2: require_priced is false but per_case_usd is zero -> fails because unpriced requires max_cost_per_case_usd
-    ws_no_cap = WorkspaceConfig(
-        budget=BudgetConfig(require_priced=False, per_case_usd=Decimal("0.00"))
-    )
+    ws_no_cap = WorkspaceConfig(budget=BudgetConfig(require_priced=False, per_case_usd=Decimal("0.00")))
     runner_no_cap = GenericRunner(
         budget_service=BudgetService(db=db, policy=ws_no_cap.budget.to_budget_policy()),
         db=db,
@@ -92,9 +88,7 @@ def test_unknown_price_model_runs_with_unavailable_estimate_and_requires_per_cas
         runner_no_cap.execute_plan(plan, {"unpriced-model": target}, [{"id": 1, "input": "hi"}], approver=approver2)
 
     # Case 3: require_priced is false and positive per_case_usd -> runs with UNAVAILABLE estimate
-    ws_ok = WorkspaceConfig(
-        budget=BudgetConfig(require_priced=False, per_case_usd=Decimal("0.05"))
-    )
+    ws_ok = WorkspaceConfig(budget=BudgetConfig(require_priced=False, per_case_usd=Decimal("0.05")))
     runner_ok = GenericRunner(
         budget_service=BudgetService(db=db, policy=ws_ok.budget.to_budget_policy()),
         db=db,
@@ -196,43 +190,47 @@ def test_db_columns_accuracy_and_tokens_nullable(tmp_path):
     db.init_db()
 
     run_id = "test-run-null"
-    db.save_evaluation_run({
-        "run_id": run_id,
-        "timestamp": "2026-11-03T00:00:00Z",
-        "model_id": "model-1",
-        "dataset_path": "data/eval.jsonl",
-        "total_cases": 1,
-        "completed_cases": 1,
-        "failed_cases": 0,
-        "total_cost_usd": "0.0000",
-        "mean_latency_ms": 12.0,
-        "mean_accuracy": 0.0,
-        "mean_groundedness": 0.0,
-        "mean_overall_score": 0.0,
-        "is_dry_run": False,
-        "notes": "test",
-    })
+    db.save_evaluation_run(
+        {
+            "run_id": run_id,
+            "timestamp": "2026-11-03T00:00:00Z",
+            "model_id": "model-1",
+            "dataset_path": "data/eval.jsonl",
+            "total_cases": 1,
+            "completed_cases": 1,
+            "failed_cases": 0,
+            "total_cost_usd": "0.0000",
+            "mean_latency_ms": 12.0,
+            "mean_accuracy": 0.0,
+            "mean_groundedness": 0.0,
+            "mean_overall_score": 0.0,
+            "is_dry_run": False,
+            "notes": "test",
+        }
+    )
 
     # Save results where accuracy and token counts are None (unlabelled / unpriced)
-    db.save_evaluation_results([
-        {
-            "result_id": "res-null-1",
-            "run_id": run_id,
-            "case_id": "case-1",
-            "prompt": "Evaluate this",
-            "expected_answer": None,
-            "generated_output": "Some response",
-            "latency_ms": 25.5,
-            "prompt_tokens": None,      # NULL in DB
-            "completion_tokens": None,  # NULL in DB
-            "cost_usd": None,           # NULL in DB
-            "accuracy": None,           # NULL in DB
-            "groundedness": None,       # NULL in DB
-            "format_adherence": 1.0,
-            "overall_score": None,      # NULL in DB
-            "evaluator_notes": "Unlabelled case",
-        }
-    ])
+    db.save_evaluation_results(
+        [
+            {
+                "result_id": "res-null-1",
+                "run_id": run_id,
+                "case_id": "case-1",
+                "prompt": "Evaluate this",
+                "expected_answer": None,
+                "generated_output": "Some response",
+                "latency_ms": 25.5,
+                "prompt_tokens": None,  # NULL in DB
+                "completion_tokens": None,  # NULL in DB
+                "cost_usd": None,  # NULL in DB
+                "accuracy": None,  # NULL in DB
+                "groundedness": None,  # NULL in DB
+                "format_adherence": 1.0,
+                "overall_score": None,  # NULL in DB
+                "evaluator_notes": "Unlabelled case",
+            }
+        ]
+    )
 
     results = db.get_evaluation_results_for_run(run_id)
     assert len(results) == 1
@@ -242,4 +240,3 @@ def test_db_columns_accuracy_and_tokens_nullable(tmp_path):
     assert row["cost_usd"] is None
     assert row["accuracy"] is None
     assert row["overall_score"] is None
-

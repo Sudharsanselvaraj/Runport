@@ -234,5 +234,3 @@ def expected_calibration_error(confs: Sequence[float], correct: Sequence[bool], 
             bin_conf = sum(confs[i] for i in idx) / bin_size
             ece += (bin_size / n) * abs(bin_acc - bin_conf)
     return ece
-
-

@@ -16,6 +16,7 @@ CONFIRM_PREFIX = "RUN LIVE"
 @dataclass(frozen=True)
 class LiveAuthorization:
     """Proof that a human confirmed a live run for specific models. Created only by `confirm_live_run`."""
+
     models: Tuple[str, ...]
 
     def covers(self, model_id: str) -> bool:
@@ -50,11 +51,13 @@ def confirm_live_run(
 
     if approve_token is not None:
         from runport.core.approvers import TokenApprover
+
         token_approver = TokenApprover(token=approve_token, enabled=True)
         token_approver.request_approval(plan_fingerprint=plan_fingerprint or "")
         return LiveAuthorization(models=tuple(models))
 
     from runport.core.approvers import InteractiveApprover
+
     phrase = expected_phrase(models, plan_fingerprint)
     summary_text = "\n".join(summary_lines)
     approver = InteractiveApprover(

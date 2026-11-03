@@ -4,24 +4,24 @@ from typing import List, Optional, Tuple
 from rich.style import Style
 
 # OpenSRE-inspired Slate Grey Palette with Lavender Accents
-BG_DARK = "#212633"              # Distinct, comfortable slate-grey background (sampled from OpenSRE)
-PANEL_BG = "#262b3a"             # Subtle elevated slate-grey panel background
-PANEL_BG_SECONDARY = "#2c3243"   # Elevated container background
-BORDER_CHARCOAL = "#3b4256"      # Refined slate border (crisp and visible against grey canvas)
-BORDER_FOCUSED = "#c084fc"       # Radiant lavender border for active focused panel
-BORDER_TEAL = BORDER_CHARCOAL    # Backwards compatibility alias
-CYAN_HIGHLIGHT = "#d8b4fe"       # Soft lilac accent for titles and indicators
+BG_DARK = "#212633"  # Distinct, comfortable slate-grey background (sampled from OpenSRE)
+PANEL_BG = "#262b3a"  # Subtle elevated slate-grey panel background
+PANEL_BG_SECONDARY = "#2c3243"  # Elevated container background
+BORDER_CHARCOAL = "#3b4256"  # Refined slate border (crisp and visible against grey canvas)
+BORDER_FOCUSED = "#c084fc"  # Radiant lavender border for active focused panel
+BORDER_TEAL = BORDER_CHARCOAL  # Backwards compatibility alias
+CYAN_HIGHLIGHT = "#d8b4fe"  # Soft lilac accent for titles and indicators
 
-TEXT_PRIMARY = "#f8fafc"         # Crisp, clean off-white primary text
-TEXT_SECONDARY = "#94a3b8"       # Balanced slate gray secondary text
-TEXT_MUTED = "#64748b"           # Deep restrained slate for inactive items and axes
-TEXT_BRIGHT = "#ffffff"          # Crisp white highlights
+TEXT_PRIMARY = "#f8fafc"  # Crisp, clean off-white primary text
+TEXT_SECONDARY = "#94a3b8"  # Balanced slate gray secondary text
+TEXT_MUTED = "#64748b"  # Deep restrained slate for inactive items and axes
+TEXT_BRIGHT = "#ffffff"  # Crisp white highlights
 
 # Clean Status Colors (Zero emojis)
-COLOR_SUCCESS = "#4ade80"        # Clean emerald check
-COLOR_WARNING = "#fbbf24"        # Warm amber warning
-COLOR_ERROR = "#f87171"          # Soft coral red error
-COLOR_INFO = "#c084fc"           # Elegant lavender info
+COLOR_SUCCESS = "#4ade80"  # Clean emerald check
+COLOR_WARNING = "#fbbf24"  # Warm amber warning
+COLOR_ERROR = "#f87171"  # Soft coral red error
+COLOR_INFO = "#c084fc"  # Elegant lavender info
 
 # Rich Style Objects
 STYLE_TITLE = Style(color="#e9d5ff", bold=True)
@@ -71,7 +71,7 @@ def render_2row_histogram(
     width: int = 18,
 ) -> Tuple[str, str, str]:
     """Renders a 2-tier terminal histogram matching btop systems engineering reference.
-    
+
     Returns:
         (top_tier_chars, bottom_tier_chars, baseline_str)
         - top_tier_chars: Represents values in range [(min+max)/2 .. max]
@@ -111,4 +111,3 @@ def render_2row_histogram(
             top_row.append(SPARK_CHARS[idx])
 
     return ("".join(top_row), "".join(bot_row), "─" * width)
-

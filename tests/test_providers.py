@@ -118,6 +118,7 @@ def _eval_dataset(tmp_path: Path) -> Path:
         for i in range(3)
     ]
     from runport.dataset.manager import DatasetManager
+
     path = tmp_path / "test_eval.jsonl"
     DatasetManager.save_jsonl(cases, path)
     return path
@@ -127,13 +128,13 @@ def test_benchmark_runner_flow(tmp_path: Path):
     """A real (live-shaped) run executes the suite, books spend on the ledger and persists results to SQLite."""
     from live_fakes import LiveFakeProvider
     from runport.core.live_guard import LiveAuthorization
+
     model = "google/gemini-3.5-flash-lite"
     db_mgr = DatabaseManager(db_path=tmp_path / "bench_test.db")
     db_mgr.init_db()
     dataset = _eval_dataset(tmp_path)
     runner_engine = BenchmarkRunner(db_mgr=db_mgr, provider=LiveFakeProvider.echoing_expected(dataset))
-    report = runner_engine.run(model_id=model, dataset_path=dataset, split=DatasetSplit.TEST,
-                               live_authorization=LiveAuthorization(models=(model,)))
+    report = runner_engine.run(model_id=model, dataset_path=dataset, split=DatasetSplit.TEST, live_authorization=LiveAuthorization(models=(model,)))
     assert report.total_cases == 3 and report.completed_cases == 3 and report.failed_cases == 0 and report.mean_accuracy > 0.0
     saved_run = db_mgr.get_evaluation_run(report.run_id)
     assert saved_run is not None and saved_run["model_id"] == model and saved_run["completed_cases"] == 3 and not saved_run["is_dry_run"]
@@ -175,10 +176,12 @@ def test_benchmark_runner_budget_ceiling_enforced(tmp_path: Path):
         for i in range(5)
     ]
     from runport.dataset.manager import DatasetManager
+
     DatasetManager.save_jsonl(cases, dataset_path)
 
     from live_fakes import LiveFakeProvider
     from runport.core.live_guard import LiveAuthorization
+
     runner_engine = BenchmarkRunner(db_mgr=db_mgr, budget_service=budget_service, provider=LiveFakeProvider())
 
     with pytest.raises(BudgetExceededError) as exc_info:
@@ -195,6 +198,7 @@ def test_cli_benchmark_never_simulates_and_compare_runs_reads_stored_real_runs(t
     """`benchmark` has no dry-run mode: without --live it sends nothing and stores nothing; compare-runs works on recorded runs."""
     import urllib.request
     from live_fakes import seed_runs
+
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("network touched"))
     plain = runner.invoke(app, ["benchmark", "--model", "google/gemini-3.5-flash-lite", "--split", "TEST"])
     assert plain.exit_code == 2 and "Nothing was sent" in plain.output and "REAL REQUESTS" in plain.output

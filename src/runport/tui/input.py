@@ -14,7 +14,7 @@ class KeyReader:
 
     def read_key(self, timeout: Optional[float] = None) -> str:
         """Reads a single key or key sequence.
-        
+
         Returns:
             Key identifier like 'UP', 'DOWN', 'LEFT', 'RIGHT', 'ENTER', 'ESC',
             'BACKSPACE', 'TAB', 'SHIFT_TAB', single characters, or 'EOF'.

@@ -41,6 +41,7 @@ def main(
     if ctx.invoked_subcommand is None:
         if interactive:
             from runport.tui.app import run_tui
+
             run_tui()
         elif sys.stdin.isatty():
             run_launcher_loop()
@@ -64,6 +65,7 @@ def handle_welcome_action(choice: int) -> None:
     """Dispatches one launcher choice to a real workflow."""
     if choice == 1:
         from runport.tui.app import run_tui
+
         run_tui()
     elif choice == 2:
         console.print("\n[bold #c084fc]Knowledge Base Audit Plugin:[/]")
@@ -82,6 +84,7 @@ def handle_welcome_action(choice: int) -> None:
         _run_command(["budget", "status"])
     elif choice == 8:
         from runport.core.config import settings
+
         console.print("\n[bold #c084fc]Runport Environment & Workspace Configuration:[/]")
         console.print(f"  App Name:          [green]{settings.app_name}[/]")
         console.print(f"  Data Directory:    [green]{settings.data_dir}[/]")
@@ -111,12 +114,12 @@ def run_launcher_loop() -> None:
 def compute_sha256(filepath) -> str:
     """Computes SHA-256 hash of a file."""
     import hashlib
+
     sha256 = hashlib.sha256()
     with open(filepath, "rb") as f:
         while chunk := f.read(65536):
             sha256.update(chunk)
     return sha256.hexdigest()
-
 
 
 # Register commands from submodules

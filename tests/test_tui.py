@@ -176,9 +176,7 @@ def test_panel_renderers():
     # 3. Models panel
     candidates = get_portfolio()
     console.file = io.StringIO()
-    models_panel = build_model_catalogue_panel(
-        candidates, selected_index=0, search_query="", is_focused=True
-    )
+    models_panel = build_model_catalogue_panel(candidates, selected_index=0, search_query="", is_focused=True)
     console.print(models_panel)
     out_models = console.file.getvalue()
     assert "MODEL CATALOGUE" in out_models
@@ -798,6 +796,7 @@ def test_tui_evaluation_runs_navigation_and_inspection():
     """Verify Up/Down arrow keys and Enter inspect runs on Evaluation Runs screen (nav 3)."""
     from live_fakes import seed_runs
     from runport.storage.db import DatabaseManager
+
     seed_runs(DatabaseManager())  # two recorded runs in the isolated test database
     app_tui = WorkbenchTUI()
     app_tui.refresh_data()
@@ -852,6 +851,7 @@ def test_tui_traces_observability_navigation_and_inspection():
 def test_welcome_screen_render():
     """Verify WelcomeScreen renders Braille logo, telemetry, and menu items properly."""
     from runport.tui.welcome import WelcomeScreen
+
     buf = io.StringIO()
     test_console = Console(file=buf, width=100)
     screen = WelcomeScreen(console=test_console)
@@ -859,11 +859,11 @@ def test_welcome_screen_render():
     output = buf.getvalue()
 
     assert "Welcome to Runport" in output
-    assert "Corpus:" in output and "Models:" in output and "API key:" in output and "Mode:" in output
+    assert "Dataset:" in output and "Models:" in output and "API key:" in output and "Mode:" in output
     assert "Spend: $" in output and "cap" in output
     assert "Tests: 95 passed" not in output  # no hard-coded claims; every figure is read live or shown as n/a
     assert "Launch Full-Screen TUI Dashboard" in output
-    for item in ("Validate Evaluation Dataset", "Model Comparison Roster", "API Preflight", "Run RAG Benchmark", "Inspect Budget"):
+    for item in ("Validate Evaluation Dataset", "Model Comparison Roster", "API Preflight", "Run Benchmark", "Inspect Budget"):
         assert item in output
     for gone in ("Decoupled RAG Benchmark", "Simulate vLLM", "Diagnose Production Traces"):
         assert gone not in output  # the launcher offers real workflows only
@@ -919,3 +919,15 @@ def test_cli_option_unwrapping():
     assert exc.value.exit_code == 2
 
 
+def test_web_cmd_requires_token_for_non_loopback(monkeypatch):
+    """Verify web command fails if non-loopback host is used without RUNPORT_API_TOKEN."""
+    from typer.testing import CliRunner
+    from runport.cli.main import app
+
+    runner = CliRunner()
+    monkeypatch.delenv("RUNPORT_API_TOKEN", raising=False)
+
+    # 0.0.0.0 without token must fail
+    res = runner.invoke(app, ["web", "--host", "0.0.0.0"])
+    assert res.exit_code == 1
+    assert "RUNPORT_API_TOKEN" in res.output

@@ -23,7 +23,7 @@ from runport.targets.base import (
 
 def _extract_nested_path(data: Any, path: str) -> Any:
     """Extracts a value from a nested dict/list using a dot-delimited path.
-    
+
     Supports keys and integer list indices (e.g., 'choices.0.message.content').
     """
     if not path or not data:
@@ -93,7 +93,7 @@ class HttpWorkflowConnector(Target):
         """Constructs the outbound payload from template or direct input."""
         if not self.payload_template:
             return input_payload
-        
+
         # Deep copy template and substitute string variables
         payload_str = json.dumps(self.payload_template)
         for key, val in input_payload.items():
@@ -111,7 +111,7 @@ class HttpWorkflowConnector(Target):
     ) -> TargetResult:
         """Executes HTTP request, extracts result, and calculates metrics."""
         body_dict = self._build_payload(input_payload)
-        
+
         req_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -127,7 +127,7 @@ class HttpWorkflowConnector(Target):
             )
 
             raw_res = json.loads(post_res.body.decode("utf-8", errors="replace"))
-            
+
             # Extract output text
             if self.output_path:
                 extracted = _extract_nested_path(raw_res, self.output_path)
@@ -148,7 +148,7 @@ class HttpWorkflowConnector(Target):
             usage = raw_res.get("usage", {}) if isinstance(raw_res, dict) else {}
             tokens_in = usage.get("prompt_tokens") or usage.get("input_tokens")
             tokens_out = usage.get("completion_tokens") or usage.get("output_tokens")
-            
+
             cost_usd = None
             cost_basis = CostBasis.UNAVAILABLE
             if self.pricing:

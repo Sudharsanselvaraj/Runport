@@ -17,8 +17,16 @@ from runport.classification.contracts import CONTRACT_VERSION
 from runport.classification.records import PredictionRecord
 from runport.core.config import settings
 from runport.models.registry import (
-    FactStatus, ModelRecord, Protocol, RouteRecord, RouteStatus, clear_registry,
-    fact, register_model, roster_status, unknown,
+    FactStatus,
+    ModelRecord,
+    Protocol,
+    RouteRecord,
+    RouteStatus,
+    clear_registry,
+    fact,
+    register_model,
+    roster_status,
+    unknown,
 )
 from runport.observability import export as X
 from runport.observability.events import EventStore, RequestEvent
@@ -27,6 +35,7 @@ from runport.tui.app import WorkbenchTUI
 from obs_helpers import finished, class_pred, label_row, binary_pred, make_prep, started, ts, write_labels, write_preds
 
 from datetime import date
+
 
 def _make_rec(k: str, mid: str):
     d = date(2026, 1, 1)
@@ -70,18 +79,49 @@ EMAIL, PHONE, KEY = "student.test@example.invalid", "0123456789012", "sk-or-v1-m
 
 def error_rec(case, run="run1", model="custom-protocol-model", retry=("TIMEOUT", "TIMEOUT", "TIMEOUT"), msg=None, task="CLASSIFICATION"):
     return PredictionRecord(
-        record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.DECISIONS_API,
-        requested_model_id=model, prompt_version="sha256:test", dataset_version="test-ds", status="ERROR", attempts=len(retry), retry_errors=list(retry),
-        error_type="ProviderError", error_message=msg or "request failed", created_at="2026-10-15T12:00:05+00:00")
+        record_id=f"{run}:{case}:{task}:{model}",
+        run_id=run,
+        case_id=case,
+        task=task,
+        model_key=model,
+        protocol=Protocol.DECISIONS_API,
+        requested_model_id=model,
+        prompt_version="sha256:test",
+        dataset_version="test-ds",
+        status="ERROR",
+        attempts=len(retry),
+        retry_errors=list(retry),
+        error_type="ProviderError",
+        error_message=msg or "request failed",
+        created_at="2026-10-15T12:00:05+00:00",
+    )
 
 
 def sample_preds():
-    ok = [class_pred(f"C{i}", "QUERY", model="custom-protocol-model", task="CLASSIFICATION", top=0.9, latency_ms=100.0 + i, prompt_tokens=50, completion_tokens=3, usage_source="PROVIDER_REPORTED",
-                      actual_cost_usd=Decimal("0.00010"), cost_basis="PROVIDER_REPORTED", native_cost=Decimal("0.0001"), native_cost_unit="credits(unverified)")
-          for i in range(3)]
+    ok = [
+        class_pred(
+            f"C{i}",
+            "QUERY",
+            model="custom-protocol-model",
+            task="CLASSIFICATION",
+            top=0.9,
+            latency_ms=100.0 + i,
+            prompt_tokens=50,
+            completion_tokens=3,
+            usage_source="PROVIDER_REPORTED",
+            actual_cost_usd=Decimal("0.00010"),
+            cost_basis="PROVIDER_REPORTED",
+            native_cost=Decimal("0.0001"),
+            native_cost_unit="credits(unverified)",
+        )
+        for i in range(3)
+    ]
     other = [class_pred(f"C{i}", "GREETING", model="gpt-4.1-nano", run="run2", task="CLASSIFICATION") for i in range(2)]
     bad = [class_pred("C9", "QUERY", model="custom-protocol-model", task="CLASSIFICATION", status="INVALID_OUTPUT"), error_rec("C8")]
-    binary = [binary_pred("L1", model="custom-protocol-model", task="BINARY", yes_prob=0.8), binary_pred("L2", task="BINARY", need_cta=False, model="gpt-4.1-nano", run="lrun2")]
+    binary = [
+        binary_pred("L1", model="custom-protocol-model", task="BINARY", yes_prob=0.8),
+        binary_pred("L2", task="BINARY", need_cta=False, model="gpt-4.1-nano", run="lrun2"),
+    ]
     return ok + other + bad + binary
 
 
@@ -97,7 +137,9 @@ def test_scopes_and_filters():
     everything = build()
     assert len(everything.rows) == len(sample_preds())
     one_model = build(sel=X.ExportSelection(models=("gpt-4.1-nano",)))
-    assert {r["identity"]["model_key"] for r in one_model.rows} == {"gpt-4.1-nano"} and one_model.skipped["NOT_SELECTED"] == len(sample_preds()) - len(one_model.rows)
+    assert {r["identity"]["model_key"] for r in one_model.rows} == {"gpt-4.1-nano"} and one_model.skipped["NOT_SELECTED"] == len(sample_preds()) - len(
+        one_model.rows
+    )
     assert {r["identity"]["run_id"] for r in build(sel=X.ExportSelection(runs=("run2",))).rows} == {"run2"}
     assert {r["identity"]["task"] for r in build(sel=X.ExportSelection(task="BINARY")).rows} == {"BINARY"}
     failed = build(sel=X.ExportSelection(statuses=("ERROR", "INVALID_OUTPUT")))
@@ -107,21 +149,42 @@ def test_scopes_and_filters():
 
 # ------------------------------------------------------------------ completeness, nulls, provenance fields
 def test_every_trace_field_is_present_and_nulls_are_preserved():
-    row = next(r for r in build().rows if r["identity"]["case_id"] == "C0" and r["identity"]["model_key"] == "custom-protocol-model" and r["identity"]["task"] == "CLASSIFICATION")
+    row = next(
+        r
+        for r in build().rows
+        if r["identity"]["case_id"] == "C0" and r["identity"]["model_key"] == "custom-protocol-model" and r["identity"]["task"] == "CLASSIFICATION"
+    )
     assert row["schema_version"] == X.SCHEMA_VERSION
-    assert row["versions"] == {"dataset_version": "test-ds", "prompt_fingerprint": "sha256:test", "input_contract_version": CONTRACT_VERSION,
-                               "parity_status": "PRODUCTION_PARITY_NOT_ESTABLISHED"}
-    assert row["confidence"]["selected_label_probability"] == pytest.approx(0.9) and sum(row["confidence"]["label_probabilities"].values()) == pytest.approx(1.0)
-    assert row["confidence"]["native_confidence"] is None                         # absent stays null, never filled
+    assert row["versions"] == {
+        "dataset_version": "test-ds",
+        "prompt_fingerprint": "sha256:test",
+        "input_contract_version": CONTRACT_VERSION,
+        "parity_status": "PRODUCTION_PARITY_NOT_ESTABLISHED",
+    }
+    assert row["confidence"]["selected_label_probability"] == pytest.approx(0.9) and sum(row["confidence"]["label_probabilities"].values()) == pytest.approx(
+        1.0
+    )
+    assert row["confidence"]["native_confidence"] is None  # absent stays null, never filled
     assert row["request"]["model_latency_ms"] is None and row["request"]["model_latency_source"] == "UNAVAILABLE"
-    assert row["cost"] == {**row["cost"], "actual_cost_usd": "0.00010", "estimated_cost_usd": None, "native_cost": "0.0001", "native_cost_unit": "credits(unverified)",
-                           "cost_basis": "PROVIDER_REPORTED", "unresolved_spend": False}
+    assert row["cost"] == {
+        **row["cost"],
+        "actual_cost_usd": "0.00010",
+        "estimated_cost_usd": None,
+        "native_cost": "0.0001",
+        "native_cost_unit": "credits(unverified)",
+        "cost_basis": "PROVIDER_REPORTED",
+        "unresolved_spend": False,
+    }
     assert row["markers"]["simulated"] is False and row["markers"]["provenance"] == "LIVE" and "model_latency_ms" in row["markers"]["unavailable_telemetry"]
     assert row["ground_truth"] == {"status": "PENDING", "label": None, "correct": None}
 
 
 def test_failed_and_invalid_requests_are_exported_with_their_markers():
-    rows = {(r["identity"]["case_id"]): r for r in build().rows if r["identity"]["task"] == "CLASSIFICATION" and r["identity"]["model_key"] == "custom-protocol-model"}
+    rows = {
+        (r["identity"]["case_id"]): r
+        for r in build().rows
+        if r["identity"]["task"] == "CLASSIFICATION" and r["identity"]["model_key"] == "custom-protocol-model"
+    }
     err, inv = rows["C8"], rows["C9"]
     assert err["markers"]["failed_call"] and err["request"]["error_category"] == "TIMEOUT" and err["request"]["attempts"] == 3
     assert err["request"]["retry_causes"] == ["TIMEOUT"] * 3 and err["output"]["predicted_label"] is None and err["usage"]["prompt_tokens"] is None
@@ -129,15 +192,39 @@ def test_failed_and_invalid_requests_are_exported_with_their_markers():
 
 
 def test_events_add_timestamps_retries_and_event_only_failures():
-    evs = [started("run1:C0:CLASSIFICATION:custom-protocol-model", 5), finished("run1:C0:CLASSIFICATION:custom-protocol-model", 6),
-           started("run3:Z1:CLASSIFICATION:gpt-4o-mini", 7, model="gpt-4o-mini", run="run3", case="Z1"),
-           finished("run3:Z1:CLASSIFICATION:gpt-4o-mini", 8, model="gpt-4o-mini", run="run3", case="Z1", status="ERROR", http_status=429, task="CLASSIFICATION", actual=None, basis=None),
-           RequestEvent(kind="REQUEST_RETRY", request_id="run1:C0:CLASSIFICATION:custom-protocol-model", run_id="run1", case_id="C0", model_key="custom-protocol-model", ts=ts(5.5), retry_cause="HTTP_503")]
+    evs = [
+        started("run1:C0:CLASSIFICATION:custom-protocol-model", 5),
+        finished("run1:C0:CLASSIFICATION:custom-protocol-model", 6),
+        started("run3:Z1:CLASSIFICATION:gpt-4o-mini", 7, model="gpt-4o-mini", run="run3", case="Z1"),
+        finished(
+            "run3:Z1:CLASSIFICATION:gpt-4o-mini",
+            8,
+            model="gpt-4o-mini",
+            run="run3",
+            case="Z1",
+            status="ERROR",
+            http_status=429,
+            task="CLASSIFICATION",
+            actual=None,
+            basis=None,
+        ),
+        RequestEvent(
+            kind="REQUEST_RETRY",
+            request_id="run1:C0:CLASSIFICATION:custom-protocol-model",
+            run_id="run1",
+            case_id="C0",
+            model_key="custom-protocol-model",
+            ts=ts(5.5),
+            retry_cause="HTTP_503",
+        ),
+    ]
     ts_ = build(events=evs)
     c0 = next(r for r in ts_.rows if r["request"]["request_id"] == "run1:C0:CLASSIFICATION:custom-protocol-model")
     assert c0["request"]["request_started_at"] == ts(5) and "HTTP_503" in c0["request"]["retry_causes"]
     only = next(r for r in ts_.rows if r["identity"]["run_id"] == "run3")
-    assert only["markers"]["source"] == "EVENT_ONLY_NO_PREDICTION_RECORD" and only["markers"]["failed_call"] and only["request"]["error_category"] == "RATE_LIMIT"
+    assert (
+        only["markers"]["source"] == "EVENT_ONLY_NO_PREDICTION_RECORD" and only["markers"]["failed_call"] and only["request"]["error_category"] == "RATE_LIMIT"
+    )
     assert only["output"]["predicted_label"] is None
 
 
@@ -155,9 +242,20 @@ def test_binary_rows_carry_the_frozen_threshold_and_decision_source():
 
 def test_ground_truth_and_correctness_only_after_approval(tmp_path):
     prep = make_prep(tmp_path / "p")
-    write_labels(prep, [label_row("C0", "CLASSIFICATION", "QUERY"), label_row("C1", "CLASSIFICATION", "GREETING"), label_row("C2", "CLASSIFICATION", "QUERY", status="PENDING_REVIEW")])
+    write_labels(
+        prep,
+        [
+            label_row("C0", "CLASSIFICATION", "QUERY"),
+            label_row("C1", "CLASSIFICATION", "GREETING"),
+            label_row("C2", "CLASSIFICATION", "QUERY", status="PENDING_REVIEW"),
+        ],
+    )
     labels = load_approved_labels(prep)
-    rows = {r["identity"]["case_id"]: r for r in build(labels=labels).rows if r["identity"]["model_key"] == "custom-protocol-model" and r["identity"]["task"] == "CLASSIFICATION"}
+    rows = {
+        r["identity"]["case_id"]: r
+        for r in build(labels=labels).rows
+        if r["identity"]["model_key"] == "custom-protocol-model" and r["identity"]["task"] == "CLASSIFICATION"
+    }
     assert rows["C0"]["ground_truth"] == {"status": "APPROVED", "label": "QUERY", "correct": True}
     assert rows["C1"]["ground_truth"] == {"status": "APPROVED", "label": "GREETING", "correct": False}
     assert rows["C2"]["ground_truth"] == {"status": "NOT_LABELLED", "label": None, "correct": None}
@@ -222,13 +320,30 @@ def test_zip_contents_manifest_and_participant_coverage(tmp_path):
     res = X.export_traces(ts_, X.ExportSelection(), roster_status(), NOLABELS, "zip", tmp_path, exported_at=STAMP)
     zf = zipfile.ZipFile(res.path)
     names = set(zf.namelist())
-    assert {"manifest.json", "all_records.jsonl", "all_records.csv", "consolidated_comparison.csv", "participants.csv",
-            "models/custom-protocol-model.jsonl", "models/custom-protocol-model.csv", "models/gpt-4.1-nano.jsonl", "models/gpt-4.1-nano.csv"} <= names
+    assert {
+        "manifest.json",
+        "all_records.jsonl",
+        "all_records.csv",
+        "consolidated_comparison.csv",
+        "participants.csv",
+        "models/custom-protocol-model.jsonl",
+        "models/custom-protocol-model.csv",
+        "models/gpt-4.1-nano.jsonl",
+        "models/gpt-4.1-nano.csv",
+    } <= names
     man = json.loads(zf.read("manifest.json"))
     assert man["schema_version"] == X.SCHEMA_VERSION and man["exported_at"] == STAMP and man["format"] == "zip"
-    assert man["run_ids"] == ["lrun", "lrun2", "run1", "run2"] and man["model_ids"] == ["custom-protocol-model", "gpt-4.1-nano"] and man["tasks"] == ["BINARY", "CLASSIFICATION"]
+    assert (
+        man["run_ids"] == ["lrun", "lrun2", "run1", "run2"]
+        and man["model_ids"] == ["custom-protocol-model", "gpt-4.1-nano"]
+        and man["tasks"] == ["BINARY", "CLASSIFICATION"]
+    )
     assert man["dataset_versions"] == ["test-ds"] and man["prompt_versions"] == ["sha256:test"] and man["input_contract_versions"] == [CONTRACT_VERSION]
-    assert man["parity_status"] == "PRODUCTION_PARITY_NOT_ESTABLISHED" and man["telemetry_provenance"]["live_only"] and not man["telemetry_provenance"]["simulated_records_included"]
+    assert (
+        man["parity_status"] == "PRODUCTION_PARITY_NOT_ESTABLISHED"
+        and man["telemetry_provenance"]["live_only"]
+        and not man["telemetry_provenance"]["simulated_records_included"]
+    )
     assert "models" not in man["provider_routes"] and set(man["provider_routes"]) == {"gpt-4.1-nano", "custom-protocol-model"}
     assert any("GROUND TRUTH PENDING" in w for w in man["warnings"]) and any("PRODUCTION_PARITY_NOT_ESTABLISHED" in w for w in man["warnings"])
     for name, digest in man["files"].items():
@@ -238,7 +353,10 @@ def test_zip_contents_manifest_and_participant_coverage(tmp_path):
     parts = {p["key"]: p for p in man["participants"]}
     assert len([p for p in man["participants"] if p["readiness"] != "NOT_ON_ROSTER"]) == len(roster_status())
     assert parts["gpt-4o-mini"]["execution_state"] == "NOT_EXECUTED" and parts["gpt-4o-mini"]["n_trace_records"] == 0
-    assert parts["gpt-4.1-nano"]["execution_state"] in ("EXECUTED", "EXECUTED_WITH_FAILURES") and parts["custom-protocol-model"]["execution_state"] == "EXECUTED_WITH_FAILURES"
+    assert (
+        parts["gpt-4.1-nano"]["execution_state"] in ("EXECUTED", "EXECUTED_WITH_FAILURES")
+        and parts["custom-protocol-model"]["execution_state"] == "EXECUTED_WITH_FAILURES"
+    )
     assert all(r["identity"]["model_key"] != "gpt-4o-mini" for r in ts_.rows)
     comp = list(csv.DictReader(io.StringIO(zf.read("consolidated_comparison.csv").decode())))
     row = next(r for r in comp if r["case_id"] == "C0" and r["task"] == "CLASSIFICATION")
@@ -330,6 +448,7 @@ def test_explorer_never_sends_a_request(monkeypatch):
 
     def boom(*a, **k):
         raise AssertionError("trace export must not use the network")
+
     monkeypatch.setattr(urllib.request, "urlopen", boom)
     monkeypatch.setattr(socket.socket, "connect", boom)
     write_preds(settings.reports_dir / "classification", "r", sample_preds())
@@ -352,6 +471,7 @@ def test_simulated_event_in_the_log_is_excluded_from_the_explorer_export():
 # ------------------------------------------------------------------ CLI
 def test_export_traces_cli_writes_a_zip_under_reports_exports():
     from runport.cli import app
+
     write_preds(settings.reports_dir / "classification", "r", sample_preds())
     res = CliRunner().invoke(app, ["export-traces", "--format", "zip", "--task", "CLASSIFICATION", "--model", "custom-protocol-model"])
     assert res.exit_code == 0, res.output
@@ -370,11 +490,11 @@ def test_explorer_table_shows_dashes_not_repeated_unavailable_and_never_shows_er
     out = io.StringIO()
     Console(file=out, width=207, height=60).print(tui.build_layout())
     text = out.getvalue()
-    assert text.count("UNAVAILABLE") <= 1                        # at most the legacy header word; no per-cell noise
+    assert text.count("UNAVAILABLE") <= 1  # at most the legacy header word; no per-cell noise
     err = next(r for r in vm.rows if r.cells[1] == "C8" and r.cells[4] == "ERROR")
-    assert err.cells[5] == "—" and err.cells[7] == "—" and err.cells[8] == "—"          # no prediction, tokens or cost for a failed call
+    assert err.cells[5] == "—" and err.cells[7] == "—" and err.cells[8] == "—"  # no prediction, tokens or cost for a failed call
     inv = next(r for r in vm.rows if r.cells[1] == "C9")
-    assert inv.cells[4] == "INVALID_OUTPUT" and inv.cells[5] == "—"                    # an invalid output is not a prediction either
+    assert inv.cells[4] == "INVALID_OUTPUT" and inv.cells[5] == "—"  # an invalid output is not a prediction either
     ok = next(r for r in vm.rows if r.cells[1] == "C0" and r.cells[2] != "—" and r.cells[3] == "CLASSIFICATION" and r.cells[4] == "OK")
     assert ok.cells[5] == "QUERY"
     joined = "\n".join(ok.detail)
@@ -408,12 +528,31 @@ def test_error_class_filter_and_per_run_summary_with_planned_attempted_failed_in
     ts_ = build(sel=X.ExportSelection(error_categories=("TIMEOUT",)))
     assert [r["identity"]["case_id"] for r in ts_.rows] == ["C8"]
     plans = {"bench-abc": {"participants": [{"key": "custom-protocol-model", "per_task": {"CLASSIFICATION": {"requests_full": 10}}}]}}
-    recs = [class_pred(f"C{i}", "QUERY", model="custom-protocol-model", task="CLASSIFICATION", run="bench-abc-custom-protocol-model-CLASSIFICATION") for i in range(3)] + [class_pred("C9", "QUERY", model="custom-protocol-model", task="CLASSIFICATION", run="bench-abc-custom-protocol-model-CLASSIFICATION", status="INVALID_OUTPUT")]
+    recs = [
+        class_pred(f"C{i}", "QUERY", model="custom-protocol-model", task="CLASSIFICATION", run="bench-abc-custom-protocol-model-CLASSIFICATION")
+        for i in range(3)
+    ] + [
+        class_pred(
+            "C9", "QUERY", model="custom-protocol-model", task="CLASSIFICATION", run="bench-abc-custom-protocol-model-CLASSIFICATION", status="INVALID_OUTPUT"
+        )
+    ]
     summ = X.run_summaries(build(preds=recs).rows, plans)
-    assert summ == [{"run_id": "bench-abc-custom-protocol-model-CLASSIFICATION", "model_key": "custom-protocol-model", "task": "CLASSIFICATION", "data_kind": "REAL_DATA_BENCHMARK", "attempted": 4, "succeeded": 3,
-                     "failed": 0, "invalid": 1, "planned_full_dataset": 10, "unattempted": 6}]
+    assert summ == [
+        {
+            "run_id": "bench-abc-custom-protocol-model-CLASSIFICATION",
+            "model_key": "custom-protocol-model",
+            "task": "CLASSIFICATION",
+            "data_kind": "REAL_DATA_BENCHMARK",
+            "attempted": 4,
+            "succeeded": 3,
+            "failed": 0,
+            "invalid": 1,
+            "planned_full_dataset": 10,
+            "unattempted": 6,
+        }
+    ]
     none = X.run_summaries(build().rows, {})
-    assert all(s["planned_full_dataset"] is None and s["unattempted"] is None for s in none)       # unknown stays unknown
+    assert all(s["planned_full_dataset"] is None and s["unattempted"] is None for s in none)  # unknown stays unknown
 
 
 def test_unusable_outputs_are_not_votes_in_the_comparison_file():

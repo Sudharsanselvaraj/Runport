@@ -86,6 +86,7 @@ def test_http_workflow_connector_success(monkeypatch):
 
 def test_http_workflow_connector_rate_limit(monkeypatch):
     """HttpWorkflowConnector handles 429 rate limit errors."""
+
     def fake_urlopen(req, timeout=None):
         raise urllib.error.HTTPError(
             url="https://api.example.com/workflow",
@@ -110,6 +111,7 @@ def test_http_workflow_connector_rate_limit(monkeypatch):
 
 def test_http_workflow_connector_secret_scrubbing(monkeypatch):
     """HttpWorkflowConnector scrubs secret keys in HTTP error messages."""
+
     def fake_urlopen(req, timeout=None):
         raise urllib.error.HTTPError(
             url="https://api.example.com/workflow",
@@ -237,6 +239,7 @@ def test_langgraph_connector_config():
 
 def test_python_callable_target():
     """PythonCallableTarget invokes in-memory Python callable and returns result."""
+
     def my_agent(inputs):
         return f"Echo: {inputs.get('query')}"
 

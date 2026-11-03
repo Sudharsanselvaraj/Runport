@@ -11,16 +11,18 @@ from pydantic import BaseModel, Field
 def _get_workspace_budget():
     """Deferred import to avoid circular dependency between workspace and config."""
     from runport.core.workspace import load_workspace_config
+
     return load_workspace_config().budget
 
 
 class BudgetPolicy(BaseModel):
     """Local budget tracking policies.
-    
+
     NOTE: These are local experiment governance ceilings tracked within this
     workbench, NOT provider-enforced account balance limits.
     Ceilings and pricing policies derive exclusively from the active workspace configuration.
     """
+
     total_budget_usd: Decimal = Field(
         default_factory=lambda: _get_workspace_budget().total_usd,
         description="Total lifetime experiment ceiling",
@@ -65,12 +67,13 @@ class BudgetPolicy(BaseModel):
 
 class Settings(BaseModel):
     """Global workbench environment and filesystem settings."""
+
     app_name: str = "runport"
     workspace_root: Path = Field(default_factory=lambda: Path(os.getcwd()))
     data_dir: Path = Field(default_factory=lambda: Path("data"))
     db_filename: str = "runport.db"
     reports_dir: Path = Field(default_factory=lambda: Path("reports"))
-    
+
     budget: BudgetPolicy = Field(default_factory=BudgetPolicy)
 
     @property
@@ -108,12 +111,12 @@ def load_project_env(
     override: bool = False,
 ) -> Tuple[bool, Optional[Path]]:
     """Load environment variables from project .env file if it exists.
-    
+
     Predictably resolves to PROJECT_ROOT / '.env' (or Path.cwd() / '.env')
     unless a specific path is given. Does NOT search arbitrary parent directories.
     Preserves explicitly exported shell variables (override=False by default).
     Honors RUNPORT_SKIP_DOTENV=1 for offline test isolation.
-    
+
     Returns:
         (loaded: bool, resolved_path: Optional[Path])
     """
@@ -140,6 +143,7 @@ def load_project_env(
     if target.is_file():
         ensure_secure_dotenv(target)
         from dotenv import load_dotenv
+
         loaded = load_dotenv(dotenv_path=target, override=override)
         _DOTENV_LOADED_PATH = target
         current_key = os.environ.get("OPENROUTER_API_KEY")

@@ -73,7 +73,7 @@ class OpenRouterAdapter(BaseProvider):
     @staticmethod
     def validate_case_confidentiality(case: EvaluationCase) -> None:
         """Fail-Closed Confidentiality Gatekeeper.
-        
+
         Strictly prevents any record not explicitly classified as PUBLIC or SYNTHETIC
         from being routed to external network APIs.
         """
@@ -92,10 +92,7 @@ class OpenRouterAdapter(BaseProvider):
         for candidate in get_portfolio():
             if candidate.model_id == model_id:
                 return candidate.input_price_per_1m_usd, candidate.output_price_per_1m_usd
-        raise ProviderError(
-            f"No pricing metadata for model '{model_id}'. Register it in the model catalog "
-            "before use; costs are never guessed."
-        )
+        raise ProviderError(f"No pricing metadata for model '{model_id}'. Register it in the model catalog before use; costs are never guessed.")
 
     def _calculate_cost(self, model_id: str, prompt_tokens: int, completion_tokens: int) -> Decimal:
         """Calculates exact cost in Decimal USD."""
@@ -125,7 +122,9 @@ class OpenRouterAdapter(BaseProvider):
         if data.get("error"):
             raise ProviderError(
                 f"OpenRouter returned an error body: {self.scrub_secrets(json.dumps(data.get('error'))[:300])}",
-                attempts=attempts, errors=errors + ["ERROR_BODY"], retryable=False,
+                attempts=attempts,
+                errors=errors + ["ERROR_BODY"],
+                retryable=False,
             )
         choices = data.get("choices") or []
         out_text = ""
@@ -135,8 +134,9 @@ class OpenRouterAdapter(BaseProvider):
             out_text = content if isinstance(content, str) else ""
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
         p_tok, c_tok = _count(usage.get("prompt_tokens")), _count(usage.get("completion_tokens"))
-        usage_source = "PROVIDER_REPORTED" if (p_tok is not None and c_tok is not None) else (
-            "PARTIAL" if (p_tok is not None or c_tok is not None) else "UNAVAILABLE")
+        usage_source = (
+            "PROVIDER_REPORTED" if (p_tok is not None and c_tok is not None) else ("PARTIAL" if (p_tok is not None or c_tok is not None) else "UNAVAILABLE")
+        )
 
         details = usage.get("completion_tokens_details") if isinstance(usage.get("completion_tokens_details"), dict) else {}
         reasoning_tokens = _count(details.get("reasoning_tokens"))
@@ -174,7 +174,9 @@ class OpenRouterAdapter(BaseProvider):
             model_latency_source="PROVIDER_REPORTED" if model_ms is not None else "UNAVAILABLE",
             attempts=attempts,
             retry_errors=list(errors),
-            finish_reason=finish, reasoning_tokens=reasoning_tokens, native_cost=native,
+            finish_reason=finish,
+            reasoning_tokens=reasoning_tokens,
+            native_cost=native,
             native_cost_unit=registry.NATIVE_COST_UNIT_LABEL if native is not None else None,
             actual_cost_usd=actual,
             estimated_cost_usd=estimated,
@@ -219,9 +221,12 @@ class OpenRouterAdapter(BaseProvider):
             "X-Title": "Runport",
         }
         poster = RetryingPoster(
-            timeout_seconds=self.timeout_seconds, max_attempts=self.max_attempts,
-            backoff_base_seconds=self.backoff_base_seconds, max_backoff_seconds=self.max_backoff_seconds,
-            sleep=self._sleep, clock=self._clock,
+            timeout_seconds=self.timeout_seconds,
+            max_attempts=self.max_attempts,
+            backoff_base_seconds=self.backoff_base_seconds,
+            max_backoff_seconds=self.max_backoff_seconds,
+            sleep=self._sleep,
+            clock=self._clock,
         )
         result = poster.post(self.base_url, headers, payload)
         try:
@@ -232,5 +237,7 @@ class OpenRouterAdapter(BaseProvider):
             # A malformed 200 response is NOT retried: the request may already have been billed.
             raise ProviderError(
                 f"OpenRouter returned an unreadable response ({type(e).__name__}).",
-                attempts=result.attempts, errors=result.errors + ["INVALID_RESPONSE"], retryable=False,
+                attempts=result.attempts,
+                errors=result.errors + ["INVALID_RESPONSE"],
+                retryable=False,
             ) from e

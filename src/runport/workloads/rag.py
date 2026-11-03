@@ -30,4 +30,3 @@ class RAGWorkload(BaseWorkload):
 
     def get_scorers(self) -> List[BaseScorer]:
         return [TokenOverlapScorer(), KeywordContainmentScorer()]
-

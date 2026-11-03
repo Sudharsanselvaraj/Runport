@@ -17,8 +17,8 @@ from runport.classification.records import PredictionRecord, Task
 from runport.observability.labels import PENDING, ApprovedLabels
 from runport.schemas.evaluation import DatasetSplit
 
-MIN_SAMPLE = 30          # below this a metric is flagged as indicative only
-MIN_CLASS_SUPPORT = 5    # below this a per-class figure is flagged insufficient
+MIN_SAMPLE = 30  # below this a metric is flagged as indicative only
+MIN_CLASS_SUPPORT = 5  # below this a per-class figure is flagged insufficient
 FRONTIER_KEYS = ("gpt-4.1", "claude-sonnet-5.5")
 HIGH_CONFIDENCE = 0.9
 
@@ -89,10 +89,15 @@ def load_case_meta(prep_dir: Optional[Path]) -> Dict[str, CaseMeta]:
                 continue
             tally = cand.get("builder_tally_not_a_label") or {}
             meta[cid] = CaseMeta(
-                case_id=cid, split=cand.get("split"), view=cand.get("view"), history_status=c.get("history_status"),
-                quality_flags=list(cand.get("quality_flags") or []), ambiguity_count=int(cand.get("ambiguity_count") or 0),
+                case_id=cid,
+                split=cand.get("split"),
+                view=cand.get("view"),
+                history_status=c.get("history_status"),
+                quality_flags=list(cand.get("quality_flags") or []),
+                ambiguity_count=int(cand.get("ambiguity_count") or 0),
                 unresolved_rules=list(cand.get("unresolved_rules") or []),
-                tier_a=tally.get("tier_a_actions"), tier_b=tally.get("tier_b_distinct_types"),
+                tier_a=tally.get("tier_a_actions"),
+                tier_b=tally.get("tier_b_distinct_types"),
             )
     _META_CACHE.clear()
     _META_CACHE[key] = meta
@@ -131,7 +136,7 @@ class ClassificationQuality:
     run_id: str
     n_predictions: int
     n_request_errors: int
-    status: str                              # PENDING text or "SCORED"
+    status: str  # PENDING text or "SCORED"
     metrics: Optional[M.ClassificationMetrics] = None
     accuracy_ci: Optional[Tuple[float, float]] = None
     flags: List[str] = field(default_factory=list)
@@ -183,7 +188,7 @@ class BinaryModelReport:
     n_predictions: int
     n_yes: int
     n_no: int
-    n_undecided: int                          # invalid, errored, or P(yes) with no frozen threshold yet
+    n_undecided: int  # invalid, errored, or P(yes) with no frozen threshold yet
     n_with_prob: int
     status: str = PENDING
     metrics: Optional[M.BinaryMetrics] = None
@@ -203,8 +208,11 @@ def binary_reports(runs, labels: ApprovedLabels, meta: Dict[str, CaseMeta]) -> L
         note = ""
         probs = [r for r in recs if r.yes_prob is not None]
         if probs:
-            dev = [T.ProbItem(r.case_id, labels.binary.get(r.case_id), r.yes_prob, DatasetSplit.DEV) for r in probs
-                   if meta.get(r.case_id) and meta[r.case_id].split == "DEV" and r.case_id in labels.binary]
+            dev = [
+                T.ProbItem(r.case_id, labels.binary.get(r.case_id), r.yes_prob, DatasetSplit.DEV)
+                for r in probs
+                if meta.get(r.case_id) and meta[r.case_id].split == "DEV" and r.case_id in labels.binary
+            ]
             try:
                 frozen = T.select_threshold_on_dev(dev)
             except T.ThresholdError as e:
@@ -225,8 +233,11 @@ def binary_reports(runs, labels: ApprovedLabels, meta: Dict[str, CaseMeta]) -> L
             if rep.metrics.n_scored < MIN_SAMPLE:
                 rep.flags.append(f"INSUFFICIENT SAMPLE (n={rep.metrics.n_scored} < {MIN_SAMPLE})")
         if frozen is not None:
-            test = [T.ProbItem(r.case_id, labels.binary[r.case_id], r.yes_prob, DatasetSplit.TEST) for r in probs
-                    if meta.get(r.case_id) and meta[r.case_id].split == "TEST" and r.case_id in labels.binary]
+            test = [
+                T.ProbItem(r.case_id, labels.binary[r.case_id], r.yes_prob, DatasetSplit.TEST)
+                for r in probs
+                if meta.get(r.case_id) and meta[r.case_id].split == "TEST" and r.case_id in labels.binary
+            ]
             if test:
                 rep.held_out = T.evaluate_held_out(test, frozen)
         out.append(rep)
@@ -258,8 +269,8 @@ class CalibrationReport:
     ece: Optional[float] = None
     brier: Optional[float] = None
     bins: List[ReliabilityBin] = field(default_factory=list)
-    high_conf_errors: List[Tuple[str, float, str, str]] = field(default_factory=list)   # (case_id, confidence, predicted, expected)
-    coverage: List[Tuple[float, int, Optional[float]]] = field(default_factory=list)     # (threshold, n kept, accuracy of kept)
+    high_conf_errors: List[Tuple[str, float, str, str]] = field(default_factory=list)  # (case_id, confidence, predicted, expected)
+    coverage: List[Tuple[float, int, Optional[float]]] = field(default_factory=list)  # (threshold, n kept, accuracy of kept)
     flags: List[str] = field(default_factory=list)
 
 
@@ -286,9 +297,7 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
                 pred_val = r.predicted_label.value if hasattr(r.predicted_label, "value") else str(r.predicted_label)
                 s_sum += r.label_probs[pred_val]
             mean_sel = s_sum / len(dists)
-        rep = CalibrationReport(mk, len(recs), len(dists), invalid, len(nat),
-                                mean_sel,
-                                (sum(nat) / len(nat)) if nat else None)
+        rep = CalibrationReport(mk, len(recs), len(dists), invalid, len(nat), mean_sel, (sum(nat) / len(nat)) if nat else None)
         if not dists:
             rep.unsupported_reason = "UNAVAILABLE: this model returned no native probability distribution (self-reported or textual confidence is never used)"
             rep.status = "UNAVAILABLE"
@@ -296,18 +305,8 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
             continue
         lab = [r for r in dists if r.case_id in labels.multiclass]
         if lab:
-            truths = [
-                labels.multiclass[r.case_id].value
-                if hasattr(labels.multiclass[r.case_id], "value")
-                else str(labels.multiclass[r.case_id])
-                for r in lab
-            ]
-            preds_lab = [
-                r.predicted_label.value
-                if hasattr(r.predicted_label, "value")
-                else str(r.predicted_label)
-                for r in lab
-            ]
+            truths = [labels.multiclass[r.case_id].value if hasattr(labels.multiclass[r.case_id], "value") else str(labels.multiclass[r.case_id]) for r in lab]
+            preds_lab = [r.predicted_label.value if hasattr(r.predicted_label, "value") else str(r.predicted_label) for r in lab]
             confs = [r.label_probs[p] for r, p in zip(lab, preds_lab)]
             correct = [p == t for p, t in zip(preds_lab, truths)]
             src = "NATIVE_DISTRIBUTION"
@@ -320,8 +319,7 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
                 idx = [i for i, c in enumerate(confs) if lo <= c < hi or (b == 9 and c == 1.0)]
                 if idx:
                     rep.bins.append(ReliabilityBin(lo, hi, len(idx), sum(confs[i] for i in idx) / len(idx), sum(correct[i] for i in idx) / len(idx)))
-            rep.high_conf_errors = [(r.case_id, c, p, t) for r, c, ok, p, t in zip(lab, confs, correct, preds_lab, truths)
-                                    if c >= HIGH_CONFIDENCE and not ok]
+            rep.high_conf_errors = [(r.case_id, c, p, t) for r, c, ok, p, t in zip(lab, confs, correct, preds_lab, truths) if c >= HIGH_CONFIDENCE and not ok]
             for thr in (0.5, 0.6, 0.7, 0.8, 0.9, 0.95):
                 kept = [i for i, c in enumerate(confs) if c >= thr]
                 rep.coverage.append((thr, len(kept), (sum(correct[i] for i in kept) / len(kept)) if kept else None))
@@ -336,11 +334,11 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
 class PairAgreement:
     a: str
     b: str
-    n_common: int                        # cases where BOTH models produced a valid output
+    n_common: int  # cases where BOTH models produced a valid output
     agreement: Optional[float]
     kappa: Optional[float]
     note: str = ""
-    n_unusable: int = 0                  # cases both models were run on where at least one output was an error, invalid or undecided (not a disagreement)
+    n_unusable: int = 0  # cases both models were run on where at least one output was an error, invalid or undecided (not a disagreement)
 
 
 @dataclass
@@ -350,10 +348,10 @@ class AgreementReport:
     pairs: List[PairAgreement]
     n_cases_any: int
     n_cases_all_models: int
-    disagreements: List[Tuple[str, Dict[str, str]]]      # case_id -> predictions by model
-    unanimous_errors: Optional[List[str]]                # None = GROUND TRUTH PENDING
+    disagreements: List[Tuple[str, Dict[str, str]]]  # case_id -> predictions by model
+    unanimous_errors: Optional[List[str]]  # None = GROUND TRUTH PENDING
     unanimous_error_basis: str
-    excluded: Dict[str, str]                             # model -> why it is not comparable
+    excluded: Dict[str, str]  # model -> why it is not comparable
     frontier_agreement: Dict[str, Dict[str, Optional[float]]]
 
 
@@ -371,8 +369,8 @@ def _matches_task(t1: str, t2: str) -> bool:
 def agreement_report(runs, task: Any, labels: ApprovedLabels, frozen_by_model: Optional[Dict[str, T.FrozenThreshold]] = None) -> AgreementReport:
     """Agreement on VALID common outputs only. An error, an invalid output or an undecided P(yes) is never a vote and never a disagreement."""
     frozen_by_model = frozen_by_model or {}
-    cat: Dict[str, Dict[str, str]] = {}           # model -> case -> valid prediction
-    attempted: Dict[str, set] = {}                # model -> cases it was run on (valid or not)
+    cat: Dict[str, Dict[str, str]] = {}  # model -> case -> valid prediction
+    attempted: Dict[str, set] = {}  # model -> cases it was run on (valid or not)
     excluded: Dict[str, str] = {}
     task_str = task.value if hasattr(task, "value") else str(task)
     is_classification = task_str.lower() in ("classification", "task_a")
@@ -402,12 +400,14 @@ def agreement_report(runs, task: Any, labels: ApprovedLabels, frozen_by_model: O
     models = sorted(cat)
     pairs = []
     for i, a in enumerate(models):
-        for b in models[i + 1:]:
+        for b in models[i + 1 :]:
             common = sorted(set(cat[a]) & set(cat[b]))
             unusable = len((attempted[a] & attempted[b]) - set(common))
             xs, ys = [cat[a][c] for c in common], [cat[b][c] for c in common]
             note = "" if len(common) >= MIN_SAMPLE else f"n={len(common)} < {MIN_SAMPLE}: indicative only"
-            pairs.append(PairAgreement(a, b, len(common), (sum(x == y for x, y in zip(xs, ys)) / len(common)) if common else None, cohen_kappa(xs, ys), note, unusable))
+            pairs.append(
+                PairAgreement(a, b, len(common), (sum(x == y for x, y in zip(xs, ys)) / len(common)) if common else None, cohen_kappa(xs, ys), note, unusable)
+            )
     all_cases = set().union(*[set(m) for m in cat.values()]) if cat else set()
     in_all = set.intersection(*[set(m) for m in cat.values()]) if cat else set()
     dis = []

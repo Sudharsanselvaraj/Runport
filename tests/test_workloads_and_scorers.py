@@ -99,6 +99,7 @@ def test_generation_scorers():
 
 def test_llm_judge_offline_mock_execution():
     """LLM Judge operates with local mock judge function with 0 live network calls."""
+
     def mock_judge(prompt: str) -> str:
         return '{"score": 5, "grounded": true, "reasoning": "Excellent factual alignment."}'
 
@@ -156,4 +157,3 @@ def test_report_generation_and_caveats(tmp_path: Path):
     assert json_file.is_file()
     data = json.loads(json_file.read_text(encoding="utf-8"))
     assert len(data["caveats"]) == 4
-

@@ -59,22 +59,26 @@ def create_plan(req: PlanRequest) -> Dict[str, Any]:
             target_est = per_case_est * Decimal(actual_cases)
             total_projected_usd += target_est
 
-            per_target.append({
-                "target_id": tid,
-                "display_name": model_meta.display_name,
-                "input_price_per_1m": float(model_meta.input_price_per_1m_usd),
-                "output_price_per_1m": float(model_meta.output_price_per_1m_usd),
-                "projected_cost_usd": float(round(target_est, 4)),
-            })
+            per_target.append(
+                {
+                    "target_id": tid,
+                    "display_name": model_meta.display_name,
+                    "input_price_per_1m": float(model_meta.input_price_per_1m_usd),
+                    "output_price_per_1m": float(model_meta.output_price_per_1m_usd),
+                    "projected_cost_usd": float(round(target_est, 4)),
+                }
+            )
         else:
             # Workflow / custom target
-            per_target.append({
-                "target_id": tid,
-                "display_name": tid,
-                "input_price_per_1m": None,
-                "output_price_per_1m": None,
-                "projected_cost_usd": 0.0,
-            })
+            per_target.append(
+                {
+                    "target_id": tid,
+                    "display_name": tid,
+                    "input_price_per_1m": None,
+                    "output_price_per_1m": None,
+                    "projected_cost_usd": 0.0,
+                }
+            )
 
     # Check budget preflight
     settings.ensure_directories()
@@ -99,4 +103,3 @@ def create_plan(req: PlanRequest) -> Dict[str, Any]:
         "blockers": blockers,
         "expected_confirmation_phrase": f"RUN LIVE {', '.join(sorted(req.target_ids))} PLAN {fingerprint}",
     }
-

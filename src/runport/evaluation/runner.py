@@ -25,6 +25,7 @@ from runport.storage.db import DatabaseManager
 
 class BenchmarkRunReport(BaseModel):
     """Aggregated report of an evaluation benchmark run."""
+
     run_id: str
     timestamp: str
     model_id: str
@@ -101,8 +102,7 @@ class BenchmarkRunner:
                 {
                     "role": "system",
                     "content": (
-                        "You are an AI benchmark evaluator. "
-                        "Answer accurately, ground all answers in academic guidelines, and never invent fees or policies."
+                        "You are an AI benchmark evaluator. Answer accurately, ground all answers in academic guidelines, and never invent fees or policies."
                     ),
                 },
                 {"role": "user", "content": case.query},
@@ -120,7 +120,9 @@ class BenchmarkRunner:
                 try:
                     require_complete_usage(response)
                 except UsageUnavailableError:
-                    self.budget_service.record_unresolved_spend(f"tx_{run_id}_{case.id}", model_id, "openrouter", f"Evaluation case {case.id}: response lacked usable cost or token counts", run_id)
+                    self.budget_service.record_unresolved_spend(
+                        f"tx_{run_id}_{case.id}", model_id, "openrouter", f"Evaluation case {case.id}: response lacked usable cost or token counts", run_id
+                    )
                     raise
                 exec_id = f"exec_{run_id}_{case.id}"
                 score_id = f"score_{run_id}_{case.id}"

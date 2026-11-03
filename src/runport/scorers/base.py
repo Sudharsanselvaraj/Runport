@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 @dataclass(frozen=True)
 class ScoreResult:
     """Standard outcome of a scoring evaluation."""
+
     metric_name: str
     score: Optional[float]
     passed: Optional[bool] = None
@@ -38,4 +39,3 @@ class BaseScorer(ABC):
     ) -> ScoreResult:
         """Evaluate a predicted output against ground truth expectations."""
         pass
-

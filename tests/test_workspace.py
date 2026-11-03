@@ -71,4 +71,3 @@ def test_cli_init_command(tmp_path: Path):
     assert res.exit_code == 0
     assert "Runport Workspace Initialized Successfully" in res.stdout
     assert (tmp_path / "runport.yaml").is_file()
-

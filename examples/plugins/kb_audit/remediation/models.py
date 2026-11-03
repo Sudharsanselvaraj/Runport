@@ -7,16 +7,18 @@ from typing import List, Optional
 
 class RemediationClassification(str, Enum):
     """Categorization of KB defect types determining remediation action."""
-    CONFIRMED_CONTENT_DEFECT = "CONFIRMED_CONTENT_DEFECT"      # Proven mismatch with clear authoritative context
-    CONTRADICTORY_FACT = "CONTRADICTORY_FACT"                  # Conflicting numbers/facts; requires official verification
-    DUPLICATE_ENTRY = "DUPLICATE_ENTRY"                        # Duplicate questions/answers needing comparison before merge
-    STRUCTURAL_ANOMALY = "STRUCTURAL_ANOMALY"                  # Missing or unpaired markers, stray tokens
-    POLICY_INTAKE_DATE = "POLICY_INTAKE_DATE"                  # Dates, intakes, eligibility rules needing current verification
-    CURRICULUM_MPU_RULE = "CURRICULUM_MPU_RULE"                # MPU or language requirement needing KB owner escalation
+
+    CONFIRMED_CONTENT_DEFECT = "CONFIRMED_CONTENT_DEFECT"  # Proven mismatch with clear authoritative context
+    CONTRADICTORY_FACT = "CONTRADICTORY_FACT"  # Conflicting numbers/facts; requires official verification
+    DUPLICATE_ENTRY = "DUPLICATE_ENTRY"  # Duplicate questions/answers needing comparison before merge
+    STRUCTURAL_ANOMALY = "STRUCTURAL_ANOMALY"  # Missing or unpaired markers, stray tokens
+    POLICY_INTAKE_DATE = "POLICY_INTAKE_DATE"  # Dates, intakes, eligibility rules needing current verification
+    CURRICULUM_MPU_RULE = "CURRICULUM_MPU_RULE"  # MPU or language requirement needing KB owner escalation
 
 
 class RemediationStatus(str, Enum):
     """Lifecycle state of an individual remediation finding."""
+
     DRAFT = "DRAFT"
     INVESTIGATION_PENDING = "INVESTIGATION_PENDING"
     OFFICIAL_VERIFICATION_PENDING = "OFFICIAL_VERIFICATION_PENDING"
@@ -29,6 +31,7 @@ class RemediationStatus(str, Enum):
 @dataclass
 class RemediationFinding:
     """A documented knowledge base defect with provenance, classification, and resolution rule."""
+
     finding_id: str
     source_file: str
     line_number: int
@@ -49,6 +52,7 @@ class RemediationFinding:
 @dataclass
 class RemediationReport:
     """Summary of remediation evaluation and patch execution."""
+
     source_file: str
     sha256_original: str
     sha256_remediated: Optional[str]

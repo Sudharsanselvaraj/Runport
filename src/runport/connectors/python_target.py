@@ -162,4 +162,3 @@ class SubprocessTarget(Target):
                 latency_ms=elapsed_ms,
                 error_message=scrub_secrets(str(e)),
             )
-

@@ -10,6 +10,7 @@ from runport.schemas.evaluation import DatasetSplit, EvaluationCase
 
 class LeakageType(str, Enum):
     """Classification of detected cross-split contamination."""
+
     EXACT_QUERY_MATCH = "EXACT_QUERY_MATCH"
     NORMALIZED_QUERY_MATCH = "NORMALIZED_QUERY_MATCH"
     HIGH_NGRAM_OVERLAP = "HIGH_NGRAM_OVERLAP"
@@ -17,6 +18,7 @@ class LeakageType(str, Enum):
 
 class LeakageFinding(BaseModel):
     """Specific instance of cross-split contamination between two evaluation cases."""
+
     case_a_id: str
     split_a: DatasetSplit
     case_b_id: str
@@ -30,6 +32,7 @@ class LeakageFinding(BaseModel):
 
 class LeakageReport(BaseModel):
     """Aggregated leakage evaluation report."""
+
     total_cases_analyzed: int = 0
     splits_evaluated: List[DatasetSplit] = Field(default_factory=list)
     has_leakage: bool = False
@@ -56,14 +59,9 @@ class LeakageDetector:
         words = self.normalize_text(text).split()
         if len(words) < self.n_gram_size:
             return {tuple(words)} if words else set()
-        return {
-            tuple(words[i : i + self.n_gram_size])
-            for i in range(len(words) - self.n_gram_size + 1)
-        }
+        return {tuple(words[i : i + self.n_gram_size]) for i in range(len(words) - self.n_gram_size + 1)}
 
-    def compute_jaccard_similarity(
-        self, set_a: Set[Tuple[str, ...]], set_b: Set[Tuple[str, ...]]
-    ) -> float:
+    def compute_jaccard_similarity(self, set_a: Set[Tuple[str, ...]], set_b: Set[Tuple[str, ...]]) -> float:
         """Computes Jaccard similarity between two n-gram sets."""
         if not set_a or not set_b:
             return 0.0
@@ -74,11 +72,9 @@ class LeakageDetector:
     def analyze(self, cases: List[EvaluationCase]) -> LeakageReport:
         """Analyzes a set of evaluation cases for cross-split contamination."""
         report = LeakageReport(total_cases_analyzed=len(cases))
-        
+
         # Filter for partitioned cases only
-        partitioned = [
-            c for c in cases if c.split in (DatasetSplit.TRAIN, DatasetSplit.DEV, DatasetSplit.TEST)
-        ]
+        partitioned = [c for c in cases if c.split in (DatasetSplit.TRAIN, DatasetSplit.DEV, DatasetSplit.TEST)]
         active_splits = sorted(list(set(c.split for c in partitioned)), key=lambda s: s.value)
         report.splits_evaluated = active_splits
 

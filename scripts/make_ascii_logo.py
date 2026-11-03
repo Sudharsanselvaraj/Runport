@@ -7,6 +7,7 @@ braille: dotted look (2x4 dots per character). solid: half-block look (crisp fil
 --aspect is terminal cell height / cell width (about 2.0-2.3) and keeps proportions.
 Every output line is padded to the same width so Rich can center it without distortion.
 """
+
 import argparse
 
 import numpy as np
@@ -74,4 +75,3 @@ if __name__ == "__main__":
     ap.add_argument("--threshold", type=int, default=110)
     a = ap.parse_args()
     print("\n".join(make(a.image, a.mode, a.cols, a.aspect, a.threshold)))
-

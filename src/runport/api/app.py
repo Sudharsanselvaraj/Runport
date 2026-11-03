@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
                 expected = api_token or "secret"
                 if not bearer_token or (api_token and bearer_token != expected):
                     from fastapi.responses import JSONResponse
+
                     return JSONResponse(
                         status_code=401,
                         content={"detail": "Unauthorized: API token required for remote network access."},
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     if dist_dir.exists() and (dist_dir / "index.html").exists():
         app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
     else:
+
         @app.get("/", response_class=HTMLResponse)
         def index_fallback():
             return """<!DOCTYPE html>
@@ -129,4 +131,3 @@ def create_app() -> FastAPI:
 </html>"""
 
     return app
-

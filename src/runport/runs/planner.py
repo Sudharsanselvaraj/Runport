@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class ExecutionPlan:
     """Cryptographically bound execution plan."""
+
     plan_id: str
     target_ids: List[str]
     dataset_path: str
@@ -72,11 +73,7 @@ def create_execution_plan(
                 total_cases += 1
     ds_hash = hasher.hexdigest()
 
-    pt_hash = (
-        hashlib.sha256(prompt_template.encode("utf-8")).hexdigest()
-        if prompt_template
-        else "none"
-    )
+    pt_hash = hashlib.sha256(prompt_template.encode("utf-8")).hexdigest() if prompt_template else "none"
 
     plan_id = f"plan-{ds_hash[:8]}-{len(target_ids)}targets"
 
@@ -91,4 +88,3 @@ def create_execution_plan(
         is_live=is_live,
         metadata=metadata or {},
     )
-

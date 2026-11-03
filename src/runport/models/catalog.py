@@ -10,6 +10,7 @@ from runport.storage.db import DatabaseManager
 
 class ModelCandidate(BaseModel):
     """Metadata specification for an evaluation model candidate."""
+
     model_id: str = Field(description="Unique provider model identifier (e.g. 'qwen/qwen-2.5-7b-instruct')")
     display_name: str = Field(description="Human-readable model name")
     provider: str = Field(description="Upstream model vendor or aggregator")
@@ -76,6 +77,7 @@ def load_catalog_file(path: Path) -> List[ModelCandidate]:
     """Load model candidates from a JSON or YAML file."""
     import json
     from pathlib import Path
+
     p = Path(path)
     if not p.is_file():
         return []
@@ -85,6 +87,7 @@ def load_catalog_file(path: Path) -> List[ModelCandidate]:
     except json.JSONDecodeError:
         try:
             import yaml  # type: ignore
+
             data = yaml.safe_load(content)
         except ImportError:
             return []
@@ -101,6 +104,7 @@ def load_catalog_sources(
 ) -> List[ModelCandidate]:
     """Load and register candidates from multiple catalog sources (files, paths, or entry-points)."""
     from pathlib import Path
+
     loaded: List[ModelCandidate] = []
     for src in sources:
         p = Path(src)
@@ -109,4 +113,3 @@ def load_catalog_sources(
     if loaded and db is not None:
         seed_default_portfolio(db, loaded)
     return loaded
-

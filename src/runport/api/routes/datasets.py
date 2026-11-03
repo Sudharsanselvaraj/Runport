@@ -45,12 +45,14 @@ def list_datasets() -> List[DatasetSummary]:
             for l in fh:
                 if l.strip() and not l.startswith("#"):
                     lines += 1
-        results.append(DatasetSummary(
-            filename=f.name,
-            path=str(f),
-            size_bytes=f.stat().st_size,
-            case_count=lines,
-        ))
+        results.append(
+            DatasetSummary(
+                filename=f.name,
+                path=str(f),
+                size_bytes=f.stat().st_size,
+                case_count=lines,
+            )
+        )
     return results
 
 
@@ -126,4 +128,3 @@ def get_dataset(filename: str) -> DatasetDetail:
         total_cases=len(cases),
         cases_preview=cases[:20],
     )
-

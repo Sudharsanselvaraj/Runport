@@ -34,4 +34,3 @@ class ClassificationWorkload(BaseWorkload):
 
     def get_scorers(self) -> List[BaseScorer]:
         return [AccuracyScorer(), BrierScoreScorer()]
-

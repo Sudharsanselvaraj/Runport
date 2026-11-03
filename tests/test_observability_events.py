@@ -24,18 +24,18 @@ def test_simulated_events_found_in_a_file_are_quarantined_not_counted(tmp_path):
     p.write_text(live.to_json_line() + "\n" + sim.to_json_line() + "\n")
     agg = aggregate(EventStore(p).read_all(), epoch(10))
     assert agg.n_terminal == 1 and agg.n_quarantined_simulated == 1
-    assert agg.overall.latencies_ms == [100.0]            # the simulated 1.0 ms never entered a figure
+    assert agg.overall.latencies_ms == [100.0]  # the simulated 1.0 ms never entered a figure
     assert agg.overall.actual_cost == Decimal("0.001")
 
 
 def test_tail_never_duplicates_and_waits_for_a_complete_line(tmp_path):
     p = tmp_path / "e.jsonl"
     tail = EventTail(p)
-    assert tail.poll() == []                              # missing file: empty, no error
+    assert tail.poll() == []  # missing file: empty, no error
     e1, e2 = started("a", 0), finished("a", 1)
-    p.write_text(e1.to_json_line() + "\n" + e2.to_json_line()[:20])   # second line only half written
+    p.write_text(e1.to_json_line() + "\n" + e2.to_json_line()[:20])  # second line only half written
     assert [e.event_id for e in tail.poll()] == [e1.event_id]
-    assert tail.poll() == []                              # nothing new: no duplicate
+    assert tail.poll() == []  # nothing new: no duplicate
     with p.open("a") as fh:
         fh.write(e2.to_json_line()[20:] + "\n")
     assert [e.event_id for e in tail.poll()] == [e2.event_id]
@@ -47,7 +47,7 @@ def test_tail_skips_malformed_lines_and_survives_truncation(tmp_path):
     p.write_text("not json\n" + started("a", 0).to_json_line() + "\n")
     tail = EventTail(p)
     assert len(tail.poll()) == 1 and tail.malformed == 1
-    p.write_text("")                                      # file replaced by an empty one
+    p.write_text("")  # file replaced by an empty one
     assert tail.poll() == [] and tail.truncations == 1
 
 
@@ -55,7 +55,7 @@ def test_percentiles_and_unreliable_tail_flag():
     assert percentile([], 50) is None
     assert percentile([5, 1, 3, 2, 4], 50) == 3 and percentile([1, 2, 3, 4], 99) == 4
     agg = aggregate([finished(f"r{i}", i, latency=float(i + 1)) for i in range(5)], epoch(10))
-    assert agg.overall.p(95) == 5.0 and agg.overall.p_tail_reliable is False   # n=5 < 20: indicative only
+    assert agg.overall.p(95) == 5.0 and agg.overall.p_tail_reliable is False  # n=5 < 20: indicative only
 
 
 def test_unknown_tokens_costs_and_latency_stay_unavailable():
@@ -89,13 +89,16 @@ def test_tokens_per_second_uses_only_known_tokens_and_real_intervals():
 def test_active_requests_come_from_unmatched_starts_and_stale_ones_are_flagged():
     evs = [started("a", 0), started("b", 1), finished("a", 2), started("old", -2000)]
     agg = aggregate(evs, epoch(10))
-    assert agg.active == 1 and agg.stale == 1             # b is in flight; "old" never ended and is older than 15 min
+    assert agg.active == 1 and agg.stale == 1  # b is in flight; "old" never ended and is older than 15 min
 
 
 def test_timeouts_rate_limits_and_retries_are_counted_from_events():
-    evs = [finished("a", 1, status="ERROR", timed_out=True, error_type="ProviderError"),
-           finished("b", 2, status="ERROR", http_status=429), finished("c", 3, status="ERROR", http_status=503),
-           RequestEvent(kind="REQUEST_RETRY", request_id="b", run_id="r1", case_id="C1", model_key="m1", ts=ts(2), retry_cause="HTTP_429")]
+    evs = [
+        finished("a", 1, status="ERROR", timed_out=True, error_type="ProviderError"),
+        finished("b", 2, status="ERROR", http_status=429),
+        finished("c", 3, status="ERROR", http_status=503),
+        RequestEvent(kind="REQUEST_RETRY", request_id="b", run_id="r1", case_id="C1", model_key="m1", ts=ts(2), retry_cause="HTTP_429"),
+    ]
     g = aggregate(evs, epoch(10)).overall
     assert (g.n_timeouts, g.n_rate_limited, g.n_provider_failures, g.n_retries, g.n_error) == (1, 1, 1, 1, 3)
 
@@ -103,7 +106,7 @@ def test_timeouts_rate_limits_and_retries_are_counted_from_events():
 def test_no_events_means_idle_series_with_no_invented_points():
     agg = aggregate([], epoch(100), window_s=60, bucket_s=10)
     assert not agg.has_live_inference and agg.active == 0
-    assert all(v is None for ser in agg.series.values() for _, v in ser)       # gaps, not zeros or noise
+    assert all(v is None for ser in agg.series.values() for _, v in ser)  # gaps, not zeros or noise
 
 
 def test_graph_buckets_follow_real_timestamps():

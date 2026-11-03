@@ -29,7 +29,7 @@ class LangflowConnector(HttpWorkflowConnector):
         if api_key:
             headers["x-api-key"] = api_key
 
-        payload_template = {
+        payload_template: Dict[str, Any] = {
             "input_value": "{{query}}",
             "input_type": "chat",
             "output_type": "chat",
@@ -50,4 +50,3 @@ class LangflowConnector(HttpWorkflowConnector):
             max_retries=max_retries,
         )
         self.target_type = TargetType.WORKFLOW_LANGFLOW
-

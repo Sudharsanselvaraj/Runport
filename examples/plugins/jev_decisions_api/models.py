@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class IntentLabel(str, Enum):
     """Reference Intent labels."""
+
     GREETING = "GREETING"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     UPLOAD_STATUS_CHECK = "UPLOAD_STATUS_CHECK"
@@ -55,6 +56,7 @@ def validate_intent_output(raw: Optional[str]) -> IntentValidation:
 
 class AdapterResult(BaseModel):
     """What one protocol adapter returns for one case."""
+
     model_config = ConfigDict(extra="forbid")
 
     ok: bool
@@ -79,4 +81,3 @@ class AdapterResult(BaseModel):
     latency_ms: Optional[float] = None
     attempt_latency_ms: Optional[float] = None
     model_latency_ms: Optional[float] = None
-

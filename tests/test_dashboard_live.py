@@ -25,6 +25,7 @@ def workdir(tmp_path, monkeypatch):
 
 def preds_dir():
     from runport.core.config import settings
+
     return settings.reports_dir / "classification"
 
 
@@ -44,12 +45,27 @@ def now_events(store, n=3, model="custom-protocol-model"):
     import time
     from datetime import datetime, timezone
     from runport.observability.events import RequestEvent
+
     t = time.time()
     for i in range(n):
         iso = lambda x: datetime.fromtimestamp(x, timezone.utc).isoformat()  # noqa: E731
         store.append(RequestEvent(kind="REQUEST_STARTED", request_id=f"q{i}", run_id="r1", case_id=f"C{i}", model_key=model, ts=iso(t - 3 + i * 0.1)))
-        store.append(RequestEvent(kind="REQUEST_SUCCEEDED", request_id=f"q{i}", run_id="r1", case_id=f"C{i}", model_key=model, ts=iso(t - 2 + i * 0.1), status="OK",
-                                  latency_ms=120.0 + i, prompt_tokens=100, completion_tokens=10, cost_basis="PROVIDER_REPORTED", actual_cost_usd=Decimal("0.0001")))
+        store.append(
+            RequestEvent(
+                kind="REQUEST_SUCCEEDED",
+                request_id=f"q{i}",
+                run_id="r1",
+                case_id=f"C{i}",
+                model_key=model,
+                ts=iso(t - 2 + i * 0.1),
+                status="OK",
+                latency_ms=120.0 + i,
+                prompt_tokens=100,
+                completion_tokens=10,
+                cost_basis="PROVIDER_REPORTED",
+                actual_cost_usd=Decimal("0.0001"),
+            )
+        )
 
 
 def test_empty_state_is_explicit_everywhere(workdir):
@@ -86,6 +102,7 @@ def test_refresh_sends_nothing(workdir, monkeypatch):
 
     def boom(*a, **k):
         raise AssertionError("the dashboard must never send a request")
+
     monkeypatch.setattr(urllib.request, "urlopen", boom)
     monkeypatch.setattr(socket.socket, "connect", boom)
     monkeypatch.setattr(RetryingPoster, "post", boom)
@@ -115,8 +132,8 @@ def test_repeated_refresh_never_duplicates_events_or_subscriptions(workdir):
         tui.goto("latency")
         tui.goto("overview")
     assert len(tui.monitor.events) == count == 4
-    assert tui.monitor is monitor and tui.monitor.tail is tail          # one subscription for the whole session
-    assert threading.active_count() == threads                           # polling is cooperative: no background task per view or redraw
+    assert tui.monitor is monitor and tui.monitor.tail is tail  # one subscription for the whole session
+    assert threading.active_count() == threads  # polling is cooperative: no background task per view or redraw
     assert len(tail.seen) == 4
 
 
@@ -124,7 +141,7 @@ def test_tick_polls_only_when_the_interval_has_elapsed(workdir):
     tui, _ = make_tui()
     before = tui.monitor.poll_count
     tui.tick()
-    assert tui.monitor.poll_count == before                              # just refreshed in __init__: not due yet
+    assert tui.monitor.poll_count == before  # just refreshed in __init__: not due yet
     tui.last_live_poll -= 10
     tui.tick()
     assert tui.monitor.poll_count == before + 1
@@ -212,24 +229,52 @@ def test_row_cursor_moves_inside_views_and_stays_in_range(workdir):
 
 def test_commands_open_the_new_and_the_preserved_workflows(workdir):
     tui, _ = make_tui()
-    for cmd, sec in ((":latency", "latency"), (":calibration", "calibration"), (":agreement", "agreement"), (":binary", "binary"), (":labels", "dataset"),
-                     (":eval", "evaluations"), (":health", "health"), (":validate", "validation"), (":traces", "traces"), (":budget", "budget"),
-                     (":settings", "settings"), (":roster", "roster"), (":overview", "overview")):
+    for cmd, sec in (
+        (":latency", "latency"),
+        (":calibration", "calibration"),
+        (":agreement", "agreement"),
+        (":binary", "binary"),
+        (":labels", "dataset"),
+        (":eval", "evaluations"),
+        (":health", "health"),
+        (":validate", "validation"),
+        (":traces", "traces"),
+        (":budget", "budget"),
+        (":settings", "settings"),
+        (":roster", "roster"),
+        (":overview", "overview"),
+    ):
         tui.execute_command(cmd)
         assert tui.section == sec, cmd
 
 
 def test_simulated_spend_never_appears_as_actual_in_the_header(workdir):
     tui, _ = make_tui()
-    b = BudgetStatus(total_ceiling_usd=Decimal("10"), cumulative_spend_usd=Decimal("0.2"), remaining_total_usd=Decimal("9.8"), pilot_ceiling_usd=Decimal("2"),
-                     pilot_spend_usd=Decimal("0"), remaining_pilot_usd=Decimal("2"), per_run_ceiling_usd=Decimal("0.5"), per_case_ceiling_usd=Decimal("0.02"),
-                     simulated_spend_usd=Decimal("3.5"), spend_by_basis={"ESTIMATED_FROM_CATALOG": Decimal("0.2")}, unresolved_spend_count=1,
-                     is_pilot_exhausted=False, is_total_exhausted=False)
+    b = BudgetStatus(
+        total_ceiling_usd=Decimal("10"),
+        cumulative_spend_usd=Decimal("0.2"),
+        remaining_total_usd=Decimal("9.8"),
+        pilot_ceiling_usd=Decimal("2"),
+        pilot_spend_usd=Decimal("0"),
+        remaining_pilot_usd=Decimal("2"),
+        per_run_ceiling_usd=Decimal("0.5"),
+        per_case_ceiling_usd=Decimal("0.02"),
+        simulated_spend_usd=Decimal("3.5"),
+        spend_by_basis={"ESTIMATED_FROM_CATALOG": Decimal("0.2")},
+        unresolved_spend_count=1,
+        is_pilot_exhausted=False,
+        is_total_exhausted=False,
+    )
     tui.live_ctx.budget = b
     console = Console(file=StringIO(), width=207)
     console.print(build_execution_header(tui.live_ctx))
     out = console.file.getvalue()
-    assert "COUNTED vs CAPS $0.2000 = ACTUAL $0.0000 + ESTIMATED $0.2000" in out and "OTHER" not in out and "LEGACY-SIMULATED (not counted) $3.5000" in out and "UNRESOLVED 1 (live runs blocked)" in out
+    assert (
+        "COUNTED vs CAPS $0.2000 = ACTUAL $0.0000 + ESTIMATED $0.2000" in out
+        and "OTHER" not in out
+        and "LEGACY-SIMULATED (not counted) $3.5000" in out
+        and "UNRESOLVED 1 (live runs blocked)" in out
+    )
 
 
 def test_dataset_view_reports_statuses_and_refresh_never_touches_annotations(workdir):
@@ -249,7 +294,7 @@ def test_dataset_view_reports_statuses_and_refresh_never_touches_annotations(wor
 def test_system_resource_values_are_measured_or_unavailable_never_placeholders(workdir):
     tui, _ = make_tui()
     st = tui.sys_telemetry
-    assert len(st.cpu) == len(st.mem) == len(st.disk) == 1               # one real sample at start, nothing pre-filled
+    assert len(st.cpu) == len(st.mem) == len(st.disk) == 1  # one real sample at start, nothing pre-filled
     cpu, _, _ = st.get_cpu_info()
     assert cpu is None or cpu >= 0
     st.mem.append((0.0, None))
@@ -260,6 +305,7 @@ def test_dashboard_shows_the_full_roster_of_ten_in_the_robustness_view(workdir):
     tui, _ = make_tui()
     tui.goto("robustness")
     from runport.models.registry import REGISTRY
+
     assert len(tui.get_view().rows) == len(REGISTRY)
 
 
@@ -267,6 +313,7 @@ def test_request_graphs_distinguish_an_empty_current_window_from_recorded_histor
     import time
     from datetime import datetime, timezone
     from runport.observability.events import RequestEvent
+
     store = EventStore()
     old = time.time() - 3600
     iso = lambda x: datetime.fromtimestamp(x, timezone.utc).isoformat()  # noqa: E731
@@ -278,17 +325,30 @@ def test_request_graphs_distinguish_an_empty_current_window_from_recorded_histor
     assert "NO REQUESTS IN THE CURRENT 5-MINUTE WINDOW" in out and "1 historical request" in out
     assert "NO LIVE INFERENCE YET: graphs" not in out
     store.append(RequestEvent(kind="REQUEST_STARTED", request_id="q2", run_id="r", case_id="C2", model_key="m", ts=iso(time.time() - 5)))
-    store.append(RequestEvent(kind="REQUEST_SUCCEEDED", request_id="q2", run_id="r", case_id="C2", model_key="m", ts=iso(time.time() - 4), status="OK", latency_ms=70.0))
+    store.append(
+        RequestEvent(kind="REQUEST_SUCCEEDED", request_id="q2", run_id="r", case_id="C2", model_key="m", ts=iso(time.time() - 4), status="OK", latency_ms=70.0)
+    )
     tui.refresh_live()
     assert tui.inf_telemetry.n_in_window == 1 and "NO REQUESTS IN THE CURRENT" not in render(tui, buf)
 
 
 def test_spend_is_presented_consistently_as_counted_actual_and_estimated(workdir):
     from runport.tui.screens import build_inference_status_panel
+
     tui, buf = make_tui()
-    b = BudgetStatus(total_ceiling_usd=Decimal("10"), cumulative_spend_usd=Decimal("0.0040"), remaining_total_usd=Decimal("9.996"), pilot_ceiling_usd=Decimal("2"),
-                     pilot_spend_usd=Decimal("0.0040"), remaining_pilot_usd=Decimal("1.996"), per_run_ceiling_usd=Decimal("0.5"), per_case_ceiling_usd=Decimal("0.02"),
-                     spend_by_basis={"ESTIMATED_FROM_CATALOG": Decimal("0.0040")}, is_pilot_exhausted=False, is_total_exhausted=False)
+    b = BudgetStatus(
+        total_ceiling_usd=Decimal("10"),
+        cumulative_spend_usd=Decimal("0.0040"),
+        remaining_total_usd=Decimal("9.996"),
+        pilot_ceiling_usd=Decimal("2"),
+        pilot_spend_usd=Decimal("0.0040"),
+        remaining_pilot_usd=Decimal("1.996"),
+        per_run_ceiling_usd=Decimal("0.5"),
+        per_case_ceiling_usd=Decimal("0.02"),
+        spend_by_basis={"ESTIMATED_FROM_CATALOG": Decimal("0.0040")},
+        is_pilot_exhausted=False,
+        is_total_exhausted=False,
+    )
     out = StringIO()
     Console(file=out, width=60).print(build_inference_status_panel(b, tui.live_ctx.agg))
     t = out.getvalue()

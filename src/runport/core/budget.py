@@ -10,29 +10,31 @@ from runport.storage.db import DatabaseManager
 
 class BudgetExceededError(RuntimeError):
     """Raised when projected or actual spend exceeds local governance policy ceilings."""
+
     pass
 
 
 class BudgetStatus(BaseModel):
     """Snapshot of current spend vs local governance ceilings."""
+
     total_ceiling_usd: Decimal
     cumulative_spend_usd: Decimal
     remaining_total_usd: Decimal
-    
+
     pilot_ceiling_usd: Decimal
     pilot_spend_usd: Decimal
     remaining_pilot_usd: Decimal
-    
+
     per_run_ceiling_usd: Decimal
     per_case_ceiling_usd: Decimal
-    
-    unresolved_spend_count: int = 0                   # billed-or-not requests with unknown cost; live runs are blocked while > 0
+
+    unresolved_spend_count: int = 0  # billed-or-not requests with unknown cost; live runs are blocked while > 0
     spend_by_basis: Dict[str, Decimal] = Field(default_factory=dict)
     simulated_spend_usd: Decimal = Decimal("0")  # dry-run simulations; shown for transparency, never counted against a ceiling
 
     is_pilot_exhausted: bool
     is_total_exhausted: bool
-    
+
     recent_transactions: List[Dict[str, Any]] = Field(default_factory=list)
 
 
@@ -44,8 +46,9 @@ class BudgetService:
         if policy is None:
             from runport.core.budget_policy import effective_policy
             from runport.core.workspace import load_workspace_config
+
             active_policy = load_workspace_config().budget.to_budget_policy()
-            policy = effective_policy(active_policy, settings.data_dir)   # a typed, audited pilot-ceiling override applies; nothing else changes
+            policy = effective_policy(active_policy, settings.data_dir)  # a typed, audited pilot-ceiling override applies; nothing else changes
         self.policy = policy
 
     def get_status(self) -> BudgetStatus:
@@ -83,7 +86,7 @@ class BudgetService:
         is_pilot: bool = True,
     ) -> Tuple[bool, str]:
         """Validates whether a projected expense is permitted under local policies.
-        
+
         Returns:
             (is_permitted, reason_message)
         """
@@ -94,8 +97,9 @@ class BudgetService:
 
         pending = self.db.get_unresolved()
         if pending:
-            return False, (f"{len(pending)} request(s) have unresolved spend (cost unknown). Reconcile them with "
-                           "`runport budget reconcile` before any further live run.")
+            return False, (
+                f"{len(pending)} request(s) have unresolved spend (cost unknown). Reconcile them with `runport budget reconcile` before any further live run."
+            )
 
         if projected_spend_usd > self.policy.per_run_ceiling_usd:
             return (
@@ -171,15 +175,21 @@ class BudgetService:
         out_cost = (Decimal(completion_tokens) / Decimal("1000000")) * output_price_per_1m_usd
         return in_cost + out_cost
 
-
     def record_unresolved_spend(self, transaction_id: str, model_id: str, provider: str, description: str, run_id: Optional[str] = None) -> None:
         """Record that a request may have been billed but no cost could be established. No amount is invented (it is stored as 0 and
         flagged); live runs stay blocked until the entry is reconciled with a real amount."""
         self.db.init_db()
         self.db.record_transaction(
-            transaction_id=transaction_id, model_id=model_id, provider=provider, amount_usd=Decimal("0"),
-            description=f"UNRESOLVED SPEND: {description}", run_id=run_id, is_pilot=True, is_preflight_estimate=False,
-            is_unresolved=True, cost_basis="UNRESOLVED",
+            transaction_id=transaction_id,
+            model_id=model_id,
+            provider=provider,
+            amount_usd=Decimal("0"),
+            description=f"UNRESOLVED SPEND: {description}",
+            run_id=run_id,
+            is_pilot=True,
+            is_preflight_estimate=False,
+            is_unresolved=True,
+            cost_basis="UNRESOLVED",
         )
 
     def unresolved(self):

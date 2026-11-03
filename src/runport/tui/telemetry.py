@@ -60,13 +60,13 @@ class SystemTelemetry:
             if psutil:
                 vm = psutil.virtual_memory()
                 mem = float(vm.percent)
-                self._mem_detail = f"{vm.used / 1024 ** 3:.1f}/{vm.total / 1024 ** 3:.1f} GB"
+                self._mem_detail = f"{vm.used / 1024**3:.1f}/{vm.total / 1024**3:.1f} GB"
         except Exception:
             mem = None
         try:
             du = shutil.disk_usage(".")
             disk = du.used / du.total * 100.0
-            self._disk_detail = f"{du.used / 1024 ** 3:.0f}/{du.total / 1024 ** 3:.0f} GB"
+            self._disk_detail = f"{du.used / 1024**3:.0f}/{du.total / 1024**3:.0f} GB"
         except Exception:
             disk = None
         self.cpu.append((now, cpu))
@@ -106,11 +106,11 @@ class InferenceTelemetry:
         self.history_len = history_len
         self.series: Dict[str, List[Tuple[float, Optional[float]]]] = {k: [] for k in self.SERIES}
         self.units: Dict[str, str] = {}
-        self.sample_count = 0      # recorded terminal events behind these graphs
-        self.is_live = False       # True once any real request event exists
+        self.sample_count = 0  # recorded terminal events behind these graphs
+        self.is_live = False  # True once any real request event exists
         self.active = 0
         self.last_event_ts: Optional[float] = None
-        self.n_in_window = 0               # finished requests inside the current rolling window
+        self.n_in_window = 0  # finished requests inside the current rolling window
         self.last_terminal_ts: Optional[float] = None
         self.window_s = 300.0
 
@@ -141,6 +141,7 @@ class LogBuffer:
         self.add_log("INFO", "Workbench initialized (local only; no live requests from this screen)", now)
         try:
             from runport.models.registry import roster_status
+
             rows = roster_status()
             ready = sum(r["readiness"] == "READY" for r in rows)
             smoke = sum(r["readiness"] == "SMOKE_READY" for r in rows)
@@ -151,10 +152,12 @@ class LogBuffer:
         try:
             from runport.core.config import settings
             from runport.core.budget_policy import effective_policy
+
             pol = effective_policy(settings.budget, settings.data_dir)
             self.add_log("INFO", f"Budget policy: ${pol.total_budget_usd:.2f} total / ${pol.pilot_budget_usd:.2f} pilot", now)
             from runport.storage.db import DatabaseManager
             import sqlite3
+
             db = DatabaseManager()
             db.init_db()
             with sqlite3.connect(str(db.db_path)) as c:
@@ -173,4 +176,3 @@ class LogBuffer:
 
     def get_recent(self, count: int = 6) -> List[Tuple[str, str, str]]:
         return list(self.entries)[-count:]
-

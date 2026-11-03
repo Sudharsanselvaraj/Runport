@@ -165,10 +165,7 @@ class DatabaseManager:
             conn.execute("ALTER TABLE budget_ledger ADD COLUMN is_unresolved INTEGER NOT NULL DEFAULT 0")
         if "cost_basis" not in cols:
             conn.execute("ALTER TABLE budget_ledger ADD COLUMN cost_basis TEXT NOT NULL DEFAULT 'UNSPECIFIED'")
-        conn.execute(
-            "UPDATE budget_ledger SET is_simulated = 1 WHERE is_simulated = 0 AND run_id IN "
-            "(SELECT run_id FROM evaluation_runs WHERE is_dry_run = 1)"
-        )
+        conn.execute("UPDATE budget_ledger SET is_simulated = 1 WHERE is_simulated = 0 AND run_id IN (SELECT run_id FROM evaluation_runs WHERE is_dry_run = 1)")
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
             "VALUES (1, datetime('now'), 'Base schema with ledger simulation and unresolved spend columns')"
@@ -192,7 +189,7 @@ class DatabaseManager:
         """Records a new entry in the budget ledger using exact integer micros and Decimal string."""
         if timestamp is None:
             timestamp = datetime.now(timezone.utc).isoformat()
-        
+
         amount_micros = int(amount_usd * 1_000_000)
         formatted_usd = f"{amount_usd:.6f}"
 
@@ -256,7 +253,9 @@ class DatabaseManager:
     def get_unresolved(self) -> List[Dict[str, Any]]:
         """Ledger entries for requests that may have been billed but whose cost is unknown. Amount is never invented."""
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT transaction_id, timestamp, run_id, model_id, provider, description FROM budget_ledger WHERE is_unresolved = 1 ORDER BY timestamp")
+            cur = conn.execute(
+                "SELECT transaction_id, timestamp, run_id, model_id, provider, description FROM budget_ledger WHERE is_unresolved = 1 ORDER BY timestamp"
+            )
             return [dict(r) for r in cur.fetchall()]
 
     def reconcile_transaction(self, transaction_id: str, amount_usd: Decimal, note: str = "") -> None:
@@ -277,7 +276,9 @@ class DatabaseManager:
     def get_spend_by_basis(self) -> Dict[str, Decimal]:
         """Actual-side spend grouped by how the cost was established (simulated and pre-run estimates excluded)."""
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT cost_basis, COALESCE(SUM(amount_micros), 0) FROM budget_ledger WHERE is_simulated = 0 AND is_preflight_estimate = 0 AND is_unresolved = 0 GROUP BY cost_basis")
+            cur = conn.execute(
+                "SELECT cost_basis, COALESCE(SUM(amount_micros), 0) FROM budget_ledger WHERE is_simulated = 0 AND is_preflight_estimate = 0 AND is_unresolved = 0 GROUP BY cost_basis"
+            )
             return {b: Decimal(m) / Decimal("1000000") for b, m in cur.fetchall()}
 
     def get_simulated_spend(self) -> tuple[int, Decimal]:

@@ -29,7 +29,7 @@ class FlowiseConnector(HttpWorkflowConnector):
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        payload_template = {
+        payload_template: Dict[str, Any] = {
             "question": "{{query}}",
         }
         if override_config:
@@ -48,4 +48,3 @@ class FlowiseConnector(HttpWorkflowConnector):
             max_retries=max_retries,
         )
         self.target_type = TargetType.WORKFLOW_FLOWISE
-

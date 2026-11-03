@@ -49,17 +49,19 @@ def list_targets() -> List[Dict[str, Any]]:
     """Returns available targets across catalog models and connectors."""
     targets = []
     for m in get_portfolio():
-        targets.append({
-            "target_id": m.model_id,
-            "name": m.display_name,
-            "target_type": TargetType.RAW_MODEL.value,
-            "provider": m.provider,
-            "license": m.license,
-            "context_length": m.context_length,
-            "input_price_per_1m_usd": float(m.input_price_per_1m_usd),
-            "output_price_per_1m_usd": float(m.output_price_per_1m_usd),
-            "verification_status": m.verification_status,
-        })
+        targets.append(
+            {
+                "target_id": m.model_id,
+                "name": m.display_name,
+                "target_type": TargetType.RAW_MODEL.value,
+                "provider": m.provider,
+                "license": m.license,
+                "context_length": m.context_length,
+                "input_price_per_1m_usd": float(m.input_price_per_1m_usd),
+                "output_price_per_1m_usd": float(m.output_price_per_1m_usd),
+                "verification_status": m.verification_status,
+            }
+        )
     return targets
 
 
@@ -158,4 +160,3 @@ def test_target(req: TestTargetRequest) -> Dict[str, Any]:
         "error_code": res.error_code,
         "metadata": res.metadata,
     }
-

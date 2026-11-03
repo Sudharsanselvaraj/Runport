@@ -25,8 +25,8 @@ class ThresholdError(ValueError):
 @dataclass
 class ProbItem:
     case_id: str
-    expected: Optional[bool]       # approved ground truth; None = unlabeled
-    yes_prob: Optional[float]      # native P(yes); None = unavailable (never imputed)
+    expected: Optional[bool]  # approved ground truth; None = unlabeled
+    yes_prob: Optional[float]  # native P(yes); None = unavailable (never imputed)
     split: DatasetSplit
     exclusion_reason: Optional[str] = None
 
@@ -47,6 +47,7 @@ class SweepRow(BaseModel):
 
 class FrozenThreshold(BaseModel):
     """Immutable record of a threshold selected on the dev split. Must exist before any held-out evaluation."""
+
     model_config = ConfigDict(frozen=True)
 
     threshold: float
@@ -96,9 +97,19 @@ def evaluate_at(items: Sequence[ProbItem], threshold: float) -> SweepRow:
     tn = sum(1 for i in scored if not i.expected and i.yes_prob < threshold)
     p, r = _div(tp, tp + fp), _div(tp, tp + fn)
     f1 = None if (p is None or r is None) else (0.0 if tp == 0 else 2 * p * r / (p + r))
-    return SweepRow(threshold=threshold, tp=tp, fp=fp, fn=fn, tn=tn, precision=p, recall=r, f1=f1,
-                    false_positive_rate=_div(fp, fp + tn), false_negative_rate=_div(fn, fn + tp),
-                    accuracy=_div(tp + tn, len(scored)))
+    return SweepRow(
+        threshold=threshold,
+        tp=tp,
+        fp=fp,
+        fn=fn,
+        tn=tn,
+        precision=p,
+        recall=r,
+        f1=f1,
+        false_positive_rate=_div(fp, fp + tn),
+        false_negative_rate=_div(fn, fn + tp),
+        accuracy=_div(tp + tn, len(scored)),
+    )
 
 
 def candidate_thresholds(items: Sequence[ProbItem]) -> List[float]:
@@ -127,8 +138,15 @@ def select_threshold_on_dev(items: Sequence[ProbItem]) -> FrozenThreshold:
     best = max(rows, key=lambda r: (r.f1, r.precision or 0.0, r.threshold))
     ref = evaluate_at(items, REFERENCE_THRESHOLD)
     fp = hashlib.sha256("|".join(sorted(i.case_id for i in scored)).encode()).hexdigest()
-    return FrozenThreshold(threshold=best.threshold, criterion=CRITERION_MAX_F1, selected_on="DEV", n_dev_scored=len(scored),
-                           dev_f1_at_threshold=best.f1, dev_f1_at_reference=ref.f1, dev_case_fingerprint=fp)
+    return FrozenThreshold(
+        threshold=best.threshold,
+        criterion=CRITERION_MAX_F1,
+        selected_on="DEV",
+        n_dev_scored=len(scored),
+        dev_f1_at_threshold=best.f1,
+        dev_f1_at_reference=ref.f1,
+        dev_case_fingerprint=fp,
+    )
 
 
 def roc_auc(items: Sequence[ProbItem]) -> Optional[float]:
@@ -171,7 +189,12 @@ def evaluate_held_out(items: Sequence[ProbItem], frozen: Optional[FrozenThreshol
         raise ThresholdError("Held-out evaluation accepts TEST items only")
     scored, missing = _usable(items)
     return HeldOutReport(
-        n_scored=len(scored), n_missing_prob=missing, frozen_threshold=frozen.threshold,
-        at_frozen=evaluate_at(items, frozen.threshold), at_reference=evaluate_at(items, REFERENCE_THRESHOLD),
-        roc_auc=roc_auc(items), average_precision=average_precision(items), brier=brier_binary(items),
+        n_scored=len(scored),
+        n_missing_prob=missing,
+        frozen_threshold=frozen.threshold,
+        at_frozen=evaluate_at(items, frozen.threshold),
+        at_reference=evaluate_at(items, REFERENCE_THRESHOLD),
+        roc_auc=roc_auc(items),
+        average_precision=average_precision(items),
+        brier=brier_binary(items),
     )

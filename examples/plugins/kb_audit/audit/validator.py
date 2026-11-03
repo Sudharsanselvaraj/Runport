@@ -18,25 +18,25 @@ def redact_sensitive(text: str) -> str:
     if not text:
         return text
     # Redact email addresses
-    text = re.sub(r'[\w\.-]+@[\w\.-]+\.\w+', '[REDACTED_EMAIL]', text)
+    text = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", "[REDACTED_EMAIL]", text)
     # Redact phone numbers (Malaysian / international format e.g. +601..., 03-5521...)
-    text = re.sub(r'(?:\+?60|0)[1-9][0-9\-]{7,11}', '[REDACTED_PHONE]', text)
+    text = re.sub(r"(?:\+?60|0)[1-9][0-9\-]{7,11}", "[REDACTED_PHONE]", text)
     # Redact bearer tokens or api keys
-    text = re.sub(r'(?:api[_-]?key|secret|token|bearer)\s*[:=]\s*\S+', '[REDACTED_SECRET]', text, flags=re.IGNORECASE)
+    text = re.sub(r"(?:api[_-]?key|secret|token|bearer)\s*[:=]\s*\S+", "[REDACTED_SECRET]", text, flags=re.IGNORECASE)
     return text
 
 
 # Regex patterns for heuristic checks
-RM_FEE_REGEX = re.compile(r'RM\s?([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?)', re.IGNORECASE)
-YEAR_REGEX = re.compile(r'\b(202[0-9])\b')
-DEADLINE_KEYWORDS = re.compile(r'\b(deadline|intake|valid until|closing date|expire|expiry|validity)\b', re.IGNORECASE)
+RM_FEE_REGEX = re.compile(r"RM\s?([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?)", re.IGNORECASE)
+YEAR_REGEX = re.compile(r"\b(202[0-9])\b")
+DEADLINE_KEYWORDS = re.compile(r"\b(deadline|intake|valid until|closing date|expire|expiry|validity)\b", re.IGNORECASE)
 
 
 def normalize_question(q: str) -> str:
     """Normalizes a question string for duplicate detection."""
     # Lowercase, remove markdown artifacts, punctuation, and extra whitespace
     q_norm = q.lower()
-    q_norm = re.sub(r'[^\w\s]', '', q_norm)
+    q_norm = re.sub(r"[^\w\s]", "", q_norm)
     return " ".join(q_norm.split()).strip()
 
 
@@ -46,7 +46,7 @@ def extract_rm_fees(text: str) -> List[str]:
     # Normalize: remove spaces and commas to compare numerical values
     cleaned = []
     for m in matches:
-        val = m.replace(',', '').strip()
+        val = m.replace(",", "").strip()
         cleaned.append(val)
     return cleaned
 
@@ -381,10 +381,7 @@ class KBValidator:
 
     def _validate_programme_mismatches(self) -> None:
         """Detects when a question references a programme different from its section heading or answer."""
-        degree_patterns = [
-            "doctor of philosophy", "phd", "bachelor in", "bachelor of",
-            "diploma in", "master in", "master of", "foundation in"
-        ]
+        degree_patterns = ["doctor of philosophy", "phd", "bachelor in", "bachelor of", "diploma in", "master in", "master of", "foundation in"]
 
         for r in self.records:
             if not r.question_clean or not r.programme_name or r.programme_name == "General":
@@ -400,8 +397,8 @@ class KBValidator:
 
             if q_degree_matches and prog_degree_matches:
                 # If question explicitly names a degree level or discipline, check for mismatch
-                prog_paren = re.findall(r'\((.*?)\)', r.programme_name)
-                q_paren = re.findall(r'\((.*?)\)', r.question_clean)
+                prog_paren = re.findall(r"\((.*?)\)", r.programme_name)
+                q_paren = re.findall(r"\((.*?)\)", r.question_clean)
 
                 if prog_paren and q_paren and prog_paren[0].lower() != q_paren[0].lower():
                     self._add_issue(
@@ -535,7 +532,9 @@ class CrossKBValidator:
     def _check_programme_coverage_gap(self) -> None:
         """Detects programmes present in Programmes KB that are absent from General KB's course directory."""
         gen_text = " ".join(r.raw_text for r in self.general_records)
-        prog_headings = [h for h in self.programmes_headings if h.level == 1 and h.text and h.text != "General" and not h.text.startswith("General Information")]
+        prog_headings = [
+            h for h in self.programmes_headings if h.level == 1 and h.text and h.text != "General" and not h.text.startswith("General Information")
+        ]
 
         missing_count = 0
         for h in prog_headings:

@@ -30,11 +30,7 @@ class LangGraphConnector(HttpWorkflowConnector):
 
         payload_template = {
             "assistant_id": assistant_id,
-            "input": {
-                "messages": [
-                    {"role": "user", "content": "{{query}}"}
-                ]
-            },
+            "input": {"messages": [{"role": "user", "content": "{{query}}"}]},
         }
 
         super().__init__(
@@ -50,4 +46,3 @@ class LangGraphConnector(HttpWorkflowConnector):
             max_retries=max_retries,
         )
         self.target_type = TargetType.WORKFLOW_LANGGRAPH
-

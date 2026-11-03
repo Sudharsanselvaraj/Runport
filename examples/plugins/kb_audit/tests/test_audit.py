@@ -240,11 +240,7 @@ def test_malformed_syntax_and_stray_tokens(tmp_kb_dir: Path):
 
 def test_source_immutability_and_hash_integrity(tmp_kb_dir: Path):
     """Verify that running the audit leaves the source file 100% unaltered."""
-    content = (
-        "# \\# Integrity Test\n\n"
-        "\\*\\*Question:\\*\\* Is source data altered?\n\n"
-        "\\*\\*Answer:\\*\\* Never.\n"
-    )
+    content = "# \\# Integrity Test\n\n\\*\\*Question:\\*\\* Is source data altered?\n\n\\*\\*Answer:\\*\\* Never.\n"
     kb_file = tmp_kb_dir / "immutability.md"
     kb_file.write_text(content, encoding="utf-8")
 
@@ -264,11 +260,7 @@ def test_source_immutability_and_hash_integrity(tmp_kb_dir: Path):
 
 def test_cli_dry_run_and_report_generation(tmp_kb_dir: Path):
     """Test CLI audit-kb command in both dry-run and file-export modes."""
-    content = (
-        "# \\# CLI Test\n\n"
-        "\\*\\*Question:\\*\\* Test Question?\n\n"
-        "\\*\\*Answer:\\*\\* Test Answer.\n"
-    )
+    content = "# \\# CLI Test\n\n\\*\\*Question:\\*\\* Test Question?\n\n\\*\\*Answer:\\*\\* Test Answer.\n"
     kb_file = tmp_kb_dir / "cli_sample.md"
     kb_file.write_text(content, encoding="utf-8")
     reports_dir = tmp_kb_dir / "reports"

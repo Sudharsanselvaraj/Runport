@@ -107,13 +107,14 @@ class RetryingPoster:
                 error_type, limit_source = typed_error(raw_body)
                 code = f"HTTP_{status}" + (f"/{error_type}" if error_type else "")
                 retry_after = e.headers.get("Retry-After") if e.headers else None
-                in_flight_402 = (
-                    status == 402 and limit_source == IN_FLIGHT_BUDGET and valid_retry_after(retry_after) is not None
-                )
+                in_flight_402 = status == 402 and limit_source == IN_FLIGHT_BUDGET and valid_retry_after(retry_after) is not None
                 if status not in RETRYABLE_STATUS and not in_flight_402:
                     raise ProviderError(
                         f"OpenRouter HTTP Error ({status}): {scrubbed}",
-                        attempts=attempt, errors=errors + [code], status=status, retryable=False,
+                        attempts=attempt,
+                        errors=errors + [code],
+                        status=status,
+                        retryable=False,
                     ) from e
                 errors.append(code)
             except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
@@ -125,7 +126,8 @@ class RetryingPoster:
         exc_cls = RateLimitError if errors and errors[-1].startswith("HTTP_429") else ProviderError
         raise exc_cls(
             f"OpenRouter request failed after {self.max_attempts} attempt(s): {', '.join(errors)}",
-            attempts=self.max_attempts, errors=errors,
+            attempts=self.max_attempts,
+            errors=errors,
             status=int(re.match(r"HTTP_(\d+)", errors[-1]).group(1)) if errors[-1].startswith("HTTP_") else None,
             retryable=True,
         )

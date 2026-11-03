@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class ModelExecutionRecord(BaseModel):
     """Execution telemetry captured from candidate model inference."""
+
     execution_id: str = Field(description="Unique run ID (e.g. exec_20261014_001)")
     case_id: str = Field(description="Referenced EvaluationCase ID")
     model_id: str = Field(description="Candidate model identifier")

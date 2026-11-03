@@ -26,22 +26,30 @@ def register_ui_commands(app: typer.Typer) -> None:
         table.add_row("OPENROUTER_API_KEY is set and non-empty", "[green]yes[/green]" if present else "[bold red]no[/bold red]")
         if present:
             table.add_row("Key has extraneous whitespace", "[yellow]yes (fix it)[/yellow]" if odd_whitespace else "no")
-        table.add_row("Interactive terminal (needed for live approval)", "yes" if (sys.stdin.isatty() and sys.stdout.isatty()) else "[yellow]no: live runs would be refused[/yellow]")
+        table.add_row(
+            "Interactive terminal (needed for live approval)",
+            "yes" if (sys.stdin.isatty() and sys.stdout.isatty()) else "[yellow]no: live runs would be refused[/yellow]",
+        )
         table.add_row("Source of the key", get_api_key_source())
         table.add_row("Network used by this command", "none")
         rows = roster_status()
-        table.add_row("Participants READY / SMOKE_READY / BLOCKED",
-                      f"{sum(r['readiness'] == 'READY' for r in rows)} / {sum(r['readiness'] == 'SMOKE_READY' for r in rows)} / {sum(r['readiness'] == 'BLOCKED' for r in rows)}")
+        table.add_row(
+            "Participants READY / SMOKE_READY / BLOCKED",
+            f"{sum(r['readiness'] == 'READY' for r in rows)} / {sum(r['readiness'] == 'SMOKE_READY' for r in rows)} / {sum(r['readiness'] == 'BLOCKED' for r in rows)}",
+        )
         table.add_row("Confidential/unverified data allowed to any provider", "[bold red]no[/bold red] (strict privacy gate active)")
         console.print(table)
         if not present:
-            console.print("Set it in your shell (e.g. export OPENROUTER_API_KEY=...) or in .env before a live run (never paste it into chat or commit it)", markup=False)
+            console.print(
+                "Set it in your shell (e.g. export OPENROUTER_API_KEY=...) or in .env before a live run (never paste it into chat or commit it)", markup=False
+            )
         raise typer.Exit(code=0 if present else 1)
 
     @app.command(name="welcome")
     def launch_welcome() -> None:
         """Launch the interactive developer-grade welcome screen."""
         from runport.cli.main import run_launcher_loop
+
         run_launcher_loop()
 
     @app.command(name="ui")
@@ -52,10 +60,12 @@ def register_ui_commands(app: typer.Typer) -> None:
         """Launch the interactive terminal UI (or web dashboard with --web)."""
         if web:
             import uvicorn
+
             console.print(f"[bold green]Starting Runport Web Dashboard on http://127.0.0.1:{port}[/bold green]")
             uvicorn.run("runport.api.app:create_app", factory=True, host="127.0.0.1", port=port)
         else:
             from runport.tui.app import run_tui
+
             run_tui()
 
     @app.command(name="web")
@@ -65,7 +75,16 @@ def register_ui_commands(app: typer.Typer) -> None:
         reload: bool = typer.Option(False, help="Enable auto-reload for development"),
     ) -> None:
         """Start the Runport web dashboard and REST API service."""
+        import os
         import uvicorn
+
+        if host not in ("127.0.0.1", "localhost", "::1") and not os.environ.get("RUNPORT_API_TOKEN"):
+            console.print(
+                "[bold red]Security Error:[/bold red] Binding to non-loopback host requires RUNPORT_API_TOKEN to be set in environment to prevent unauthorized access.",
+                markup=True,
+            )
+            raise typer.Exit(code=1)
+
         console.print(f"[bold green]Starting Runport Web Dashboard on http://{host}:{port}[/bold green]")
         uvicorn.run("runport.api.app:create_app", factory=True, host=host, port=port, reload=reload)
 
@@ -73,5 +92,5 @@ def register_ui_commands(app: typer.Typer) -> None:
     def launch_interactive() -> None:
         """Alias to launch the interactive terminal UI."""
         from runport.tui.app import run_tui
-        run_tui()
 
+        run_tui()

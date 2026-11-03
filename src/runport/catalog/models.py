@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class ModelCandidate(BaseModel):
     """Metadata specification for an evaluation model candidate."""
+
     model_id: str = Field(description="Unique provider model identifier (e.g. 'qwen/qwen-2.5-7b-instruct')")
     display_name: str = Field(description="Human-readable model name")
     provider: str = Field(description="Upstream model vendor or aggregator")

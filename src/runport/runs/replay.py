@@ -91,12 +91,7 @@ class ReplayRunner:
                 metadata={"case_id": case_id, "fixture_source": self.fixtures_source},
             )
 
-        output_text = (
-            record.get("output_text")
-            or record.get("output")
-            or record.get("response")
-            or record.get("text")
-        )
+        output_text = record.get("output_text") or record.get("output") or record.get("response") or record.get("text")
         latency_ms = record.get("latency_ms", 0.0)
         tokens_in = record.get("tokens_in") or record.get("prompt_tokens")
         tokens_out = record.get("tokens_out") or record.get("completion_tokens")
@@ -177,4 +172,3 @@ class ReplayTarget(Target):
             input_payload=input_payload,
             target_id=self.target_id,
         )
-

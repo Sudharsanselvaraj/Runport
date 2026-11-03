@@ -1,4 +1,5 @@
 """CLI for KB Audit & Remediation Plugin."""
+
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -16,6 +17,7 @@ from runport.cli import compute_sha256
 
 app = typer.Typer(help="KB Audit & Remediation Plugin CLI")
 console = Console()
+
 
 @app.command(name="audit-kb")
 def audit_kb(
@@ -62,7 +64,7 @@ def audit_kb(
 
     # 4. Post-audit SHA-256 verification (guarantee zero mutation)
     sha_after = compute_sha256(file_path)
-    integrity_ok = (sha_before == sha_after)
+    integrity_ok = sha_before == sha_after
 
     if not integrity_ok:
         console.print("[bold red]CRITICAL INTEGRITY FAILURE: Source file hash changed during audit![/bold red]")
@@ -220,5 +222,3 @@ def remediate_kb(
         summary_card += f"\n[dim]Run with '--apply --output {target_out}' to generate versioned clean copy.[/dim]"
 
     console.print(Panel(summary_card, title="[bold]Remediation Execution Summary[/bold]", border_style="cyan"))
-
-

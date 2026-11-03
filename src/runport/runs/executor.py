@@ -29,6 +29,7 @@ from runport.targets.base import CostBasis, Target, TargetResult, TargetStatus
 @dataclass
 class GenericRunResult:
     """Summary result of a generic execution run."""
+
     run_id: str
     plan_id: str
     plan_fingerprint: str
@@ -88,8 +89,7 @@ class GenericRunner:
             for k in c.keys():
                 if k.lower() in forbidden:
                     raise ValueError(
-                        f"Whole-batch privacy gate rejected case {i} ('{c.get('id', i)}'): "
-                        f"forbidden field '{k}' detected before transport execution."
+                        f"Whole-batch privacy gate rejected case {i} ('{c.get('id', i)}'): forbidden field '{k}' detected before transport execution."
                     )
 
         # Execute each target
@@ -118,21 +118,16 @@ class GenericRunner:
                 # --- Guard 3: Preflight Budget & Context Check ---
                 if plan.is_live:
                     target_pricing = getattr(target, "pricing", None)
-                    is_priced = target_pricing is not None and (
-                        target_pricing.input_usd_per_1m is not None or target_pricing.fixed_usd_per_request is not None
-                    )
+                    is_priced = target_pricing is not None and (target_pricing.input_usd_per_1m is not None or target_pricing.fixed_usd_per_request is not None)
                     if not is_priced:
                         if self.workspace.budget.require_priced:
-                            raise BudgetExceededError(
-                                f"Model/target '{target_id}' has unknown pricing and require_priced is enabled."
-                            )
+                            raise BudgetExceededError(f"Model/target '{target_id}' has unknown pricing and require_priced is enabled.")
                         # Unknown-price model runs with UNAVAILABLE estimate and requires max_cost_per_case_usd
                         worst_case_estimate = self.workspace.budget.per_case_usd
                         if not worst_case_estimate or worst_case_estimate <= Decimal("0.00"):
-                            raise BudgetExceededError(
-                                f"Unknown-price target '{target_id}' requires a positive per-case spend cap (max_cost_per_case_usd)."
-                            )
+                            raise BudgetExceededError(f"Unknown-price target '{target_id}' requires a positive per-case spend cap (max_cost_per_case_usd).")
                     else:
+                        assert target_pricing is not None
                         worst_case_estimate = target_pricing.calculate_cost(1000, 500) or self.workspace.budget.per_case_usd
 
                     ok, msg = self.budget_service.check_spend_permitted(worst_case_estimate)
@@ -168,23 +163,25 @@ class GenericRunner:
                     run_res.failed_cases += 1
 
                 # --- Guard 6: Persistence Data Prep ---
-                persisted_results.append({
-                    "result_id": f"res-{uuid.uuid4().hex[:12]}",
-                    "run_id": run_id,
-                    "case_id": case_id,
-                    "prompt": str(case.get("query") or case.get("prompt") or case.get("input") or ""),
-                    "expected_answer": str(case.get("expected_answer") or ""),
-                    "generated_output": str(res.output_text or ""),
-                    "latency_ms": elapsed_ms,
-                    "prompt_tokens": res.tokens_in,
-                    "completion_tokens": res.tokens_out,
-                    "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else None,
-                    "accuracy": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
-                    "groundedness": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
-                    "format_adherence": 1.0 if res.status != TargetStatus.INVALID_OUTPUT else 0.0,
-                    "overall_score": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
-                    "evaluator_notes": res.error_message,
-                })
+                persisted_results.append(
+                    {
+                        "result_id": f"res-{uuid.uuid4().hex[:12]}",
+                        "run_id": run_id,
+                        "case_id": case_id,
+                        "prompt": str(case.get("query") or case.get("prompt") or case.get("input") or ""),
+                        "expected_answer": str(case.get("expected_answer") or ""),
+                        "generated_output": str(res.output_text or ""),
+                        "latency_ms": elapsed_ms,
+                        "prompt_tokens": res.tokens_in,
+                        "completion_tokens": res.tokens_out,
+                        "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else None,
+                        "accuracy": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
+                        "groundedness": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
+                        "format_adherence": 1.0 if res.status != TargetStatus.INVALID_OUTPUT else 0.0,
+                        "overall_score": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
+                        "evaluator_notes": res.error_message,
+                    }
+                )
 
                 # --- Guard 7: Spend Booking ---
                 if plan.is_live and not res.is_replay:

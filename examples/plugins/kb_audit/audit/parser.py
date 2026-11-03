@@ -7,33 +7,33 @@ from examples.plugins.kb_audit.audit.models import Heading, KBRecord
 
 
 # Regexes constructed with re.escape to guarantee matching escaped and unescaped variants
-B_ESC = re.escape(r'\*\*')
-B_RAW = re.escape(r'**')
-BOLD = f'(?:{B_ESC}|{B_RAW})'
+B_ESC = re.escape(r"\*\*")
+B_RAW = re.escape(r"**")
+BOLD = f"(?:{B_ESC}|{B_RAW})"
 
 q_variants = [
-    rf'{BOLD}\s*Question\s*:\s*{BOLD}:?',
-    rf'{BOLD}\s*Question\s*{BOLD}\s*:\s*',
-    rf'{BOLD}\s*Question\s*{BOLD}',
-    r'(?:^|(?<=\n)|(?<=\s)|[\"\'\>])Question\s*:\s*',
+    rf"{BOLD}\s*Question\s*:\s*{BOLD}:?",
+    rf"{BOLD}\s*Question\s*{BOLD}\s*:\s*",
+    rf"{BOLD}\s*Question\s*{BOLD}",
+    r"(?:^|(?<=\n)|(?<=\s)|[\"\'\>])Question\s*:\s*",
 ]
-Q_MARKER_REGEX = re.compile('|'.join(q_variants), re.IGNORECASE)
+Q_MARKER_REGEX = re.compile("|".join(q_variants), re.IGNORECASE)
 
 a_variants = [
-    rf'{BOLD}\s*Answer\s*:\s*{BOLD}:?',
-    rf'{BOLD}\s*Answer\s*{BOLD}\s*:\s*',
-    rf'{BOLD}\s*Answer\s*{BOLD}',
-    r'(?:^|(?<=\n)|(?<=\s)|[\"\'\>])Answer\s*:\s*',
+    rf"{BOLD}\s*Answer\s*:\s*{BOLD}:?",
+    rf"{BOLD}\s*Answer\s*{BOLD}\s*:\s*",
+    rf"{BOLD}\s*Answer\s*{BOLD}",
+    r"(?:^|(?<=\n)|(?<=\s)|[\"\'\>])Answer\s*:\s*",
 ]
-A_MARKER_REGEX = re.compile('|'.join(a_variants), re.IGNORECASE)
+A_MARKER_REGEX = re.compile("|".join(a_variants), re.IGNORECASE)
 
-HEADING_REGEX = re.compile(r'^(?:#{1,6}|(?:\\\\#){1,6})\s*(.*)$')
-DIVIDER_REGEX = re.compile(r'^\s*\\?--{3,}\s*$')
+HEADING_REGEX = re.compile(r"^(?:#{1,6}|(?:\\\\#){1,6})\s*(.*)$")
+DIVIDER_REGEX = re.compile(r"^\s*\\?--{3,}\s*$")
 
 
 def unescape_markdown(text: str) -> str:
     """Removes backslash escapes for markdown characters."""
-    return re.sub(r'\\([*#+\-.:~()\[\]&_`"\'\?\\/!])', r'\1', text)
+    return re.sub(r'\\([*#+\-.:~()\[\]&_`"\'\?\\/!])', r"\1", text)
 
 
 def normalize_whitespace(text: str) -> str:
@@ -115,8 +115,10 @@ class KBParser:
             record_counter += 1
             rec_id = f"REC-{record_counter:04d}"
 
-            is_multiline = (end_line > start_line)
-            is_inline = has_question_tag and has_answer_tag and len(question_lines) > 0 and len(answer_lines) > 0 and (question_lines[0][0] == answer_lines[0][0])
+            is_multiline = end_line > start_line
+            is_inline = (
+                has_question_tag and has_answer_tag and len(question_lines) > 0 and len(answer_lines) > 0 and (question_lines[0][0] == answer_lines[0][0])
+            )
 
             # Determine parsing status and validation warnings
             warnings = []
@@ -180,16 +182,16 @@ class KBParser:
             heading_match = HEADING_REGEX.match(stripped)
             if heading_match:
                 finalize_record()
-                raw_hash_match = re.match(r'^(#+)', stripped)
+                raw_hash_match = re.match(r"^(#+)", stripped)
                 if raw_hash_match:
                     level = len(raw_hash_match.group(1))
                 else:
-                    level = stripped.count(r'\#') if r'\#' in stripped else 1
+                    level = stripped.count(r"\#") if r"\#" in stripped else 1
                 level = min(max(level, 1), 6)
 
                 h_text_raw = heading_match.group(1).strip()
                 h_text_clean = clean_text(h_text_raw)
-                h_text_clean = re.sub(r'^[#\s]+', '', h_text_clean).strip()
+                h_text_clean = re.sub(r"^[#\s]+", "", h_text_clean).strip()
 
                 heading = Heading(
                     level=level,
@@ -229,8 +231,8 @@ class KBParser:
                 has_question_tag = True
 
                 if a_match and a_match.start() > q_match.end():
-                    q_part = line[q_match.end():a_match.start()]
-                    a_part = line[a_match.end():]
+                    q_part = line[q_match.end() : a_match.start()]
+                    a_part = line[a_match.end() :]
 
                     question_lines.append((line_idx, q_part))
                     answer_lines.append((line_idx, a_part))
@@ -238,7 +240,7 @@ class KBParser:
                     has_answer_tag = True
                     answer_marker_count = 1
                 else:
-                    q_part = line[q_match.end():]
+                    q_part = line[q_match.end() :]
                     question_lines.append((line_idx, q_part))
                     in_answer_phase = False
                 continue
@@ -250,16 +252,16 @@ class KBParser:
                     answer_marker_count = 1
                     raw_lines.append((line_idx, line))
 
-                    pre_a = line[:a_match.start()].strip()
+                    pre_a = line[: a_match.start()].strip()
                     if pre_a:
                         question_lines.append((line_idx, pre_a))
 
-                    post_a = line[a_match.end():]
+                    post_a = line[a_match.end() :]
                     answer_lines.append((line_idx, post_a))
                 elif in_record and in_answer_phase:
                     raw_lines.append((line_idx, line))
                     answer_marker_count += 1
-                    post_a = line[a_match.end():]
+                    post_a = line[a_match.end() :]
                     answer_lines.append((line_idx, post_a))
                 else:
                     finalize_record()
@@ -270,7 +272,7 @@ class KBParser:
                     has_answer_tag = True
                     in_answer_phase = True
                     answer_marker_count = 1
-                    post_a = line[a_match.end():]
+                    post_a = line[a_match.end() :]
                     answer_lines.append((line_idx, post_a))
                 continue
 

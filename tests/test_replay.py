@@ -94,4 +94,3 @@ def test_replay_target_abstraction():
     assert res.is_replay is True
     assert res.provenance == "REPLAYED"
     assert res.cost_usd == Decimal("0.0000")
-

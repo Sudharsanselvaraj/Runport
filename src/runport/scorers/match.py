@@ -48,7 +48,7 @@ class ExactMatchScorer(BaseScorer):
 
         norm_pred = self._normalize(predicted)
         norm_exp = self._normalize(expected)
-        is_match = (norm_pred == norm_exp)
+        is_match = norm_pred == norm_exp
 
         return ScoreResult(
             metric_name=self.name,
@@ -109,4 +109,3 @@ class RegexMatchScorer(BaseScorer):
                 "matched": matched,
             },
         )
-

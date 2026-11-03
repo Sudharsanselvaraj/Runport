@@ -17,7 +17,7 @@ async def sse_event_stream() -> AsyncGenerator[str, None]:
     tail = EventTail(path)
 
     # Initial ping
-    yield "data: {\"type\": \"connected\", \"message\": \"Runport SSE stream connected\"}\n\n"
+    yield 'data: {"type": "connected", "message": "Runport SSE stream connected"}\n\n'
 
     try:
         while True:
@@ -45,4 +45,3 @@ async def get_live_events() -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
-

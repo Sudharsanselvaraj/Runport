@@ -219,5 +219,3 @@ def test_cli_models_list_shows_the_verified_comparison_roster():
     result = runner.invoke(app, ["models", "list"], env={"COLUMNS": "260"})
     assert result.exit_code == 0
     assert "Registered Model Portfolio" in result.stdout
-
-

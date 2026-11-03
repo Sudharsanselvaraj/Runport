@@ -6,9 +6,24 @@ import pytest
 from pydantic import ValidationError
 
 from runport.models.registry import (
-    Fact, FactStatus, ModelRecord, Protocol, RouteOption, RouteRecord, RouteStatus,
-    clear_registry, estimate_permitted, fact, get_record, list_records, live_blockers,
-    model_level_prices, observed, register_model, roster_status, unknown,
+    Fact,
+    FactStatus,
+    ModelRecord,
+    Protocol,
+    RouteOption,
+    RouteRecord,
+    RouteStatus,
+    clear_registry,
+    estimate_permitted,
+    fact,
+    get_record,
+    list_records,
+    live_blockers,
+    model_level_prices,
+    observed,
+    register_model,
+    roster_status,
+    unknown,
 )
 
 

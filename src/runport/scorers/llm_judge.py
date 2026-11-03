@@ -141,4 +141,3 @@ class LLMJudgeScorer(BaseScorer):
             if m:
                 return {"score": int(m.group(1)), "reasoning": "Extracted via regex fallback"}
             return {}
-

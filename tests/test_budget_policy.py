@@ -18,13 +18,27 @@ BASE = BudgetPolicy()
 
 def raise_to(data_dir, amount="5.00", phrase=None, interactive=True, operator="Test Operator"):
     new = Decimal(amount)
-    return bp.raise_pilot_ceiling(data_dir, BASE, new, operator=operator, ledger_total_spent=Decimal("0.915803"), ledger_pilot_spent=Decimal("0.915803"),
-                                  is_interactive=lambda: interactive, prompt=lambda m: phrase if phrase is not None else bp.expected_phrase(new, BASE.total_budget_usd), echo=lambda s: None)
+    return bp.raise_pilot_ceiling(
+        data_dir,
+        BASE,
+        new,
+        operator=operator,
+        ledger_total_spent=Decimal("0.915803"),
+        ledger_pilot_spent=Decimal("0.915803"),
+        is_interactive=lambda: interactive,
+        prompt=lambda m: phrase if phrase is not None else bp.expected_phrase(new, BASE.total_budget_usd),
+        echo=lambda s: None,
+    )
 
 
 def test_the_defaults_are_unchanged_without_an_override(tmp_path):
     p = bp.effective_policy(BASE, tmp_path)
-    assert (p.pilot_budget_usd, p.total_budget_usd, p.per_run_ceiling_usd, p.per_case_ceiling_usd) == (Decimal("1.00"), Decimal("5.00"), Decimal("1.00"), Decimal("0.05"))
+    assert (p.pilot_budget_usd, p.total_budget_usd, p.per_run_ceiling_usd, p.per_case_ceiling_usd) == (
+        Decimal("1.00"),
+        Decimal("5.00"),
+        Decimal("1.00"),
+        Decimal("0.05"),
+    )
 
 
 def test_the_pilot_ceiling_changes_only_after_the_exact_typed_phrase_and_nothing_else_changes(tmp_path):
@@ -37,7 +51,12 @@ def test_the_pilot_ceiling_changes_only_after_the_exact_typed_phrase_and_nothing
     assert not bp.policy_path(tmp_path).exists() and bp.effective_policy(BASE, tmp_path).pilot_budget_usd == Decimal("1.00")
     entry = raise_to(tmp_path)
     p = bp.effective_policy(BASE, tmp_path)
-    assert p.pilot_budget_usd == Decimal("5.00") and p.total_budget_usd == Decimal("5.00") and p.per_run_ceiling_usd == Decimal("1.00") and p.per_case_ceiling_usd == Decimal("0.05")
+    assert (
+        p.pilot_budget_usd == Decimal("5.00")
+        and p.total_budget_usd == Decimal("5.00")
+        and p.per_run_ceiling_usd == Decimal("1.00")
+        and p.per_case_ceiling_usd == Decimal("0.05")
+    )
     assert entry["previous_pilot_budget_usd"] == "1.00" and entry["ledger_total_spent_usd"] == "0.915803" and entry["operator"] == "Test Operator"
     assert bp.history(tmp_path)[0]["new_pilot_budget_usd"] == "5.00"
     assert bp.expected_phrase(Decimal("5"), Decimal("5")) == "AUTHORIZE PILOT CEILING 5.00 USD TOTAL CEILING 5.00 USD UNCHANGED"
@@ -55,9 +74,9 @@ def test_a_damaged_or_inconsistent_override_file_is_ignored_not_trusted(tmp_path
     bp.policy_path(tmp_path).write_text("{ not json")
     assert bp.effective_policy(BASE, tmp_path).pilot_budget_usd == Decimal("1.00") and bp.history(tmp_path) == []
     bp.policy_path(tmp_path).write_text(json.dumps({"schema": bp.SCHEMA, "history": [{"new_pilot_budget_usd": "99.00", "total_budget_usd": "5.00"}]}))
-    assert bp.effective_policy(BASE, tmp_path).pilot_budget_usd == Decimal("1.00")           # above the total: refused
+    assert bp.effective_policy(BASE, tmp_path).pilot_budget_usd == Decimal("1.00")  # above the total: refused
     bp.policy_path(tmp_path).write_text(json.dumps({"schema": bp.SCHEMA, "history": [{"new_pilot_budget_usd": "5.00", "total_budget_usd": "50.00"}]}))
-    assert bp.effective_policy(BASE, tmp_path).pilot_budget_usd == Decimal("1.00")           # recorded against a different total: refused
+    assert bp.effective_policy(BASE, tmp_path).pilot_budget_usd == Decimal("1.00")  # recorded against a different total: refused
 
 
 def test_the_budget_service_applies_the_override_and_keeps_the_ledger(tmp_path, monkeypatch):
@@ -65,18 +84,23 @@ def test_the_budget_service_applies_the_override_and_keeps_the_ledger(tmp_path, 
     svc = BudgetService(db=db, policy=BASE)
     svc.record_spend("t1", "m", "openrouter", Decimal("0.90"), "x", run_id="r", cost_basis="ESTIMATED_FROM_CATALOG")
     blocked, _ = svc.check_spend_permitted(Decimal("0.20"))
-    assert not blocked                                                                       # the $1.00 pilot ceiling stops it
+    assert not blocked  # the $1.00 pilot ceiling stops it
     raise_to(settings.data_dir)
     svc2 = BudgetService(db=db)
     assert svc2.policy.pilot_budget_usd == Decimal("5.00")
     ok, _ = svc2.check_spend_permitted(Decimal("0.20"))
     st = svc2.get_status()
-    assert ok and st.cumulative_spend_usd == Decimal("0.900000") and st.remaining_pilot_usd == Decimal("4.100000") and st.remaining_total_usd == Decimal("4.100000")
+    assert (
+        ok
+        and st.cumulative_spend_usd == Decimal("0.900000")
+        and st.remaining_pilot_usd == Decimal("4.100000")
+        and st.remaining_total_usd == Decimal("4.100000")
+    )
     over, reason = svc2.check_spend_permitted(Decimal("1.50"))
-    assert not over and "per-run ceiling" in reason                                          # per-run ceiling unchanged
+    assert not over and "per-run ceiling" in reason  # per-run ceiling unchanged
     svc2.record_spend("t2", "m", "openrouter", Decimal("4.00"), "x", run_id="r", cost_basis="ESTIMATED_FROM_CATALOG")
     no, why = svc2.check_spend_permitted(Decimal("0.40"))
-    assert not no and "total budget ceiling" in why                                          # the lifetime ceiling stays hard
+    assert not no and "total budget ceiling" in why  # the lifetime ceiling stays hard
 
 
 def test_cli_refuses_without_an_interactive_terminal(tmp_path):
@@ -90,19 +114,29 @@ def test_audit_reconciles_ledger_with_stored_results_and_separates_guard_from_le
     from runport.classification.records import PredictionStore
     from runport.observability import budget_audit as ba
     from obs_helpers import class_pred
+
     db = DatabaseManager(db_path=tmp_path / "a.db")
     svc = BudgetService(db=db, policy=BASE)
     reports = tmp_path / "reports"
     store = PredictionStore(reports / "classification" / "bench-0123456789ab__m__CLASSIFICATION.jsonl")
     for i, (cost, native) in enumerate([("0.001000", "0.001500"), ("0.002000", None)]):
-        rec = class_pred(f"C{i}", "QUERY", run="bench-0123456789ab-m-CLASSIFICATION", recorded_cost_usd=Decimal(cost), native_cost=Decimal(native) if native else None, cost_basis="ESTIMATED_FROM_CATALOG")
+        rec = class_pred(
+            f"C{i}",
+            "QUERY",
+            run="bench-0123456789ab-m-CLASSIFICATION",
+            recorded_cost_usd=Decimal(cost),
+            native_cost=Decimal(native) if native else None,
+            cost_basis="ESTIMATED_FROM_CATALOG",
+        )
         store.append(rec)
         svc.record_spend(f"tx{i}", "m", "openrouter", Decimal(cost), "x", run_id=rec.run_id, cost_basis="ESTIMATED_FROM_CATALOG")
     store.append(class_pred("E1", "QUERY", run="bench-0123456789ab-m-CLASSIFICATION", status="ERROR"))
     a = ba.audit(db.db_path, BASE, reports, tmp_path / "benchmarks")
     g = a["groups"][0]
     assert a["reconciled"] and a["ledger_total_counted_usd"] == "0.003" and g["ledger_equals_records"]
-    assert g["records_native_credits"] == "0.0015" and g["guard_from_records_usd"] == "0.0035"        # guard = max(booked, native) per request: a different meaning from the ledger
+    assert (
+        g["records_native_credits"] == "0.0015" and g["guard_from_records_usd"] == "0.0035"
+    )  # guard = max(booked, native) per request: a different meaning from the ledger
     assert g["records_error_no_cost"] == 1 and a["remaining_usd"]["total"] == "4.997"
     svc.record_spend("tx-extra", "m", "openrouter", Decimal("0.5"), "x", run_id="bench-0123456789ab-m-CLASSIFICATION", cost_basis="ESTIMATED_FROM_CATALOG")
-    assert not ba.audit(db.db_path, BASE, reports, tmp_path / "benchmarks")["reconciled"]           # a ledger row with no stored result is a discrepancy
+    assert not ba.audit(db.db_path, BASE, reports, tmp_path / "benchmarks")["reconciled"]  # a ledger row with no stored result is a discrepancy

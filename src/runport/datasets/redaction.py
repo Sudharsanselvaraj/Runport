@@ -15,10 +15,14 @@ _IC = re.compile(r"(?<!\d)\d{6}-?\d{2}-?\d{4}(?!\d)")
 _MY_MOBILE = re.compile(r"(?<![\w])(?:\+?60|0)\s?1\d(?:[\s\-]?\d){7,8}(?!\d)")
 _LONG_DIGITS = re.compile(r"(?<!\d)\+?\d[\d\s\-()]{7,18}\d(?!\d)")
 _PASSPORT = re.compile(r"(?<![A-Za-z0-9])[A-Z]\d{7,8}(?![A-Za-z0-9])")
-_NOT_NAMES = frozenset("""interested looking planning thinking currently from in not a an the applying wondering asking writing here new
-    still also just really very sorry glad happy confused worried currently student parent father mother""".split())
+_NOT_NAMES = frozenset(
+    """interested looking planning thinking currently from in not a an the applying wondering asking writing here new
+    still also just really very sorry glad happy confused worried currently student parent father mother""".split()
+)
 _INTRO = re.compile(r"\b(?:I am|I'm|this is|my name is|nama saya|saya)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b")
-_RELATIVE_NAME = re.compile(r"(?i)\b(?:my (?:father|mother|dad|mum|son|daughter|brother|sister|child)(?:'s)? name(?: is)?|nama (?:ayah|ibu|anak)(?: saya)?)\s*:?\s+([A-Za-z'@\-]+(?:\s+[A-Za-z'@\-]+){0,2})")
+_RELATIVE_NAME = re.compile(
+    r"(?i)\b(?:my (?:father|mother|dad|mum|son|daughter|brother|sister|child)(?:'s)? name(?: is)?|nama (?:ayah|ibu|anak)(?: saya)?)\s*:?\s+([A-Za-z'@\-]+(?:\s+[A-Za-z'@\-]+){0,2})"
+)
 _NAME = re.compile(r"(?i)\b(my name is|nama saya|nama\s*:|name\s*:)\s+([A-Za-z'@.\-]+(?:\s+[A-Za-z'@.\-]+){0,2})")
 
 
@@ -37,6 +41,7 @@ def redact(text: str) -> Tuple[str, Counter]:
                 return m.group(0)
             counts[token] += 1
             return token
+
         return pattern.sub(repl, s)
 
     out = sub(_EMAIL, "[EMAIL]", text)
@@ -47,7 +52,7 @@ def redact(text: str) -> Tuple[str, Counter]:
     def name_repl(m):
         full = m.group(0)
         intro = m.group(1)
-        name_part = full[len(intro):] if full.startswith(intro) else m.group(len(m.groups()))
+        name_part = full[len(intro) :] if full.startswith(intro) else m.group(len(m.groups()))
         first_token = name_part.strip().split()[0].lower() if name_part.strip() else ""
         if first_token in _NOT_NAMES:
             return full

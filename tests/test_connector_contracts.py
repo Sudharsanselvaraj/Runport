@@ -161,16 +161,22 @@ def test_contract_429_retry_and_retry_after(connector_type, mock_urlopen):
     """429 triggers bounded retry and honors Retry-After."""
     target = get_test_connector(connector_type)
     # Fail twice with 429, then succeed with 200 OK
-    good_body = {
-        "choices": [{"message": {"content": "Success after retry"}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
-    } if connector_type == "openai_compat" else {"output": "Success after retry"}
+    good_body = (
+        {
+            "choices": [{"message": {"content": "Success after retry"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        if connector_type == "openai_compat"
+        else {"output": "Success after retry"}
+    )
 
-    calls = mock_urlopen([
-        make_http_error(429, {"error": "Rate limit exceeded"}, retry_after="0.01"),
-        make_http_error(429, {"error": "Rate limit exceeded"}, retry_after="0.01"),
-        FakeHTTPResponse(good_body, status=200),
-    ])
+    calls = mock_urlopen(
+        [
+            make_http_error(429, {"error": "Rate limit exceeded"}, retry_after="0.01"),
+            make_http_error(429, {"error": "Rate limit exceeded"}, retry_after="0.01"),
+            FakeHTTPResponse(good_body, status=200),
+        ]
+    )
 
     result = target.execute({"query": "Hello"})
     assert result.status == TargetStatus.SUCCESS
@@ -182,15 +188,21 @@ def test_contract_429_retry_and_retry_after(connector_type, mock_urlopen):
 def test_contract_5xx_retry_backoff(connector_type, mock_urlopen):
     """502/503 server errors retry and recover."""
     target = get_test_connector(connector_type)
-    good_body = {
-        "choices": [{"message": {"content": "Recovered from 502"}}],
-        "usage": {"prompt_tokens": 8, "completion_tokens": 4},
-    } if connector_type == "openai_compat" else {"output": "Recovered from 502"}
+    good_body = (
+        {
+            "choices": [{"message": {"content": "Recovered from 502"}}],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 4},
+        }
+        if connector_type == "openai_compat"
+        else {"output": "Recovered from 502"}
+    )
 
-    calls = mock_urlopen([
-        make_http_error(502, "Bad Gateway"),
-        FakeHTTPResponse(good_body, status=200),
-    ])
+    calls = mock_urlopen(
+        [
+            make_http_error(502, "Bad Gateway"),
+            FakeHTTPResponse(good_body, status=200),
+        ]
+    )
 
     result = target.execute({"query": "Hello"})
     assert result.status == TargetStatus.SUCCESS

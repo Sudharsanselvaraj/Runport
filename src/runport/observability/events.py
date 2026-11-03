@@ -35,7 +35,7 @@ class RequestEvent(BaseModel):
     provenance: Literal["LIVE", "SIMULATED"] = "LIVE"
     request_id: str
     run_id: str
-    case_id: str                               # opaque candidate id, never text
+    case_id: str  # opaque candidate id, never text
     task: Optional[str] = None
     model_key: str
     requested_model_id: Optional[str] = None
@@ -48,11 +48,11 @@ class RequestEvent(BaseModel):
     timed_out: bool = False
     retry_cause: Optional[str] = None
     attempts: Optional[int] = None
-    latency_ms: Optional[float] = None         # measured end-to-end, including retry waits
-    model_latency_ms: Optional[float] = None   # provider-reported only
+    latency_ms: Optional[float] = None  # measured end-to-end, including retry waits
+    model_latency_ms: Optional[float] = None  # provider-reported only
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
-    cost_basis: Optional[str] = None           # PROVIDER_REPORTED / ESTIMATED_FROM_CATALOG / UNAVAILABLE
+    cost_basis: Optional[str] = None  # PROVIDER_REPORTED / ESTIMATED_FROM_CATALOG / UNAVAILABLE
     actual_cost_usd: Optional[Decimal] = None
     estimated_cost_usd: Optional[Decimal] = None
     native_cost: Optional[Decimal] = None
@@ -63,6 +63,7 @@ class RequestEvent(BaseModel):
 
 def default_events_path() -> Path:
     from runport.core.config import settings
+
     return settings.data_dir / "telemetry" / "request_events.jsonl"
 
 
@@ -129,4 +130,3 @@ class EventTail:
             self.seen.add(ev.event_id)
             out.append(ev)
         return out
-

@@ -44,7 +44,9 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
         """Delete all simulated (dry-run) ledger rows and stored dry-run runs. The database is copied first; real entries are never touched."""
         service = BudgetService()
         result = service.db.purge_simulated(backup=True)
-        console.print(f"Removed {result['ledger_rows']} simulated ledger rows, {result['runs']} dry-run runs and {result['results']} stored results.", markup=False)
+        console.print(
+            f"Removed {result['ledger_rows']} simulated ledger rows, {result['runs']} dry-run runs and {result['results']} stored results.", markup=False
+        )
         console.print(f"Backup of the previous database: {result['backup'] or 'none (no database file)'}", markup=False)
 
     @budget_app.command(name="audit")
@@ -61,9 +63,15 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
         settings.reports_dir.mkdir(parents=True, exist_ok=True)
         js.write_text(json.dumps(a, indent=2) + "\n")
         md.write_text(ba.audit_markdown(a))
-        console.print(f"Ledger counted: ${a['ledger_total_counted_usd']}  remaining total ${a['remaining_usd']['total']}  pilot ceiling ${a['ceilings_usd']['pilot']}  unresolved {a['unresolved_entries']}", markup=False)
+        console.print(
+            f"Ledger counted: ${a['ledger_total_counted_usd']}  remaining total ${a['remaining_usd']['total']}  pilot ceiling ${a['ceilings_usd']['pilot']}  unresolved {a['unresolved_entries']}",
+            markup=False,
+        )
         for g in a["groups"]:
-            console.print(f"  {g['group']:<28}ledger ${g['ledger_usd']:<10} records ${g['records_recorded_cost_usd']:<10} guard ${g['guard_from_records_usd']:<10} ledger=records {g['ledger_equals_records']}", markup=False)
+            console.print(
+                f"  {g['group']:<28}ledger ${g['ledger_usd']:<10} records ${g['records_recorded_cost_usd']:<10} guard ${g['guard_from_records_usd']:<10} ledger=records {g['ledger_equals_records']}",
+                markup=False,
+            )
         console.print(f"RECONCILED: {a['reconciled']}   report: {md.resolve()}", markup=False)
         raise typer.Exit(code=0 if a["reconciled"] else 1)
 
@@ -74,9 +82,15 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
         from runport.core.config import settings
 
         eff = bp.effective_policy(settings.budget, settings.data_dir)
-        console.print(f"effective: total ${eff.total_budget_usd}  pilot ${eff.pilot_budget_usd}  per run ${eff.per_run_ceiling_usd}  per case ${eff.per_case_ceiling_usd}   (defaults: pilot ${settings.budget.pilot_budget_usd})", markup=False)
+        console.print(
+            f"effective: total ${eff.total_budget_usd}  pilot ${eff.pilot_budget_usd}  per run ${eff.per_run_ceiling_usd}  per case ${eff.per_case_ceiling_usd}   (defaults: pilot ${settings.budget.pilot_budget_usd})",
+            markup=False,
+        )
         for h in bp.history(settings.data_dir):
-            console.print(f"  {h['at']}  {h['operator']}: pilot ${h['previous_pilot_budget_usd']} -> ${h['new_pilot_budget_usd']}  (total ${h['total_budget_usd']}; ledger counted ${h['ledger_total_spent_usd']} at the time)", markup=False)
+            console.print(
+                f"  {h['at']}  {h['operator']}: pilot ${h['previous_pilot_budget_usd']} -> ${h['new_pilot_budget_usd']}  (total ${h['total_budget_usd']}; ledger counted ${h['ledger_total_spent_usd']} at the time)",
+                markup=False,
+            )
 
     @budget_app.command(name="raise-pilot-ceiling")
     def budget_raise_pilot(
@@ -108,7 +122,10 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
         except (LiveNotAuthorizedError, bp.PolicyError) as e:
             console.print(f"[bold red]Not changed:[/bold red] {e}")
             raise typer.Exit(code=1)
-        console.print(f"Pilot ceiling is now ${entry['new_pilot_budget_usd']} (recorded in {bp.policy_path(settings.data_dir)}). Total ${entry['total_budget_usd']}, per-run ${entry['per_run_ceiling_usd']}, per-case ${entry['per_case_ceiling_usd']} unchanged.", markup=False)
+        console.print(
+            f"Pilot ceiling is now ${entry['new_pilot_budget_usd']} (recorded in {bp.policy_path(settings.data_dir)}). Total ${entry['total_budget_usd']}, per-run ${entry['per_run_ceiling_usd']}, per-case ${entry['per_case_ceiling_usd']} unchanged.",
+            markup=False,
+        )
 
     @budget_app.command(name="status")
     def budget_status() -> None:
@@ -149,8 +166,10 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
         if status.spend_by_basis:
             console.print("[dim]Booked spend by basis: " + ", ".join(f"{k} ${v:.6f}" for k, v in sorted(status.spend_by_basis.items())) + "[/dim]")
         if status.unresolved_spend_count:
-            console.print(f"[bold red]UNRESOLVED SPEND: {status.unresolved_spend_count} request(s) have unknown cost. Live runs are blocked until you run "
-                          "`runport budget reconcile --transaction-id ... --amount-usd ...`.[/bold red]")
+            console.print(
+                f"[bold red]UNRESOLVED SPEND: {status.unresolved_spend_count} request(s) have unknown cost. Live runs are blocked until you run "
+                "`runport budget reconcile --transaction-id ... --amount-usd ...`.[/bold red]"
+            )
             for u in service.unresolved():
                 console.print(f"  {u['transaction_id']}  {u['model_id']}", markup=False)
         console.print("")
@@ -176,19 +195,27 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
 
             for tx in status.recent_transactions:
                 basis = tx.get("cost_basis") or "UNSPECIFIED"
-                tx_type = ("[yellow]PRE-RUN ESTIMATE[/yellow]" if tx["is_preflight_estimate"] else "[dim]LEGACY SIMULATED[/dim]" if tx.get("is_simulated")
-                           else "[bold red]UNRESOLVED[/bold red]" if tx.get("is_unresolved")
-                           else "[bold green]ACTUAL[/bold green]" if basis in ("PROVIDER_REPORTED", "RECONCILED")
-                           else "[yellow]ESTIMATED[/yellow]" if basis == "ESTIMATED_FROM_CATALOG" else f"[dim]{basis}[/dim]")
+                tx_type = (
+                    "[yellow]PRE-RUN ESTIMATE[/yellow]"
+                    if tx["is_preflight_estimate"]
+                    else "[dim]LEGACY SIMULATED[/dim]"
+                    if tx.get("is_simulated")
+                    else "[bold red]UNRESOLVED[/bold red]"
+                    if tx.get("is_unresolved")
+                    else "[bold green]ACTUAL[/bold green]"
+                    if basis in ("PROVIDER_REPORTED", "RECONCILED")
+                    else "[yellow]ESTIMATED[/yellow]"
+                    if basis == "ESTIMATED_FROM_CATALOG"
+                    else f"[dim]{basis}[/dim]"
+                )
                 tx_table.add_row(
                     tx["timestamp"][:19].replace("T", " "),
                     tx["model_id"],
                     tx["provider"],
-                    f"${Decimal(tx['amount_micros'])/Decimal('1000000'):.4f}",
+                    f"${Decimal(tx['amount_micros']) / Decimal('1000000'):.4f}",
                     tx_type,
                     tx["description"],
                 )
             console.print(tx_table)
         else:
             console.print("[dim]No paid transactions recorded yet. Spend ledger is at baseline ($0.0000).[/dim]")
-

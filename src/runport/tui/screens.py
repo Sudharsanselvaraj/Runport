@@ -119,8 +119,8 @@ def build_navigation_panel(
     for idx, title in enumerate(items):
         if idx < lo or idx >= hi:
             continue
-        is_active = (idx == active_index)
-        is_cursor = (idx == cursor_index)
+        is_active = idx == active_index
+        is_cursor = idx == cursor_index
 
         left_txt = Text()
         right_txt = Text()
@@ -242,17 +242,41 @@ def build_system_resources_panel(telemetry: SystemTelemetry) -> Panel:
     # 1. CPU
     cpu_pct, cpu_detail, cpu_hist = telemetry.get_cpu_info()
     cpu_top, cpu_bot, cpu_base = render_2row_histogram(cpu_hist, 0.0, 100.0, width=18)
-    cpu_cell = _build_histogram_metric_cell("CPU" if telemetry.cpu_source == "psutil" else "LOAD/core", _pct_or_na(cpu_pct), cpu_top, cpu_bot, cpu_base, cpu_detail, _axis_label(telemetry), "100", " 50", "  0")
+    cpu_cell = _build_histogram_metric_cell(
+        "CPU" if telemetry.cpu_source == "psutil" else "LOAD/core",
+        _pct_or_na(cpu_pct),
+        cpu_top,
+        cpu_bot,
+        cpu_base,
+        cpu_detail,
+        _axis_label(telemetry),
+        "100",
+        " 50",
+        "  0",
+    )
 
     # 2. MEM
     mem_pct, mem_detail, mem_hist = telemetry.get_mem_info()
     mem_top, mem_bot, mem_base = render_2row_histogram(mem_hist, 0.0, 100.0, width=18)
-    mem_cell = _build_histogram_metric_cell("MEM", (f"{_pct_or_na(mem_pct)}   {mem_detail}" if mem_pct is not None else mem_detail), mem_top, mem_bot, mem_base, "", _axis_label(telemetry), "100", " 50", "  0")
+    mem_cell = _build_histogram_metric_cell(
+        "MEM",
+        (f"{_pct_or_na(mem_pct)}   {mem_detail}" if mem_pct is not None else mem_detail),
+        mem_top,
+        mem_bot,
+        mem_base,
+        "",
+        _axis_label(telemetry),
+        "100",
+        " 50",
+        "  0",
+    )
 
     # 3. DISK
     disk_pct, disk_detail, disk_hist = telemetry.get_disk_info()
     disk_top, disk_bot, disk_base = render_2row_histogram(disk_hist, 0.0, 100.0, width=18)
-    disk_cell = _build_histogram_metric_cell("DISK", f"{_pct_or_na(disk_pct)}   {disk_detail}", disk_top, disk_bot, disk_base, "", _axis_label(telemetry), "100", " 50", "  0")
+    disk_cell = _build_histogram_metric_cell(
+        "DISK", f"{_pct_or_na(disk_pct)}   {disk_detail}", disk_top, disk_bot, disk_base, "", _axis_label(telemetry), "100", " 50", "  0"
+    )
 
     grid.add_row(cpu_cell, mem_cell, disk_cell)
     return Panel(
@@ -274,7 +298,9 @@ def _scaled_cell(title: str, unit: str, values: List[Optional[float]], width: in
     hi = max(nums) or 1.0
     top, bot, base = render_2row_histogram([0.0 if v is None else v for v in values], 0.0, hi, width=width)
     fmt = lambda x: f"{x:.0f}" if hi >= 10 else f"{x:.1f}"  # noqa: E731
-    return _build_histogram_metric_cell(f"{title} ({unit})", f"last {fmt(nums[-1])}", top, bot, base, "", f"{len(values)} buckets", fmt(hi).rjust(4), fmt(hi / 2).rjust(4), "   0")
+    return _build_histogram_metric_cell(
+        f"{title} ({unit})", f"last {fmt(nums[-1])}", top, bot, base, "", f"{len(values)} buckets", fmt(hi).rjust(4), fmt(hi / 2).rjust(4), "   0"
+    )
 
 
 def build_request_metrics_panel(telemetry: InferenceTelemetry) -> Panel:
@@ -287,8 +313,11 @@ def build_request_metrics_panel(telemetry: InferenceTelemetry) -> Panel:
         panel_body: RenderableType = msg
     elif telemetry.n_in_window == 0:
         last = datetime.fromtimestamp(telemetry.last_terminal_ts).strftime("%d %b %H:%M:%S") if telemetry.last_terminal_ts else "n/a"
-        panel_body = Text(f"NO REQUESTS IN THE CURRENT {telemetry.window_s / 60:.0f}-MINUTE WINDOW. {telemetry.sample_count} historical request(s) are recorded "
-                          f"(last finished {last}); see Live Latency & Cost for the full history. Graphs show only the current window.", style=f"bold {COLOR_WARNING}")
+        panel_body = Text(
+            f"NO REQUESTS IN THE CURRENT {telemetry.window_s / 60:.0f}-MINUTE WINDOW. {telemetry.sample_count} historical request(s) are recorded "
+            f"(last finished {last}); see Live Latency & Cost for the full history. Graphs show only the current window.",
+            style=f"bold {COLOR_WARNING}",
+        )
     else:
         v = telemetry.values
         grid.add_row(
@@ -366,8 +395,12 @@ def build_model_catalogue_panel(
 ) -> Panel:
     """Builds the primary Model Catalogue table with 3-column Inspector Card."""
     filtered = [
-        (idx, m) for idx, m in enumerate(candidates)
-        if not search_query or search_query.lower() in m.model_id.lower() or search_query.lower() in m.display_name.lower() or search_query.lower() in m.provider.lower()
+        (idx, m)
+        for idx, m in enumerate(candidates)
+        if not search_query
+        or search_query.lower() in m.model_id.lower()
+        or search_query.lower() in m.display_name.lower()
+        or search_query.lower() in m.provider.lower()
     ]
 
     effective_sel = max(0, min(selected_index, len(filtered) - 1)) if filtered else 0
@@ -384,11 +417,17 @@ def build_model_catalogue_panel(
     if is_focused:
         left_sub = Text(f"{count_str}   ↑/↓ move selection  |  Enter: inspect  |  Home/End  |  ←/Esc: sidebar  |  Tab: next", style=f"bold {TEXT_PRIMARY}")
     else:
-        left_sub = Text(f"{count_str}   (Press Enter or → to focus)  |  / search  |  r refresh  |  legacy planning list: use :roster for the verified roster", style=f"{TEXT_SECONDARY}")
+        left_sub = Text(
+            f"{count_str}   (Press Enter or → to focus)  |  / search  |  r refresh  |  legacy planning list: use :roster for the verified roster",
+            style=f"{TEXT_SECONDARY}",
+        )
 
     sub_header.add_row(
         left_sub,
-        Text(f"Filter: '{search_query}'" if search_query else (f"Selected: #{effective_sel + 1}/{len(filtered)}" if is_focused and filtered else ""), style=f"bold {TEXT_PRIMARY}"),
+        Text(
+            f"Filter: '{search_query}'" if search_query else (f"Selected: #{effective_sel + 1}/{len(filtered)}" if is_focused and filtered else ""),
+            style=f"bold {TEXT_PRIMARY}",
+        ),
     )
     outer.add_row(sub_header)
 
@@ -439,7 +478,7 @@ def build_model_catalogue_panel(
     selected_candidate = filtered[effective_sel][1]
 
     for list_pos, (orig_idx, m) in enumerate(filtered):
-        is_sel = (list_pos == effective_sel)
+        is_sel = list_pos == effective_sel
         num_str = str(list_pos + 1)
         ctx_str = f"{m.context_length:,}" if m.context_length else "N/A"
         price_str = f"${m.input_price_per_1m_usd:.2f} / ${m.output_price_per_1m_usd:.2f}"
@@ -563,8 +602,22 @@ def build_budget_main_panel(
     row0_style = STYLE_ROW_SELECTED if (is_focused and selected_index == 0) else None
     row1_style = STYLE_ROW_SELECTED if (is_focused and selected_index == 1) else None
 
-    c_table.add_row("Initial Pilot Budget", f"${status.pilot_ceiling_usd:.4f}", f"${status.pilot_spend_usd:.4f}", f"${status.remaining_pilot_usd:.4f}", pilot_st, style=row0_style)
-    c_table.add_row("Total Experiment Ceiling", f"${status.total_ceiling_usd:.4f}", f"${status.cumulative_spend_usd:.4f}", f"${status.remaining_total_usd:.4f}", total_st, style=row1_style)
+    c_table.add_row(
+        "Initial Pilot Budget",
+        f"${status.pilot_ceiling_usd:.4f}",
+        f"${status.pilot_spend_usd:.4f}",
+        f"${status.remaining_pilot_usd:.4f}",
+        pilot_st,
+        style=row0_style,
+    )
+    c_table.add_row(
+        "Total Experiment Ceiling",
+        f"${status.total_ceiling_usd:.4f}",
+        f"${status.cumulative_spend_usd:.4f}",
+        f"${status.remaining_total_usd:.4f}",
+        total_st,
+        style=row1_style,
+    )
     grid.add_row(c_table)
 
     s_table = Table(title="Execution Safeguards", box=None, expand=True, header_style=f"bold {TEXT_SECONDARY}")
@@ -581,8 +634,15 @@ def build_budget_main_panel(
     s_table.add_row(
         "Spend by basis (local ledger)",
         f"ACTUAL ${by.get('PROVIDER_REPORTED', Decimal('0')) + by.get('RECONCILED', Decimal('0')):.4f} / EST ${by.get('ESTIMATED_FROM_CATALOG', Decimal('0')):.4f} / UNRESOLVED {status.unresolved_spend_count}",
-        f"Legacy simulated rows (never counted): ${status.simulated_spend_usd:.4f}. No outbound provider synchronization.", style=row2_style)
-    s_table.add_row("Live inference from this screen", f"[bold {COLOR_ERROR}]NOT AVAILABLE[/]", "Live runs only via the CLI with typed approval of the exact plan", style=row3_style)
+        f"Legacy simulated rows (never counted): ${status.simulated_spend_usd:.4f}. No outbound provider synchronization.",
+        style=row2_style,
+    )
+    s_table.add_row(
+        "Live inference from this screen",
+        f"[bold {COLOR_ERROR}]NOT AVAILABLE[/]",
+        "Live runs only via the CLI with typed approval of the exact plan",
+        style=row3_style,
+    )
     s_table.add_row("Max Single Run Spend", f"${status.per_run_ceiling_usd:.4f} USD", "Preflight check rejects run if exceeded", style=row4_style)
     s_table.add_row("Max Single Case Spend", f"${status.per_case_ceiling_usd:.4f} USD", "Per-case circuit breaker halts run", style=row5_style)
     grid.add_row(s_table)
@@ -613,8 +673,20 @@ def build_dataset_validation_panel(is_focused: bool) -> Panel:
     kb_table.add_column("Status", justify="center", width=8)
     kb_table.add_column("Coverage / Role", style=f"{TEXT_SECONDARY}")
 
-    kb_table.add_row("General Knowledge Base", "241 Q&A pairs", "9fbd1673a70db54d...", f"[bold {TEXT_PRIMARY}]PASS[/]", "System specifications, API policies, general guidelines")
-    kb_table.add_row("Services Knowledge Base", "2,810 Q&A pairs", "a46773fea196d8fe...", f"[bold {TEXT_PRIMARY}]PASS[/]", "Service parameters, operational rules, workflow targets")
+    kb_table.add_row(
+        "General Knowledge Base",
+        "241 Q&A pairs",
+        "9fbd1673a70db54d...",
+        f"[bold {TEXT_PRIMARY}]PASS[/]",
+        "System specifications, API policies, general guidelines",
+    )
+    kb_table.add_row(
+        "Services Knowledge Base",
+        "2,810 Q&A pairs",
+        "a46773fea196d8fe...",
+        f"[bold {TEXT_PRIMARY}]PASS[/]",
+        "Service parameters, operational rules, workflow targets",
+    )
     grid.add_row(kb_table)
 
     # 2. Defect Remediation Register Table
@@ -629,14 +701,29 @@ def build_dataset_validation_panel(is_focused: bool) -> Panel:
     rem_table.add_row("REM-002", "Product Guidelines", "Duration Spec", f"[bold {TEXT_PRIMARY}]APPROVED FOR CLEAN COPY[/]", "Corrected duration label")
     rem_table.add_row("REM-003", "Service Manual", "Section Tag", f"[bold {TEXT_PRIMARY}]APPROVED FOR CLEAN COPY[/]", "Corrected section taxonomy")
     rem_table.add_row("REM-004", "Science Overview", "Category Tag", f"[bold {TEXT_PRIMARY}]APPROVED FOR CLEAN COPY[/]", "Corrected taxonomy tag")
-    rem_table.add_row("REM-005", "Advanced Research", "Contradictory Tuition", f"[bold {COLOR_WARNING}]OFFICIAL VERIF PENDING[/]", "$62.5k vs $63.5k — Zero arbitrary guessing")
-    rem_table.add_row("REM-006", "General Policies", "Duplicate Q&A Pairs", f"[bold {TEXT_PRIMARY}]INVESTIGATION PENDING[/]", "Cross-document comparison before merge")
-    rem_table.add_row("REM-007", "Annual Schedule", "Time-Sensitive Intakes", f"[bold {COLOR_WARNING}]OFFICIAL VERIF PENDING[/]", "Verify dates against official calendar")
-    rem_table.add_row("REM-008", "Compliance Docs", "Regulatory Standards", f"[bold {COLOR_ERROR}]KB OWNER ESCALATED[/]", "Escalate regulatory compliance requirements")
+    rem_table.add_row(
+        "REM-005",
+        "Advanced Research",
+        "Contradictory Tuition",
+        f"[bold {COLOR_WARNING}]OFFICIAL VERIF PENDING[/]",
+        "$62.5k vs $63.5k — Zero arbitrary guessing",
+    )
+    rem_table.add_row(
+        "REM-006", "General Policies", "Duplicate Q&A Pairs", f"[bold {TEXT_PRIMARY}]INVESTIGATION PENDING[/]", "Cross-document comparison before merge"
+    )
+    rem_table.add_row(
+        "REM-007", "Annual Schedule", "Time-Sensitive Intakes", f"[bold {COLOR_WARNING}]OFFICIAL VERIF PENDING[/]", "Verify dates against official calendar"
+    )
+    rem_table.add_row(
+        "REM-008", "Compliance Docs", "Regulatory Standards", f"[bold {COLOR_ERROR}]KB OWNER ESCALATED[/]", "Escalate regulatory compliance requirements"
+    )
     grid.add_row(rem_table)
 
     # 3. Guidance Footer
-    note = Text("\nSAFETY INVARIANT: Original KBs remain immutable. Approved fixes write strictly to versioned copies (data/remediated/). Never benchmark models against known-bad KB records.", style=f"{TEXT_MUTED} italic")
+    note = Text(
+        "\nSAFETY INVARIANT: Original KBs remain immutable. Approved fixes write strictly to versioned copies (data/remediated/). Never benchmark models against known-bad KB records.",
+        style=f"{TEXT_MUTED} italic",
+    )
     grid.add_row(note)
 
     border = BORDER_FOCUSED if is_focused else BORDER_CHARCOAL
@@ -707,9 +794,7 @@ def build_evaluation_main_panel(
     r_table.add_column("Mode", justify="center", width=12)
 
     if not runs:
-        r_table.add_row(
-            "-", "-", "No recorded runs yet", "0", "-", "-", "-", "$0.0000", "-"
-        )
+        r_table.add_row("-", "-", "No recorded runs yet", "0", "-", "-", "-", "$0.0000", "-")
     else:
         # Windowed scrolling for clean display
         max_visible = 6
@@ -787,9 +872,9 @@ def build_evaluation_main_panel(
             for r in run_results[:3]:
                 p_text = str(r.get("prompt", ""))
                 p_snippet = p_text[:45] + "…" if len(p_text) > 45 else p_text
-                acc_val = f"{float(r['accuracy'])*100:.0f}%" if r.get('accuracy') is not None else "-"
-                grd_val = f"{float(r['groundedness'])*100:.0f}%" if r.get('groundedness') is not None else "-"
-                l_val = f"{float(r['latency_ms']):.0f}ms" if r.get('latency_ms') is not None else "-"
+                acc_val = f"{float(r['accuracy']) * 100:.0f}%" if r.get("accuracy") is not None else "-"
+                grd_val = f"{float(r['groundedness']) * 100:.0f}%" if r.get("groundedness") is not None else "-"
+                l_val = f"{float(r['latency_ms']):.0f}ms" if r.get("latency_ms") is not None else "-"
                 notes = str(r.get("evaluator_notes", "") or "-")
                 if len(notes) > 20:
                     notes = notes[:18] + "…"
@@ -806,10 +891,14 @@ def build_evaluation_main_panel(
             det_table.add_column("Value", justify="left", width=25)
             det_table.add_column("Analysis / Evaluation Invariant", style=f"{TEXT_MUTED}")
 
-            det_table.add_row("Evaluation Dataset", str(sel_run.get("dataset_path", "synthetic_seed_eval.jsonl")), "Decoupled evaluation dataset with verified ground truth")
-            mean_acc_str = f"{float(sel_run['mean_accuracy'])*100:.1f}%" if sel_run.get('mean_accuracy') is not None else "-"
+            det_table.add_row(
+                "Evaluation Dataset", str(sel_run.get("dataset_path", "synthetic_seed_eval.jsonl")), "Decoupled evaluation dataset with verified ground truth"
+            )
+            mean_acc_str = f"{float(sel_run['mean_accuracy']) * 100:.1f}%" if sel_run.get("mean_accuracy") is not None else "-"
             det_table.add_row("Mean Accuracy", mean_acc_str, "Factual overlap against verified reference answers")
-            det_table.add_row("Faithfulness (Groundedness)", f"{float(sel_run.get('mean_groundedness', 0))*100:.1f}%", "Context-supported ratio to prevent hallucinations")
+            det_table.add_row(
+                "Faithfulness (Groundedness)", f"{float(sel_run.get('mean_groundedness', 0)) * 100:.1f}%", "Context-supported ratio to prevent hallucinations"
+            )
             det_table.add_row("Execution Notes", str(sel_run.get("notes", "RAG evaluation")), "Tracked under local budget policy ceilings")
 
         grid.add_row(det_table)
@@ -959,8 +1048,8 @@ def build_traces_main_panel(
         insp_table.add_column("Details", style=f"{TEXT_PRIMARY}", ratio=1)
 
         insp_table.add_row("Student Query", f'"{sel_trace.input_query}"' if sel_trace else "-")
-        insp_table.add_row("Candidate Hypothesis", f"[{TEXT_BRIGHT}]{sel_diag.hypothesis}[/] (Confidence: {sel_diag.confidence*100:.0f}%)")
-        
+        insp_table.add_row("Candidate Hypothesis", f"[{TEXT_BRIGHT}]{sel_diag.hypothesis}[/] (Confidence: {sel_diag.confidence * 100:.0f}%)")
+
         evidence_text = "\n".join(f"• {e}" for e in sel_diag.evidence) if sel_diag.evidence else "• Telemetry within bounds"
         insp_table.add_row("Supporting Evidence", evidence_text)
         insp_table.add_row("Actionable Remediation", f"[bold {COLOR_SUCCESS}]{sel_diag.suggested_action}[/]")
@@ -1032,8 +1121,12 @@ def build_health_main_panel(
     table.add_column("Notes", style=f"{TEXT_MUTED} italic")
 
     for idx, item in enumerate(health_items):
-        is_sel = (is_focused and idx == selected_index)
-        badge = f"[bold {TEXT_PRIMARY}]PASS[/]" if item.status == "PASS" else (f"[bold {COLOR_WARNING}]WARN[/]" if item.status == "WARN" else f"[bold {COLOR_ERROR}]FAIL[/]")
+        is_sel = is_focused and idx == selected_index
+        badge = (
+            f"[bold {TEXT_PRIMARY}]PASS[/]"
+            if item.status == "PASS"
+            else (f"[bold {COLOR_WARNING}]WARN[/]" if item.status == "WARN" else f"[bold {COLOR_ERROR}]FAIL[/]")
+        )
         row_style = STYLE_ROW_SELECTED if is_sel else None
         table.add_row(item.component, badge, item.details, item.note, style=row_style)
 
@@ -1065,8 +1158,12 @@ def build_settings_main_panel(is_focused: bool) -> Panel:
     t.append("  Budget Ceilings:   ", style=f"{TEXT_SECONDARY}")
     from runport.core.budget_policy import effective_policy
     from runport.core.config import settings as _settings
+
     _p = effective_policy(_settings.budget, _settings.data_dir)
-    t.append(f"${_p.total_budget_usd:.2f} Total  │  ${_p.pilot_budget_usd:.2f} Pilot  │  ${_p.per_run_ceiling_usd:.2f} Per-Run  │  ${_p.per_case_ceiling_usd:.2f} Per-Case\n", style=f"{TEXT_PRIMARY}")
+    t.append(
+        f"${_p.total_budget_usd:.2f} Total  │  ${_p.pilot_budget_usd:.2f} Pilot  │  ${_p.per_run_ceiling_usd:.2f} Per-Run  │  ${_p.per_case_ceiling_usd:.2f} Per-Case\n",
+        style=f"{TEXT_PRIMARY}",
+    )
     t.append("  Provider Secret:   ", style=f"{TEXT_SECONDARY}")
     t.append("[EXCLUDED] OPENROUTER_API_KEY loaded via env only\n\n", style=f"dim {COLOR_WARNING}")
     t.append("Press 'r' to reload configuration from disk.", style=f"{TEXT_MUTED}")
@@ -1236,6 +1333,7 @@ def build_budget_usage_bottom_panel(status: BudgetStatus) -> Panel:
 def _dataset_prep_summary() -> Optional[Dict[str, Any]]:
     """Facts from evaluation datasets, or None when no dataset is present."""
     from pathlib import Path
+
     eval_dir = Path("data/evaluation")
     if not eval_dir.exists():
         return None
@@ -1299,7 +1397,7 @@ def build_command_bar(
         line.append(text_buffer[:cursor_pos], style=f"{TEXT_PRIMARY}")
         cursor_char = text_buffer[cursor_pos] if cursor_pos < len(text_buffer) else " "
         line.append(cursor_char, style=f"#1C1C1C on {TEXT_PRIMARY}")
-        line.append(text_buffer[cursor_pos + 1:], style=f"{TEXT_PRIMARY}")
+        line.append(text_buffer[cursor_pos + 1 :], style=f"{TEXT_PRIMARY}")
     else:
         if text_buffer:
             line.append(text_buffer, style=f"{TEXT_PRIMARY}")
@@ -1436,7 +1534,6 @@ def build_status_bar(status: BudgetStatus, feedback: str = "") -> Panel:
     )
 
 
-
 def build_roster_panel(rows: List[Dict[str, Any]], cursor: int, is_focused: bool = False, width: int = 200) -> Panel:
     """Comparison roster. Columns keep a minimum width so long names and blockers wrap inside their cell instead of collapsing the table;
     the complete details of the selected participant are printed below the table."""
@@ -1444,9 +1541,16 @@ def build_roster_panel(rows: List[Dict[str, Any]], cursor: int, is_focused: bool
 
     wide = width >= 150
     table = Table(expand=True, show_lines=False, header_style="bold", pad_edge=False)
-    spec = [("Participant", dict(min_width=22, ratio=3)), ("Role", dict(min_width=12, ratio=2)), ("Tasks", dict(min_width=7, no_wrap=True)),
-            ("Route (pin)", dict(min_width=16, ratio=3)), ("Readiness", dict(min_width=11, no_wrap=True)), ("Data policy", dict(min_width=8, no_wrap=True)),
-            ("Eval", dict(min_width=8, no_wrap=True)), ("Blockers / notes", dict(min_width=24, ratio=5))]
+    spec = [
+        ("Participant", dict(min_width=22, ratio=3)),
+        ("Role", dict(min_width=12, ratio=2)),
+        ("Tasks", dict(min_width=7, no_wrap=True)),
+        ("Route (pin)", dict(min_width=16, ratio=3)),
+        ("Readiness", dict(min_width=11, no_wrap=True)),
+        ("Data policy", dict(min_width=8, no_wrap=True)),
+        ("Eval", dict(min_width=8, no_wrap=True)),
+        ("Blockers / notes", dict(min_width=24, ratio=5)),
+    ]
     if wide:
         spec.append(("Source", dict(min_width=22, ratio=3)))
     for col, kw in spec:
@@ -1457,8 +1561,16 @@ def build_roster_panel(rows: List[Dict[str, Any]], cursor: int, is_focused: bool
         notes = ", ".join(r["blockers"]) or "none for synthetic data"
         if r.get("benchmark_route_only"):
             notes += "; benchmark route only"
-        cells = [r["display_name"] or r["key"], ", ".join(x.replace("_", " ").title() for x in r["roles"]), "/".join(t[:1] + t[1:].lower() for t in r["tasks"]),
-                 f"{r['pinned_route'] or '-'} {r['route_price'] or ''}".strip(), ready, r["data_policy"], r["evaluation"].replace("NOT_YET_EVALUATED", "not run"), notes]
+        cells = [
+            r["display_name"] or r["key"],
+            ", ".join(x.replace("_", " ").title() for x in r["roles"]),
+            "/".join(t[:1] + t[1:].lower() for t in r["tasks"]),
+            f"{r['pinned_route'] or '-'} {r['route_price'] or ''}".strip(),
+            ready,
+            r["data_policy"],
+            r["evaluation"].replace("NOT_YET_EVALUATED", "not run"),
+            notes,
+        ]
         if wide:
             cells.append(f"{r.get('source', 'owner-supplied')} ({r.get('checked_on') or 'unverified'})")
         table.add_row(*cells, style=style)
@@ -1467,8 +1579,12 @@ def build_roster_panel(rows: List[Dict[str, Any]], cursor: int, is_focused: bool
     if sel:
         detail = Text()
         detail.append(f"{sel['display_name'] or sel['key']}  ({sel['model_id']}, {sel['protocol']})\n", style="bold")
-        detail.append(f"roles {', '.join(sel['roles'])}  tasks {', '.join(sel['tasks'])}  pinned route {sel['pinned_route'] or 'none'} {sel['route_price'] or ''}  readiness {sel['readiness']}\n")
-        detail.append(f"blockers: {', '.join(sel['blockers']) or 'none for synthetic data'}   student-data blockers: {', '.join(sel['student_data_blockers']) or 'none'}   data policy {sel['data_policy']}\n")
+        detail.append(
+            f"roles {', '.join(sel['roles'])}  tasks {', '.join(sel['tasks'])}  pinned route {sel['pinned_route'] or 'none'} {sel['route_price'] or ''}  readiness {sel['readiness']}\n"
+        )
+        detail.append(
+            f"blockers: {', '.join(sel['blockers']) or 'none for synthetic data'}   student-data blockers: {', '.join(sel['student_data_blockers']) or 'none'}   data policy {sel['data_policy']}\n"
+        )
         detail.append(f"source: {sel['source']} (checked {sel['checked_on'] or 'unverified'})")
         if sel.get("benchmark_route_only"):
             detail.append(f"\nbenchmark route only; reported production name '{sel['production_reported_name']}'; production parity not established")

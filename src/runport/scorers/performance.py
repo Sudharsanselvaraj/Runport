@@ -43,8 +43,13 @@ class LatencyP95Scorer(BaseScorer):
                 details={"reason": "No valid latency observations provided"},
             )
 
-        p95 = round(compute_percentile(valid_lats, 95.0), 2)
-        passed = (p95 <= self.threshold_ms) if self.threshold_ms is not None else None
+        val_p95 = compute_percentile(valid_lats, 95.0)
+        p95 = round(val_p95, 2) if val_p95 is not None else None
+        passed = (p95 <= self.threshold_ms) if (p95 is not None and self.threshold_ms is not None) else None
+
+        p50 = compute_percentile(valid_lats, 50.0)
+        p90 = compute_percentile(valid_lats, 90.0)
+        p99 = compute_percentile(valid_lats, 99.0)
 
         return ScoreResult(
             metric_name=self.name,
@@ -53,9 +58,9 @@ class LatencyP95Scorer(BaseScorer):
             details={
                 "n_samples": len(valid_lats),
                 "threshold_ms": self.threshold_ms,
-                "p50_ms": round(compute_percentile(valid_lats, 50.0), 2),
-                "p90_ms": round(compute_percentile(valid_lats, 90.0), 2),
-                "p99_ms": round(compute_percentile(valid_lats, 99.0), 2),
+                "p50_ms": round(p50, 2) if p50 is not None else None,
+                "p90_ms": round(p90, 2) if p90 is not None else None,
+                "p99_ms": round(p99, 2) if p99 is not None else None,
             },
         )
 
@@ -129,4 +134,3 @@ class CostPer1kScorer(BaseScorer):
         if cost is None:
             return ScoreResult(metric_name=self.name, score=None, details={"reason": "Missing cost"})
         return self.evaluate(Decimal(str(cost)), count)
-

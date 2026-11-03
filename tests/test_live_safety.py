@@ -17,19 +17,33 @@ from typer.testing import CliRunner
 
 from runport.cli import app
 from runport.core.live_guard import (
-    LiveAuthorization, confirm_live_run, expected_phrase, require_live_authorization,
+    LiveAuthorization,
+    confirm_live_run,
+    expected_phrase,
+    require_live_authorization,
 )
 from runport.dataset.manager import DatasetManager
 from runport.evaluation.runner import BenchmarkRunner
 from runport.providers import openrouter as or_mod
 from runport.providers.base import (
-    BaseProvider, LiveNotAuthorizedError, ProviderError, ProviderRequest, ProviderResponse,
-    RateLimitError, UsageUnavailableError, require_complete_usage, scrub_secrets,
+    BaseProvider,
+    LiveNotAuthorizedError,
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+    RateLimitError,
+    UsageUnavailableError,
+    require_complete_usage,
+    scrub_secrets,
 )
 from runport.providers.openrouter import MAX_ATTEMPTS_CAP, OpenRouterAdapter
 from runport.rag.runner import RAGBenchmarkRunner
 from runport.schemas.evaluation import (
-    DataClassification, DatasetSplit, EvaluationCase, VerificationRecord, VerificationStatus,
+    DataClassification,
+    DatasetSplit,
+    EvaluationCase,
+    VerificationRecord,
+    VerificationStatus,
 )
 from runport.storage.db import DatabaseManager
 
@@ -42,6 +56,7 @@ REPO = Path(__file__).resolve().parents[1]
 def _block_network(monkeypatch):
     def _deny(*a, **k):
         raise AssertionError("real network access attempted")
+
     monkeypatch.setattr(socket.socket, "connect", _deny)
     monkeypatch.setattr(socket, "create_connection", _deny)
     monkeypatch.setattr(socket, "getaddrinfo", _deny)
@@ -51,9 +66,17 @@ def _block_network(monkeypatch):
 def _setup_test_models():
     from datetime import date
     from runport.models.registry import (
-        FactStatus, ModelRecord, RouteOption, RouteRecord, RouteStatus,
-        clear_registry, fact, register_model, unknown,
+        FactStatus,
+        ModelRecord,
+        RouteOption,
+        RouteRecord,
+        RouteStatus,
+        clear_registry,
+        fact,
+        register_model,
+        unknown,
     )
+
     clear_registry()
     d = date(2026, 1, 1)
     urls = ["https://openrouter.ai/models"]
@@ -137,6 +160,7 @@ def _setup_test_models():
     register_model(rec_nano)
 
     from runport.models.registry import Protocol
+
     rec_custom = ModelRecord(
         key="custom-protocol-model",
         display_name="Custom Protocol Model",
@@ -235,10 +259,19 @@ OK_BODY = {"choices": [{"message": {"content": "synthetic answer"}}], "usage": {
 
 # ------------------------------------------------------------------ C1: scrubber
 def test_credentials_are_redacted():
-    out = scrub_secrets({
-        "api_key": "x", "Authorization": "Bearer abcdefgh12345678", "access_token": "t", "refresh_token": "t",
-        "password": "p", "client_secret": "s", "x-api-key": "k", "cookie": "c", "nested": {"private_key": "k"},
-    })
+    out = scrub_secrets(
+        {
+            "api_key": "x",
+            "Authorization": "Bearer abcdefgh12345678",
+            "access_token": "t",
+            "refresh_token": "t",
+            "password": "p",
+            "client_secret": "s",
+            "x-api-key": "k",
+            "cookie": "c",
+            "nested": {"private_key": "k"},
+        }
+    )
     assert all(v == "[REDACTED_SECRET]" for k, v in out.items() if k != "nested")
     assert out["nested"]["private_key"] == "[REDACTED_SECRET]"
 
@@ -251,15 +284,19 @@ def test_credentials_in_strings_are_redacted():
 
 def test_usage_fields_survive_scrubbing():
     usage = {
-        "prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19, "input_tokens": 12, "output_tokens": 7,
-        "prompt_tokens_details": {"cached_tokens": 3}, "completion_tokens_details": {"reasoning_tokens": 2},
+        "prompt_tokens": 12,
+        "completion_tokens": 7,
+        "total_tokens": 19,
+        "input_tokens": 12,
+        "output_tokens": 7,
+        "prompt_tokens_details": {"cached_tokens": 3},
+        "completion_tokens_details": {"reasoning_tokens": 2},
     }
     assert scrub_secrets({"usage": usage})["usage"] == usage
 
 
 def test_not_every_token_key_is_exempt():
-    out = scrub_secrets({"token_count": 5, "access_token": 12345, "prompt_tokens": "not-a-number", "completion_tokens": True,
-                         "tokenizer_secret": "s"})
+    out = scrub_secrets({"token_count": 5, "access_token": 12345, "prompt_tokens": "not-a-number", "completion_tokens": True, "tokenizer_secret": "s"})
     assert set(out.values()) == {"[REDACTED_SECRET]"}
 
 
@@ -285,8 +322,7 @@ def test_wrong_or_empty_phrase_refused():
 
 
 def test_exact_phrase_in_interactive_session_authorizes_only_listed_models():
-    auth = confirm_live_run([MODEL, "b/m"], is_interactive=lambda: True,
-                            prompt=lambda m: expected_phrase([MODEL, "b/m"]), echo=lambda l: None)
+    auth = confirm_live_run([MODEL, "b/m"], is_interactive=lambda: True, prompt=lambda m: expected_phrase([MODEL, "b/m"]), echo=lambda l: None)
     assert auth.covers(MODEL) and auth.covers("b/m") and not auth.covers("c/m")
 
 
@@ -341,7 +377,6 @@ def test_plan_fingerprint_changes_when_any_input_changes():
     assert compute_fp(["gpt-4o-mini", "claude-haiku"], "eval-v1", 100, "1.00", "Prompt: {input}") != base_fp
 
 
-
 def test_require_live_authorization():
     require_live_authorization(LiveAuthorization(models=(MODEL,)), MODEL)
     for bad in (None, LiveAuthorization(models=("x/y",))):
@@ -366,9 +401,16 @@ def test_adapter_refuses_live_without_key_or_with_unknown_model(monkeypatch):
 
 
 def _dataset(tmp_path):
-    cases = [EvaluationCase(id="syn-1", query="synthetic query", expected_answer="synthetic answer",
-                            classification=DataClassification.SYNTHETIC, split=DatasetSplit.TEST,
-                            verification=VerificationRecord(status=VerificationStatus.VERIFIED, reference_source="synthetic"))]
+    cases = [
+        EvaluationCase(
+            id="syn-1",
+            query="synthetic query",
+            expected_answer="synthetic answer",
+            classification=DataClassification.SYNTHETIC,
+            split=DatasetSplit.TEST,
+            verification=VerificationRecord(status=VerificationStatus.VERIFIED, reference_source="synthetic"),
+        )
+    ]
     p = tmp_path / "ds.jsonl"
     DatasetManager.save_jsonl(cases, p)
     return p
@@ -408,7 +450,8 @@ def test_cli_live_without_confirmation_makes_no_request(tmp_path, monkeypatch, c
     if cmd == ["benchmark-rag"]:  # needs audited KB records for its real BM25 retriever
         (tmp_path / "data" / "audit").mkdir(parents=True)
         (tmp_path / "data" / "audit" / "parsed_records_general_kb.jsonl").write_text(
-            '{"record_id": "REC-1", "source_file": "x.md", "question_clean": "fees?", "answer_clean": "RM 1", "parsing_status": "VALID", "programme_name": "P"}\n')
+            '{"record_id": "REC-1", "source_file": "x.md", "question_clean": "fees?", "answer_clean": "RM 1", "parsing_status": "VALID", "programme_name": "P"}\n'
+        )
     # Piped stdin containing the exact phrase must NOT bypass the interactive requirement.
     result = CliRunner().invoke(app, args, input=expected_phrase([MODEL]) + "\n")
     assert result.exit_code == 1
@@ -435,10 +478,16 @@ def test_provider_cost_is_kept_as_native_credits_and_not_booked_as_usd_until_the
 
 def test_provider_cost_is_booked_as_usd_only_when_the_unit_is_verified(monkeypatch):
     from runport.models import registry as reg
+
     monkeypatch.setattr(reg, "OPENROUTER_COST_UNIT", reg.fact("USD (1 credit = $1)", reg.FactStatus.VERIFIED_PRIMARY, ["https://openrouter.ai/docs"], "test"))
     body = {**OK_BODY, "usage": {**OK_BODY["usage"], "cost": 0.0042}}
     r = make_adapter([body], monkeypatch)[0].generate(live_request())
-    assert r.actual_cost_usd == Decimal("0.0042") and r.cost_usd == Decimal("0.0042") and r.cost_basis == "PROVIDER_REPORTED" and r.native_cost == Decimal("0.0042")
+    assert (
+        r.actual_cost_usd == Decimal("0.0042")
+        and r.cost_usd == Decimal("0.0042")
+        and r.cost_basis == "PROVIDER_REPORTED"
+        and r.native_cost == Decimal("0.0042")
+    )
 
 
 def test_missing_tokens_with_only_a_native_cost_cannot_be_booked(monkeypatch):
@@ -454,11 +503,14 @@ def test_missing_usage_is_unavailable_not_estimated(monkeypatch):
     assert r.usage_source == "UNAVAILABLE" and r.cost_basis == "UNAVAILABLE" and r.cost_usd == Decimal("0")
 
 
-@pytest.mark.parametrize("usage", [
-    {"prompt_tokens": 10},
-    {"prompt_tokens": "10", "completion_tokens": "5"},
-    {"prompt_tokens": True, "completion_tokens": -1},
-])
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {"prompt_tokens": 10},
+        {"prompt_tokens": "10", "completion_tokens": "5"},
+        {"prompt_tokens": True, "completion_tokens": -1},
+    ],
+)
 def test_partial_or_invalid_usage_is_not_trusted(monkeypatch, usage):
     r = make_adapter([{**OK_BODY, "usage": usage}], monkeypatch)[0].generate(live_request())
     assert r.usage_source in ("PARTIAL", "UNAVAILABLE") and r.cost_basis == "UNAVAILABLE"
@@ -490,11 +542,21 @@ def test_end_to_end_includes_retry_wait_but_attempt_latency_does_not(monkeypatch
 
 
 def test_require_complete_usage():
-    ok = ProviderResponse(output_text="x", prompt_tokens=1, completion_tokens=1, usage_source="PROVIDER_REPORTED",
-                          latency_ms=1.0, cost_basis="ESTIMATED_FROM_CATALOG", model_id="m")
+    ok = ProviderResponse(
+        output_text="x",
+        prompt_tokens=1,
+        completion_tokens=1,
+        usage_source="PROVIDER_REPORTED",
+        latency_ms=1.0,
+        cost_basis="ESTIMATED_FROM_CATALOG",
+        model_id="m",
+    )
     require_complete_usage(ok)
-    for bad in (ok.model_copy(update={"usage_source": "UNAVAILABLE"}), ok.model_copy(update={"cost_basis": "UNAVAILABLE"}),
-                ok.model_copy(update={"usage_source": "PARTIAL"})):
+    for bad in (
+        ok.model_copy(update={"usage_source": "UNAVAILABLE"}),
+        ok.model_copy(update={"cost_basis": "UNAVAILABLE"}),
+        ok.model_copy(update={"usage_source": "PARTIAL"}),
+    ):
         with pytest.raises(UsageUnavailableError):
             require_complete_usage(bad)
 
@@ -505,11 +567,10 @@ def test_runner_aborts_when_live_usage_missing_and_records_unresolved_spend(tmp_
     db = DatabaseManager(db_path=tmp_path / "t.db")
     runner = BenchmarkRunner(db_mgr=db, provider=prov)
     with pytest.raises(UsageUnavailableError):
-        runner.run(model_id=MODEL, dataset_path=_dataset(tmp_path), split=DatasetSplit.TEST,
-                   live_authorization=LiveAuthorization(models=(MODEL,)))
+        runner.run(model_id=MODEL, dataset_path=_dataset(tmp_path), split=DatasetSplit.TEST, live_authorization=LiveAuthorization(models=(MODEL,)))
     assert prov.calls == 1
     st = runner.budget_service.get_status()
-    assert st.cumulative_spend_usd == 0 and st.unresolved_spend_count == 1      # no amount invented, but the gap is on the ledger
+    assert st.cumulative_spend_usd == 0 and st.unresolved_spend_count == 1  # no amount invented, but the gap is on the ledger
     assert runner.budget_service.get_status().recent_transactions[0]["is_unresolved"] == 1
 
 
@@ -665,22 +726,24 @@ def err_body(error_type=None, limit_source=None, code=402):
 
 
 def test_402_retried_only_for_in_flight_budget_with_valid_retry_after(monkeypatch):
-    adapter, clock, calls = make_adapter(
-        [http_error(402, err_body("budget", "openrouter_in_flight_budget"), retry_after=2), OK_BODY], monkeypatch)
+    adapter, clock, calls = make_adapter([http_error(402, err_body("budget", "openrouter_in_flight_budget"), retry_after=2), OK_BODY], monkeypatch)
     r = adapter.generate(live_request())
     assert len(calls) == 2 and clock.sleeps == [2.0] and r.retry_errors == ["HTTP_402/budget"]
 
 
-@pytest.mark.parametrize("body,retry_after", [
-    (err_body(None, "openrouter_in_flight_budget"), None),            # no Retry-After
-    (err_body(None, "openrouter_in_flight_budget"), "soon"),          # invalid Retry-After
-    (err_body(None, "openrouter_in_flight_budget"), "-5"),            # negative
-    (err_body(None, "openrouter_in_flight_budget"), "nan"),           # not finite
-    (err_body(None, "openrouter_in_flight_budget"), "Wed, 21 Oct 2026 07:28:00 GMT"),  # HTTP-date not trusted
-    (err_body("budget", "openrouter_key_limit"), "2"),                # other limit source
-    (b"{}", "2"),                                                     # plain credits error
-    (b"not json", "2"),
-])
+@pytest.mark.parametrize(
+    "body,retry_after",
+    [
+        (err_body(None, "openrouter_in_flight_budget"), None),  # no Retry-After
+        (err_body(None, "openrouter_in_flight_budget"), "soon"),  # invalid Retry-After
+        (err_body(None, "openrouter_in_flight_budget"), "-5"),  # negative
+        (err_body(None, "openrouter_in_flight_budget"), "nan"),  # not finite
+        (err_body(None, "openrouter_in_flight_budget"), "Wed, 21 Oct 2026 07:28:00 GMT"),  # HTTP-date not trusted
+        (err_body("budget", "openrouter_key_limit"), "2"),  # other limit source
+        (b"{}", "2"),  # plain credits error
+        (b"not json", "2"),
+    ],
+)
 def test_other_402_responses_are_never_retried(monkeypatch, body, retry_after):
     adapter, clock, calls = make_adapter([http_error(402, body, retry_after=retry_after), OK_BODY], monkeypatch)
     with pytest.raises(ProviderError) as ei:
@@ -711,6 +774,7 @@ def test_retry_after_non_numeric_is_ignored_for_backoff(monkeypatch):
 
 def test_registry_blocks_live_for_unverified_route_before_any_http(monkeypatch):
     from registry_helpers import block_route
+
     block_route(monkeypatch, "gpt-4.1-nano")
     block_route(monkeypatch, "custom-protocol-model")
     monkeypatch.setattr(or_mod.urllib.request, "urlopen", lambda *a, **k: pytest.fail("urlopen called"))
@@ -732,8 +796,9 @@ def test_provider_preferences_are_sent_only_when_set_and_resolved_values_recorde
 
 def test_estimate_withheld_for_registry_models_without_verified_route_price(monkeypatch):
     from registry_helpers import block_route
+
     block_route(monkeypatch, "gpt-4.1-nano")
-    monkeypatch.setattr(or_mod.registry, "synthetic_live_blockers", lambda model_id, stage='pilot': [])  # isolate the estimate rule
+    monkeypatch.setattr(or_mod.registry, "synthetic_live_blockers", lambda model_id, stage="pilot": [])  # isolate the estimate rule
     adapter, _, _ = make_adapter([OK_BODY], monkeypatch)
     r = adapter.generate(live_request(model_id="openai/gpt-4.1-nano"))
     assert r.estimated_cost_usd is None and r.cost_basis == "UNAVAILABLE" and r.prompt_tokens == 1000

@@ -126,10 +126,12 @@ def test_rag_benchmark_runner_full_flow(tmp_path: Path):
 
     with pytest.raises(Exception, match="live authorization"):  # no authorization, no request
         RAGBenchmarkRunner(retriever=ExpectedContextRetriever(), db_mgr=db_mgr, provider=LiveFakeProvider()).run(
-            model_id=model, dataset_path=dataset_path, split=DatasetSplit.TEST)
+            model_id=model, dataset_path=dataset_path, split=DatasetSplit.TEST
+        )
 
     report = RAGBenchmarkRunner(retriever=ExpectedContextRetriever(), db_mgr=db_mgr, provider=LiveFakeProvider.echoing_expected(dataset_path)).run(
-        model_id=model, dataset_path=dataset_path, split=DatasetSplit.TEST, live_authorization=LiveAuthorization(models=(model,)))
+        model_id=model, dataset_path=dataset_path, split=DatasetSplit.TEST, live_authorization=LiveAuthorization(models=(model,))
+    )
 
     assert report.total_cases == 8
     assert report.mean_retrieval_hit_rate == 1.0
@@ -192,7 +194,9 @@ def test_grounded_retrieval_metrics_hand_calculated(tmp_path: Path):
         f.write(case_1.model_dump_json() + "\n")
         f.write(case_2.model_dump_json() + "\n")
 
-    report = runner_engine.run(model_id="google/gemini-3.5-flash-lite", dataset_path=dataset_file, live_authorization=LiveAuthorization(models=("google/gemini-3.5-flash-lite",)))
+    report = runner_engine.run(
+        model_id="google/gemini-3.5-flash-lite", dataset_path=dataset_file, live_authorization=LiveAuthorization(models=("google/gemini-3.5-flash-lite",))
+    )
 
     # Hand calculation:
     # Case 1: rel={"REC-A"}, ret=["REC-X", "REC-A"] (top-2)
@@ -242,14 +246,20 @@ def test_unresolved_abstention_exclusion_from_retrieval_denominator(tmp_path: Pa
                 retrieved_record_ids=["REC-FOUND"],
             )
 
-    runner_engine = RAGBenchmarkRunner(db_mgr=db_mgr, retriever=SingleHitRetriever(), top_k=2,
-                                     provider=LiveFakeProvider({"c-ver": "Known answer", "c-unres": "KB does not contain details. Consult support team."}))
+    runner_engine = RAGBenchmarkRunner(
+        db_mgr=db_mgr,
+        retriever=SingleHitRetriever(),
+        top_k=2,
+        provider=LiveFakeProvider({"c-ver": "Known answer", "c-unres": "KB does not contain details. Consult support team."}),
+    )
     dataset_file = tmp_path / "test_abstain_cases.jsonl"
     with open(dataset_file, "w") as f:
         f.write(case_verified.model_dump_json() + "\n")
         f.write(case_unresolved.model_dump_json() + "\n")
 
-    report = runner_engine.run(model_id="google/gemini-3.5-flash-lite", dataset_path=dataset_file, live_authorization=LiveAuthorization(models=("google/gemini-3.5-flash-lite",)))
+    report = runner_engine.run(
+        model_id="google/gemini-3.5-flash-lite", dataset_path=dataset_file, live_authorization=LiveAuthorization(models=("google/gemini-3.5-flash-lite",))
+    )
 
     # Only 1 verified case, which succeeded -> Recall = 1.0, MRR = 1.0
     assert report.verified_cases_count == 1
@@ -263,6 +273,7 @@ def test_unresolved_abstention_exclusion_from_retrieval_denominator(tmp_path: Pa
 def test_cli_benchmark_rag_never_simulates_and_sends_nothing_without_live(monkeypatch, tmp_path):
     """Without --live the command only explains itself; without audited KB records it refuses (no evaluation-passage fallback)."""
     import urllib.request
+
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("network touched"))
     dataset = Path(__file__).resolve().parents[1] / "data" / "evaluation" / "verified_rag_benchmark.jsonl"
     monkeypatch.chdir(tmp_path)  # no data/audit here

@@ -13,13 +13,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .models import IntentLabel
 
-INTENT_WRAPPER = (
-    "Classify the CURRENT user message in the state. Choose exactly one option. "
-    "The option descriptions are the category definitions."
-)
+INTENT_WRAPPER = "Classify the CURRENT user message in the state. Choose exactly one option. The option descriptions are the category definitions."
 LEAD_WRAPPER = (
-    "Read the action summary in the state. Answer yes if the student should be handed to a human counsellor now "
-    "(the rules below decide), otherwise no."
+    "Read the action summary in the state. Answer yes if the student should be handed to a human counsellor now (the rules below decide), otherwise no."
 )
 
 INTENT_INSTRUCTION_SECTIONS = ("Role", "Input", "General Rules", "Decision Procedure", "Synthetic Examples")
@@ -114,8 +110,13 @@ def check_choice_answer(answer: Any) -> AnswerCheck:
     if isinstance(conf, bool) or not isinstance(conf, (int, float)) or not (0.0 <= conf <= 1.0):
         issues.append("CONFIDENCE_MISSING_OR_OUT_OF_RANGE")
     label: Optional[IntentLabel] = IntentLabel(choice) if choice in labels else None
-    return AnswerCheck(not issues, issues, label=label, probabilities=probs if isinstance(probs, dict) else None,
-                       confidence=conf if not issues or "CONFIDENCE_MISSING_OR_OUT_OF_RANGE" not in issues else None)
+    return AnswerCheck(
+        not issues,
+        issues,
+        label=label,
+        probabilities=probs if isinstance(probs, dict) else None,
+        confidence=conf if not issues or "CONFIDENCE_MISSING_OR_OUT_OF_RANGE" not in issues else None,
+    )
 
 
 def check_noul_answer(answer: Any) -> AnswerCheck:
@@ -161,5 +162,10 @@ def check_binary_choice_answer(answer: Any) -> AnswerCheck:
     conf = answer.get("confidence")
     if conf is not None and (isinstance(conf, bool) or not isinstance(conf, (int, float)) or not (0.0 <= conf <= 1.0)):
         issues.append("CONFIDENCE_OUT_OF_RANGE")
-    return AnswerCheck(not issues, issues, need_cta=(choice == "true") if choice in BINARY_OPTIONS else None, yes_prob=yes_prob,
-                       confidence=float(conf) if conf is not None and not issues else None)
+    return AnswerCheck(
+        not issues,
+        issues,
+        need_cta=(choice == "true") if choice in BINARY_OPTIONS else None,
+        yes_prob=yes_prob,
+        confidence=float(conf) if conf is not None and not issues else None,
+    )

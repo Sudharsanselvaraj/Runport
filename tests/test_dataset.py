@@ -63,11 +63,7 @@ def test_dataset_partitioning():
     assert len(splits[DatasetSplit.TEST]) == 3
 
     # All items are assigned
-    total_assigned = (
-        len(splits[DatasetSplit.TRAIN])
-        + len(splits[DatasetSplit.DEV])
-        + len(splits[DatasetSplit.TEST])
-    )
+    total_assigned = len(splits[DatasetSplit.TRAIN]) + len(splits[DatasetSplit.DEV]) + len(splits[DatasetSplit.TEST])
     assert total_assigned == 20
 
 
@@ -160,5 +156,3 @@ def test_cli_annotate_command():
     assert result.exit_code == 0
     assert "Runport Ground-Truth Annotation & Adjudication" in result.stdout
     assert "Annotation Status:" in result.stdout
-
-

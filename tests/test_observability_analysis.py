@@ -24,7 +24,7 @@ def test_without_approved_labels_every_supervised_metric_is_pending(tmp_path):
     assert q.status == PENDING and q.metrics is None and q.accuracy_ci is None
     cal = A.calibration_reports(runs, labels)[0]
     assert cal.status == PENDING and cal.ece is None and cal.brier is None and cal.bins == []
-    assert cal.mean_selected_prob == pytest.approx(0.9)       # descriptive, label-free figures are still shown
+    assert cal.mean_selected_prob == pytest.approx(0.9)  # descriptive, label-free figures are still shown
 
 
 def test_predictions_and_unapproved_rows_never_become_labels(tmp_path):
@@ -35,9 +35,11 @@ def test_predictions_and_unapproved_rows_never_become_labels(tmp_path):
 
 def test_quality_metrics_come_only_from_approved_labels(tmp_path):
     preds = [class_pred("C1", "QUERY"), class_pred("C2", "GREETING"), class_pred("C3", "QUERY"), class_pred("C4", "QUERY", status="INVALID_OUTPUT")]
-    _, labels = labels_for(tmp_path, [label_row("C1", "CLASSIFICATION", "QUERY"), label_row("C2", "CLASSIFICATION", "QUERY"), label_row("C4", "CLASSIFICATION", "QUERY")])
+    _, labels = labels_for(
+        tmp_path, [label_row("C1", "CLASSIFICATION", "QUERY"), label_row("C2", "CLASSIFICATION", "QUERY"), label_row("C4", "CLASSIFICATION", "QUERY")]
+    )
     q = A.classification_quality(A.latest_runs(preds), labels)[0]
-    assert q.status == "SCORED" and q.metrics.n_scored == 3        # C3 has no approved label: not scored
+    assert q.status == "SCORED" and q.metrics.n_scored == 3  # C3 has no approved label: not scored
     assert q.metrics.accuracy == pytest.approx(1 / 3) and q.metrics.invalid_count == 1
     assert any("INSUFFICIENT SAMPLE" in f for f in q.flags) and any("RARE CLASSES" in f for f in q.flags)
     assert q.accuracy_ci is not None and q.accuracy_ci[0] < 1 / 3 < q.accuracy_ci[1]
@@ -52,8 +54,8 @@ def test_agreement_is_not_correctness(tmp_path):
     assert rep.pairs[0].agreement == 1.0 and rep.unanimous_errors is None and rep.unanimous_error_basis == PENDING
     _, labels = labels_for(tmp_path, [label_row(f"C{i}", "CLASSIFICATION", "GREETING") for i in range(4)])
     rep = A.agreement_report(runs, "classification", labels)
-    assert rep.pairs[0].agreement == 1.0                         # they agree ...
-    assert rep.unanimous_errors == ["C0", "C1", "C2", "C3"]       # ... and are all wrong
+    assert rep.pairs[0].agreement == 1.0  # they agree ...
+    assert rep.unanimous_errors == ["C0", "C1", "C2", "C3"]  # ... and are all wrong
     assert "4 approved-label cases shared by 2 models" in rep.unanimous_error_basis
 
 
@@ -93,11 +95,29 @@ def test_calibration_with_labels_reports_ece_brier_coverage_and_high_confidence_
 def test_binary_threshold_is_selected_on_dev_only_and_frozen_before_test(tmp_path):
     prep = make_prep(tmp_path / "prep")
     lines = []
-    cases = {"D1": ("DEV", True, 0.9), "D2": ("DEV", True, 0.8), "D3": ("DEV", False, 0.2), "D4": ("DEV", False, 0.1),
-             "T1": ("TEST", True, 0.7), "T2": ("TEST", False, 0.6)}
+    cases = {
+        "D1": ("DEV", True, 0.9),
+        "D2": ("DEV", True, 0.8),
+        "D3": ("DEV", False, 0.2),
+        "D4": ("DEV", False, 0.1),
+        "T1": ("TEST", True, 0.7),
+        "T2": ("TEST", False, 0.6),
+    }
     for cid, (split, _, _) in cases.items():
-        lines.append(json.dumps({"case": {"case_id": cid, "history_status": "COMPLETE"},
-                                 "candidate": {"split": split, "view": "NATURAL", "ambiguity_count": 0, "unresolved_rules": [], "builder_tally_not_a_label": {"tier_a_actions": 1, "tier_b_distinct_types": 0}}}))
+        lines.append(
+            json.dumps(
+                {
+                    "case": {"case_id": cid, "history_status": "COMPLETE"},
+                    "candidate": {
+                        "split": split,
+                        "view": "NATURAL",
+                        "ambiguity_count": 0,
+                        "unresolved_rules": [],
+                        "builder_tally_not_a_label": {"tier_a_actions": 1, "tier_b_distinct_types": 0},
+                    },
+                }
+            )
+        )
     (prep / "binary_candidates_2h.jsonl").write_text("\n".join(lines) + "\n")
     write_labels(prep, [label_row(c, "BINARY", v[1]) for c, v in cases.items()])
     recs = [binary_pred(c, yes_prob=v[2]) for c, v in cases.items()]
@@ -139,14 +159,18 @@ def test_label_loader_and_monitor_refresh_are_read_only(tmp_path):
     assert mon.analysis.labels.multiclass == {"C1": "QUERY"}
     assert {p: p.read_bytes() for p in prep.rglob("*") if p.is_file()} == before
     assert {p: p.stat().st_mtime_ns for p in before} == mtimes
-    assert not (tmp_path / "e.jsonl").exists()                  # polling never creates the telemetry log either
+    assert not (tmp_path / "e.jsonl").exists()  # polling never creates the telemetry log either
 
 
 def test_errors_and_invalid_outputs_are_not_counted_as_disagreements():
     a = [class_pred(f"C{i}", "QUERY", model="m-a") for i in range(4)]
-    b = [class_pred("C0", "QUERY", model="m-b"), class_pred("C1", "QUERY", model="m-b", status="INVALID_OUTPUT"),
-         class_pred("C2", "GREETING", model="m-b"), class_pred("C3", "QUERY", model="m-b")]
+    b = [
+        class_pred("C0", "QUERY", model="m-b"),
+        class_pred("C1", "QUERY", model="m-b", status="INVALID_OUTPUT"),
+        class_pred("C2", "GREETING", model="m-b"),
+        class_pred("C3", "QUERY", model="m-b"),
+    ]
     rep = A.agreement_report(A.latest_runs(a + b), "classification", load_approved_labels(None))
     pair = rep.pairs[0]
-    assert pair.n_common == 3 and pair.n_unusable == 1                       # the invalid output is set aside, not a vote
+    assert pair.n_common == 3 and pair.n_unusable == 1  # the invalid output is set aside, not a vote
     assert pair.agreement == pytest.approx(2 / 3) and [d[0] for d in rep.disagreements] == ["C2"]

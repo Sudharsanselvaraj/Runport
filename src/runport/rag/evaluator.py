@@ -19,7 +19,7 @@ class RAGSystemEvaluator:
         expected_answer: Optional[str] = None,
     ) -> Tuple[float, float]:
         """Calculates answer correctness and faithfulness (groundedness).
-        
+
         Returns:
             (answer_correctness, groundedness)
         """

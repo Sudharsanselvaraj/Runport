@@ -33,4 +33,3 @@ def test_salted_hash():
     assert h1 == h2
     assert h1 != h3
     assert len(h1) == 16
-

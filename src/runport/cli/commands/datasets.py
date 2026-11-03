@@ -84,17 +84,21 @@ def register_dataset_commands(app: typer.Typer) -> None:
             console.print(leak_table)
 
         if summary.is_valid:
-            console.print(Panel(
-                f"[bold green]✓ DATASET VALIDATION PASSED[/bold green]\n"
-                f"Total Cases: {summary.total_cases} | Zero Leakage Detected | Confidentiality Invariants Satisfied",
-                border_style="green",
-            ))
+            console.print(
+                Panel(
+                    f"[bold green]✓ DATASET VALIDATION PASSED[/bold green]\n"
+                    f"Total Cases: {summary.total_cases} | Zero Leakage Detected | Confidentiality Invariants Satisfied",
+                    border_style="green",
+                )
+            )
         else:
             err_msg = "\n".join(f"• {e}" for e in summary.validation_errors)
-            console.print(Panel(
-                f"[bold red]✗ DATASET VALIDATION FAILED[/bold red]\n{err_msg}",
-                border_style="red",
-            ))
+            console.print(
+                Panel(
+                    f"[bold red]✗ DATASET VALIDATION FAILED[/bold red]\n{err_msg}",
+                    border_style="red",
+                )
+            )
             raise typer.Exit(code=1)
 
     @app.command("annotate")
@@ -116,13 +120,15 @@ def register_dataset_commands(app: typer.Typer) -> None:
         manager = DatasetManager()
         cases = manager.load_jsonl(dataset_path)
 
-        console.print(Panel(
-            f"[bold cyan]Runport Ground-Truth Annotation & Adjudication[/bold cyan]\n"
-            f"Dataset:   {dataset_path.name}\n"
-            f"Cases:     {len(cases)}\n"
-            f"Reviewer:  {reviewer}",
-            expand=False,
-        ))
+        console.print(
+            Panel(
+                f"[bold cyan]Runport Ground-Truth Annotation & Adjudication[/bold cyan]\n"
+                f"Dataset:   {dataset_path.name}\n"
+                f"Cases:     {len(cases)}\n"
+                f"Reviewer:  {reviewer}",
+                expand=False,
+            )
+        )
 
         table = Table(title="Dataset Ground-Truth Verification Status", show_header=True)
         table.add_column("Case ID", style="cyan")
@@ -139,4 +145,3 @@ def register_dataset_commands(app: typer.Typer) -> None:
         if len(cases) > 10:
             console.print(f"[dim]... and {len(cases) - 10} more cases in {dataset_path.name}[/dim]")
         console.print(f"\n[bold green]Annotation Status:[/bold green] All {len(cases)} cases cataloged with schema validation intact.")
-

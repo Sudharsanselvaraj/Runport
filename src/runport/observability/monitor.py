@@ -51,6 +51,7 @@ def discover_dataset(base: Path) -> DatasetInfo:
 
 def default_prediction_dirs() -> List[Path]:
     from runport.core.config import settings
+
     return [settings.reports_dir / "smoke", settings.reports_dir / "classification"]
 
 

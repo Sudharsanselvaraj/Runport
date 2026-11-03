@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class FailureCategory(str, Enum):
     """Production failure modes across the RAG workflow stack."""
+
     ROUTING_FAILURE = "ROUTING_FAILURE"
     RETRIEVAL_FAILURE = "RETRIEVAL_FAILURE"
     GENERATION_FAILURE = "GENERATION_FAILURE"
@@ -16,6 +17,7 @@ class FailureCategory(str, Enum):
 
 class ObservationSpan(BaseModel):
     """An individual span, generation, or retrieval observation in a trace."""
+
     id: str = Field(description="Unique observation or span identifier")
     name: str = Field(description="Name of the observation step (e.g. 'router', 'retrieval', 'llm-generation')")
     type: str = Field(default="span", description="Type of observation: span, generation, or event")
@@ -29,6 +31,7 @@ class ObservationSpan(BaseModel):
 
 class TraceRecord(BaseModel):
     """Canonical model for an ingested Langfuse trace execution."""
+
     id: str = Field(description="Unique Langfuse trace ID")
     timestamp: str = Field(description="ISO-8601 UTC timestamp of execution")
     session_id: Optional[str] = Field(default=None, description="User session or conversation ID")
@@ -46,10 +49,11 @@ class TraceRecord(BaseModel):
 
 class DiagnosisHypothesis(BaseModel):
     """Candidate diagnosis hypothesis with supporting evidence and confidence score.
-    
+
     Acceptance Criteria: Must be explicitly presented as a candidate hypothesis,
     never as a deterministic ground-truth verdict.
     """
+
     trace_id: str
     category: FailureCategory
     confidence: float = Field(ge=0.0, le=1.0, description="Hypothesis confidence level (0.0 to 1.0)")
@@ -60,6 +64,7 @@ class DiagnosisHypothesis(BaseModel):
 
 class TraceDiagnosticReport(BaseModel):
     """Aggregated diagnostic report over a batch of imported traces."""
+
     total_traces: int
     diagnosed_failures: int
     category_counts: Dict[str, int]

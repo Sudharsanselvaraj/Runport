@@ -62,7 +62,7 @@ class RAGBenchmarkRunner:
 
         # 2. Budget Preflight Check (model-specific pricing based on estimated prompt & output tokens)
         in_price, out_price = self.provider._get_pricing_for_model(model_id)
-        
+
         # Estimate ~600 prompt tokens (system + context + query) and ~150 completion tokens per case
         est_cost_per_case = (Decimal("600") * in_price / Decimal("1000000")) + (Decimal("150") * out_price / Decimal("1000000"))
         estimated_cost = max(Decimal("0.0001"), round(est_cost_per_case * Decimal(len(cases)), 6))
@@ -87,6 +87,7 @@ class RAGBenchmarkRunner:
 
             # Step 3a: Decoupled Retrieval Pass
             import inspect
+
             sig = inspect.signature(self.retriever.retrieve)
             if "top_k" in sig.parameters:
                 ret_result = self.retriever.retrieve(case, top_k=self.top_k)
@@ -119,7 +120,9 @@ class RAGBenchmarkRunner:
             try:
                 require_complete_usage(response)
             except UsageUnavailableError:
-                self.budget_service.record_unresolved_spend(f"tx_{run_id}_{case.id}", model_id, "openrouter", f"RAG case {case.id}: response lacked usable cost or token counts", run_id)
+                self.budget_service.record_unresolved_spend(
+                    f"tx_{run_id}_{case.id}", model_id, "openrouter", f"RAG case {case.id}: response lacked usable cost or token counts", run_id
+                )
                 raise
 
             # Step 3c: Decoupled Scoring & Failure Attribution
@@ -154,9 +157,19 @@ class RAGBenchmarkRunner:
             if case.abstention_expected:
                 lower_gen = response.output_text.lower()
                 abstention_phrases = [
-                    "does not contain", "not mentioned", "not specified", "consult",
-                    "counselor", "contact", "insufficient", "unable to", "not found",
-                    "official portal", "reach out", "no information", "lacks details",
+                    "does not contain",
+                    "not mentioned",
+                    "not specified",
+                    "consult",
+                    "counselor",
+                    "contact",
+                    "insufficient",
+                    "unable to",
+                    "not found",
+                    "official portal",
+                    "reach out",
+                    "no information",
+                    "lacks details",
                 ]
                 abstention_corr = 1.0 if any(p in lower_gen for p in abstention_phrases) else 0.0
 
@@ -202,7 +215,11 @@ class RAGBenchmarkRunner:
                 retrieved_record_ids=ret_result.retrieved_record_ids,
                 generated_answer=response.output_text,
                 expected_answer=case.expected_answer,
-                source_status=str(getattr(case, "source_status", "SYNTHETIC").value if hasattr(getattr(case, "source_status", None), "value") else str(getattr(case, "source_status", "SYNTHETIC"))),
+                source_status=str(
+                    getattr(case, "source_status", "SYNTHETIC").value
+                    if hasattr(getattr(case, "source_status", None), "value")
+                    else str(getattr(case, "source_status", "SYNTHETIC"))
+                ),
                 relevant_record_ids=case.relevant_record_ids,
                 abstention_expected=case.abstention_expected,
                 recall_at_k=recall_k,
@@ -235,11 +252,7 @@ class RAGBenchmarkRunner:
         mean_mrr = round(sum(c.reciprocal_rank for c in verified_cases) / n_ver, 4) if n_ver else 0.0
         ver_hit_rate = round(sum(1.0 if c.retrieval_hit else 0.0 for c in verified_cases) / n_ver, 4) if n_ver else 0.0
 
-        abstention_acc = (
-            round(sum(c.abstention_correctness or 0.0 for c in unresolved_cases) / n_unres, 4)
-            if n_unres
-            else 0.0
-        )
+        abstention_acc = round(sum(c.abstention_correctness or 0.0 for c in unresolved_cases) / n_unres, 4) if n_unres else 0.0
 
         diag_kw_hit = round(sum(c.retrieval_hit_rate for c in case_results) / n, 4) if n else 0.0
         diag_kw_prec = round(sum(c.retrieval_precision for c in case_results) / n, 4) if n else 0.0

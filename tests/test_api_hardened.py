@@ -65,7 +65,7 @@ def test_dataset_upload_path_traversal_blocked(client):
 
 def test_dataset_upload_disallows_executables(client):
     """POST /api/datasets/upload permits only .jsonl, .csv, and .json evaluation datasets."""
-    files = {"file": ("exploit.sh", b'#!/bin/sh\necho evil', "text/plain")}
+    files = {"file": ("exploit.sh", b"#!/bin/sh\necho evil", "text/plain")}
     res = client.post("/api/datasets/upload", files=files)
     assert res.status_code == 400
     assert "permitted" in res.json()["detail"].lower()
@@ -85,35 +85,37 @@ def test_dataset_upload_safe_success(client):
 def test_run_approval_single_use_invariant(client):
     """Approval token is single-use and cannot be consumed more than once."""
     fp = "abcd1234ef567890"
-    res = client.post("/api/runs/approve", json={
-        "plan_fingerprint": fp,
-        "user": "Tester",
-        "timestamp": "2026-11-03T10:00:00Z"
-    })
+    res = client.post("/api/runs/approve", json={"plan_fingerprint": fp, "user": "Tester", "timestamp": "2026-11-03T10:00:00Z"})
     assert res.status_code == 200
     token = res.json()["approval_token"]
     assert token.startswith("approval-")
 
     # Attempting to execute live run with mismatched fingerprint fails
-    res_mismatch = client.post("/api/runs", json={
-        "target_ids": ["qwen/qwen-2.5-7b-instruct"],
-        "dataset_name": "test_dataset.jsonl",
-        "plan_fingerprint": fp,
-        "is_replay": False,
-        "approve_token": "wrong-token"
-    })
+    res_mismatch = client.post(
+        "/api/runs",
+        json={
+            "target_ids": ["qwen/qwen-2.5-7b-instruct"],
+            "dataset_name": "test_dataset.jsonl",
+            "plan_fingerprint": fp,
+            "is_replay": False,
+            "approve_token": "wrong-token",
+        },
+    )
     assert res_mismatch.status_code == 403
 
 
 def test_replay_run_books_zero_and_persists_results(client):
     """Replay runs book $0.00 spend, label provenance REPLAYED, and save results."""
-    res = client.post("/api/runs", json={
-        "target_ids": ["test-model-1"],
-        "dataset_name": "test_dataset.jsonl",
-        "plan_fingerprint": "plan-fp-replay-1",
-        "is_replay": True,
-        "sample_size": 2
-    })
+    res = client.post(
+        "/api/runs",
+        json={
+            "target_ids": ["test-model-1"],
+            "dataset_name": "test_dataset.jsonl",
+            "plan_fingerprint": "plan-fp-replay-1",
+            "is_replay": True,
+            "sample_size": 2,
+        },
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["is_replay"] is True

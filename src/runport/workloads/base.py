@@ -27,4 +27,3 @@ class BaseWorkload(ABC):
     def get_scorers(self) -> List[BaseScorer]:
         """Return the default scorers associated with this workload."""
         pass
-

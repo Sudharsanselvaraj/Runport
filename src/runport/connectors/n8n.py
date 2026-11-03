@@ -42,4 +42,3 @@ class N8nConnector(HttpWorkflowConnector):
             max_retries=max_retries,
         )
         self.target_type = TargetType.WORKFLOW_N8N
-

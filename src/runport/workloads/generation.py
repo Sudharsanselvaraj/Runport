@@ -30,4 +30,3 @@ class GenerationWorkload(BaseWorkload):
 
     def get_scorers(self) -> List[BaseScorer]:
         return [TokenOverlapScorer(), KeywordContainmentScorer()]
-

@@ -48,7 +48,9 @@ def register_trace_commands(app: typer.Typer) -> None:
             console.print(f"[bold red]Export failed:[/bold red] {e}")
             raise typer.Exit(code=1)
         console.print(f"Wrote {res.path.resolve()}", markup=False)
-        console.print(f"records exported {res.n_exported}, skipped {res.n_skipped}, redacted {res.n_redacted}, missing telemetry {res.n_missing_telemetry}", markup=False)
+        console.print(
+            f"records exported {res.n_exported}, skipped {res.n_skipped}, redacted {res.n_redacted}, missing telemetry {res.n_missing_telemetry}", markup=False
+        )
         for w in res.warnings:
             console.print(f"WARNING: {w}", markup=False)
 
@@ -81,12 +83,14 @@ def register_trace_commands(app: typer.Typer) -> None:
         from runport.traces.models import FailureCategory
         from runport.traces.reporter import DiagnosticReporter
 
-        console.print(Panel(
-            f"[bold cyan]Langfuse Trace Ingestion & Diagnostic Analyzer[/bold cyan]\n"
-            f"[dim]File:[/dim] [bold white]{export_file.name}[/bold white]\n"
-            f"[dim]Min Confidence:[/dim] [yellow]{min_confidence:.0%}[/yellow]",
-            expand=False,
-        ))
+        console.print(
+            Panel(
+                f"[bold cyan]Langfuse Trace Ingestion & Diagnostic Analyzer[/bold cyan]\n"
+                f"[dim]File:[/dim] [bold white]{export_file.name}[/bold white]\n"
+                f"[dim]Min Confidence:[/dim] [yellow]{min_confidence:.0%}[/yellow]",
+                expand=False,
+            )
+        )
 
         try:
             traces = TraceImporter.load_from_file(export_file)
@@ -166,4 +170,3 @@ def register_trace_commands(app: typer.Typer) -> None:
             console.print(f"\n[green]Diagnostic reports generated successfully:[/green]")
             console.print(f"  • CSV: [bold]{csv_file}[/bold]")
             console.print(f"  • Markdown: [bold]{md_file}[/bold]")
-

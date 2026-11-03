@@ -15,23 +15,27 @@ class DiagnosticReporter:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                "trace_id",
-                "failure_category",
-                "confidence",
-                "candidate_hypothesis",
-                "evidence_summary",
-                "suggested_action",
-            ])
+            writer.writerow(
+                [
+                    "trace_id",
+                    "failure_category",
+                    "confidence",
+                    "candidate_hypothesis",
+                    "evidence_summary",
+                    "suggested_action",
+                ]
+            )
             for d in report.diagnoses:
-                writer.writerow([
-                    d.trace_id,
-                    d.category.value,
-                    f"{d.confidence:.2f}",
-                    d.hypothesis,
-                    " | ".join(d.evidence),
-                    d.suggested_action,
-                ])
+                writer.writerow(
+                    [
+                        d.trace_id,
+                        d.category.value,
+                        f"{d.confidence:.2f}",
+                        d.hypothesis,
+                        " | ".join(d.evidence),
+                        d.suggested_action,
+                    ]
+                )
         return output_path
 
     @staticmethod
@@ -61,25 +65,29 @@ class DiagnosticReporter:
             pct = (count / total) * 100
             lines.append(f"| `{cat}` | {count} | {pct:.1f}% |")
 
-        lines.extend([
-            "",
-            "---",
-            "",
-            "## Detailed Candidate Hypotheses",
-            "",
-            "> [!NOTE]",
-            "> All findings are candidate diagnostic hypotheses derived from heuristics and telemetry,",
-            "> and must be reviewed prior to deploying system prompt or router modifications.",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "---",
+                "",
+                "## Detailed Candidate Hypotheses",
+                "",
+                "> [!NOTE]",
+                "> All findings are candidate diagnostic hypotheses derived from heuristics and telemetry,",
+                "> and must be reviewed prior to deploying system prompt or router modifications.",
+                "",
+            ]
+        )
 
         for idx, d in enumerate(report.diagnoses, 1):
-            lines.extend([
-                f"### {idx}. Trace `{d.trace_id}` — {d.category.value} (Confidence: {d.confidence:.0%})",
-                f"- **Hypothesis**: {d.hypothesis}",
-                f"- **Suggested Action**: {d.suggested_action}",
-                "- **Evidence**:",
-            ])
+            lines.extend(
+                [
+                    f"### {idx}. Trace `{d.trace_id}` — {d.category.value} (Confidence: {d.confidence:.0%})",
+                    f"- **Hypothesis**: {d.hypothesis}",
+                    f"- **Suggested Action**: {d.suggested_action}",
+                    "- **Evidence**:",
+                ]
+            )
             for ev in d.evidence:
                 lines.append(f"  - {ev}")
             lines.append("")

@@ -70,15 +70,13 @@ class RemediationEngine:
         dry_run: bool = True,
     ) -> Tuple[RemediationReport, str]:
         """Applies approved remediations in-memory or to a separate versioned destination.
-        
+
         CRITICAL INVARIANT: The original source file is never modified under any circumstances.
         """
         # Ensure source file has not been altered
         pre_sha = _compute_file_sha256(self.source_path)
         if pre_sha != self.sha256_initial:
-            raise RuntimeError(
-                f"Source file {self.source_path} hash changed during session! Immutability violated."
-            )
+            raise RuntimeError(f"Source file {self.source_path} hash changed during session! Immutability violated.")
 
         working_content = self.original_content
         applied_findings = []
@@ -103,7 +101,6 @@ class RemediationEngine:
                     target = ""
                     replacement = ""
 
-
                 if target and target in working_content:
                     working_content = working_content.replace(target, replacement, 1)
                     applied_findings.append(finding)
@@ -120,9 +117,7 @@ class RemediationEngine:
         # Verify that original source file remains pristine
         post_sha = _compute_file_sha256(self.source_path)
         if post_sha != self.sha256_initial:
-            raise RuntimeError(
-                f"Source file {self.source_path} was modified! Hash mismatch detected."
-            )
+            raise RuntimeError(f"Source file {self.source_path} was modified! Hash mismatch detected.")
 
         report = RemediationReport(
             source_file=str(self.source_path),

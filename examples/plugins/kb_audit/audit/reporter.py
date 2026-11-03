@@ -41,22 +41,24 @@ class KBReporter:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for issue in self.issues:
-                writer.writerow({
-                    "issue_id": issue.issue_id,
-                    "source_file": Path(issue.source_file).name,
-                    "record_id": issue.record_id or f"L{issue.start_line}-L{issue.end_line}",
-                    "start_line": issue.start_line,
-                    "end_line": issue.end_line,
-                    "severity": issue.severity.value,
-                    "status": issue.status.value,
-                    "category": issue.category.value,
-                    "issue_code": issue.issue_code,
-                    "programme": issue.programme,
-                    "question_snippet": issue.question_snippet,
-                    "description": issue.description,
-                    "suggested_action": issue.suggested_action,
-                    "requires_human_verification": "YES" if issue.requires_human_verification else "NO",
-                })
+                writer.writerow(
+                    {
+                        "issue_id": issue.issue_id,
+                        "source_file": Path(issue.source_file).name,
+                        "record_id": issue.record_id or f"L{issue.start_line}-L{issue.end_line}",
+                        "start_line": issue.start_line,
+                        "end_line": issue.end_line,
+                        "severity": issue.severity.value,
+                        "status": issue.status.value,
+                        "category": issue.category.value,
+                        "issue_code": issue.issue_code,
+                        "programme": issue.programme,
+                        "question_snippet": issue.question_snippet,
+                        "description": issue.description,
+                        "suggested_action": issue.suggested_action,
+                        "requires_human_verification": "YES" if issue.requires_human_verification else "NO",
+                    }
+                )
         return csv_path
 
     def export_jsonl(self, filename: str) -> Path:
@@ -98,10 +100,7 @@ class KBReporter:
 
         deterministic_errors = [i for i in self.issues if i.severity == IssueSeverity.ERROR]
         high_priority_warnings = [
-            i for i in self.issues
-            if i.severity == IssueSeverity.WARNING and i.issue_code in (
-                "CONFLICTING_TUITION_FEES", "SUSPICIOUS_PROGRAMME_MISMATCH"
-            )
+            i for i in self.issues if i.severity == IssueSeverity.WARNING and i.issue_code in ("CONFLICTING_TUITION_FEES", "SUSPICIOUS_PROGRAMME_MISMATCH")
         ]
 
         lines = [
@@ -155,63 +154,69 @@ class KBReporter:
             warn_c = sum(1 for i in self.issues if i.category.value == cat and i.severity == IssueSeverity.WARNING)
             lines.append(f"| `{cat}` | {err_c:,} | {warn_c:,} | {err_c + warn_c:,} |")
 
-        lines.extend([
-            "",
-            "---",
-            "",
-            "## 4. Deterministic Errors (Immediate Attention Required)",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "---",
+                "",
+                "## 4. Deterministic Errors (Immediate Attention Required)",
+                "",
+            ]
+        )
 
         if deterministic_errors:
-            lines.extend([
-                "| Line | Issue Code | Programme | Question / Field | Description |",
-                "| :--- | :--- | :--- | :--- | :--- |",
-            ])
+            lines.extend(
+                [
+                    "| Line | Issue Code | Programme | Question / Field | Description |",
+                    "| :--- | :--- | :--- | :--- | :--- |",
+                ]
+            )
             for err in deterministic_errors[:20]:
                 q_disp = err.question_snippet.replace("|", "/")
-                lines.append(
-                    f"| L{err.start_line} | `{err.issue_code}` | {err.programme[:30]} | {q_disp[:40]} | {err.description} |"
-                )
+                lines.append(f"| L{err.start_line} | `{err.issue_code}` | {err.programme[:30]} | {q_disp[:40]} | {err.description} |")
             if len(deterministic_errors) > 20:
                 lines.append(f"*(... and {len(deterministic_errors) - 20} more errors recorded in CSV)*")
         else:
             lines.append("No deterministic errors detected.")
 
-        lines.extend([
-            "",
-            "---",
-            "",
-            "## 5. Critical Heuristic Warnings (Fees & Programme Mismatches)",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "---",
+                "",
+                "## 5. Critical Heuristic Warnings (Fees & Programme Mismatches)",
+                "",
+            ]
+        )
 
         if high_priority_warnings:
-            lines.extend([
-                "| Line | Issue Code | Programme | Question Snippet | Conflict / Mismatch Description |",
-                "| :--- | :--- | :--- | :--- | :--- |",
-            ])
+            lines.extend(
+                [
+                    "| Line | Issue Code | Programme | Question Snippet | Conflict / Mismatch Description |",
+                    "| :--- | :--- | :--- | :--- | :--- |",
+                ]
+            )
             for warn in high_priority_warnings:
                 q_disp = warn.question_snippet.replace("|", "/")
-                lines.append(
-                    f"| L{warn.start_line} | `{warn.issue_code}` | {warn.programme[:30]} | {q_disp[:40]} | {warn.description} |"
-                )
+                lines.append(f"| L{warn.start_line} | `{warn.issue_code}` | {warn.programme[:30]} | {q_disp[:40]} | {warn.description} |")
         else:
             lines.append("No conflicting fees or programme mismatches detected.")
 
-        lines.extend([
-            "",
-            "---",
-            "",
-            "## 6. Audit Invariants & Human Review Policy",
-            "",
-            "> [!IMPORTANT]",
-            "> **Non-Negotiable Research Policy**:",
-            "> 1. **Zero Automatic Fixes**: The audit tool never automatically determines which conflicting tuition fee, duration, or entry requirement is correct.",
-            "> 2. **Authoritative Verification**: All flagged discrepancies are exported to CSV for verification against official registrar records.",
-            "> 3. **Source Immutability**: The original knowledge base files remain untouched.",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "---",
+                "",
+                "## 6. Audit Invariants & Human Review Policy",
+                "",
+                "> [!IMPORTANT]",
+                "> **Non-Negotiable Research Policy**:",
+                "> 1. **Zero Automatic Fixes**: The audit tool never automatically determines which conflicting tuition fee, duration, or entry requirement is correct.",
+                "> 2. **Authoritative Verification**: All flagged discrepancies are exported to CSV for verification against official registrar records.",
+                "> 3. **Source Immutability**: The original knowledge base files remain untouched.",
+                "",
+            ]
+        )
 
         with open(md_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))

@@ -22,6 +22,7 @@ ConfidenceSource = Literal["NATIVE_DISTRIBUTION", "NATIVE_CONFIDENCE_FIELD", "NO
 
 class Task(str, Enum):
     """General workload task types."""
+
     CLASSIFICATION = "classification"
     BENCHMARK = "benchmark"
     RAG = "rag"
@@ -29,6 +30,7 @@ class Task(str, Enum):
 
 class AdapterResult(BaseModel):
     """What one protocol adapter returns for one case. `ok` is False when output or envelope failed validation."""
+
     model_config = ConfigDict(extra="forbid")
 
     ok: bool

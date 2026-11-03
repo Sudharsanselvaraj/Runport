@@ -13,6 +13,7 @@ import urllib.parse
 
 class SSRFSecurityError(PermissionError):
     """Raised when an outbound HTTP request targets a forbidden IP address or network."""
+
     pass
 
 
@@ -25,13 +26,13 @@ PRIVATE_V4_SUBNETS = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),      # Loopback
-    ipaddress.ip_network("0.0.0.0/8"),        # Current network
-    ipaddress.ip_network("100.64.0.0/10"),    # Carrier-grade NAT
-    ipaddress.ip_network("192.0.0.0/24"),     # IETF Protocol Assignments
-    ipaddress.ip_network("198.18.0.0/15"),    # Benchmarking
-    ipaddress.ip_network("224.0.0.0/4"),      # Multicast
-    ipaddress.ip_network("240.0.0.0/4"),      # Reserved
+    ipaddress.ip_network("127.0.0.0/8"),  # Loopback
+    ipaddress.ip_network("0.0.0.0/8"),  # Current network
+    ipaddress.ip_network("100.64.0.0/10"),  # Carrier-grade NAT
+    ipaddress.ip_network("192.0.0.0/24"),  # IETF Protocol Assignments
+    ipaddress.ip_network("198.18.0.0/15"),  # Benchmarking
+    ipaddress.ip_network("224.0.0.0/4"),  # Multicast
+    ipaddress.ip_network("240.0.0.0/4"),  # Reserved
 ]
 
 LOOPBACK_V4 = ipaddress.ip_network("127.0.0.0/8")
@@ -72,7 +73,7 @@ def validate_safe_url(
     host_allowlist: Optional[Sequence[str]] = None,
 ) -> str:
     """Validates that a URL does not target forbidden private or metadata endpoints.
-    
+
     Args:
         url: The HTTP/HTTPS URL to validate.
         allow_private: Allow internal RFC1918 IPs.

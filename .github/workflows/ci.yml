@@ -11,14 +11,75 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Lint & Code Style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Run Ruff Linter
+        run: uv run ruff check
+
+      - name: Run Ruff Formatter Check
+        run: uv run ruff format --check
+
+  type-check:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run mypy
+        run: uv run mypy
+
+  security-and-scan:
+    name: Security & Legacy Scans
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Legacy Pattern Scan
+        run: |
+          echo "Verifying zero legacy tokens outside approved exceptions..."
+          MATCHES=$(git ls-files -z | grep -zv -e package-lock -e uv.lock | xargs -0 grep -niIE "msu|jev|lead|intent|admission|whatsapp|user4|counsellor|/Users/" | grep -v -E "(LICENSE:|examples/plugins/jev_decisions_api/|docs/INVARIANT_TESTS.md:)" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Legacy scan failed! Forbidden patterns found:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "Legacy scan passed cleanly."
+
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.11", "3.12"]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout repository
@@ -35,25 +96,16 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: |
-          uv sync --extra dev --extra report
+        run: uv sync --extra dev --extra report
 
       - name: Run Core Test Suite
-        run: |
-          uv run pytest -v
+        run: uv run pytest -v
 
       - name: Run Plugin Test Suite
-        run: |
-          uv run pytest -v examples/plugins
+        run: uv run pytest -v examples/plugins
 
-      - name: Verify CLI Help
-        run: |
-          uv run runport --help
-          uv run runport api-preflight
-          uv run runport budget status
-
-  frontend:
-    name: Frontend Build & Typecheck
+  wheel-and-smoke:
+    name: Web Build & Wheel Smoke Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -64,11 +116,40 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install web dependencies
+      - name: Build Web Dashboard
         working-directory: web
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
+          mkdir -p ../src/runport/_web
+          cp -r dist/* ../src/runport/_web/
 
-      - name: Build web dashboard
-        working-directory: web
-        run: npm run build
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build Wheel
+        run: uv build
+
+      - name: Install Wheel in Isolated Environment
+        run: |
+          uv venv test-env
+          uv pip --python test-env/bin/python install dist/*.whl
+
+      - name: Smoke Test Wheel CLI & Server
+        run: |
+          test-env/bin/runport --help
+          test-env/bin/runport api-preflight
+          test-env/bin/runport budget status
+          # Launch background web service and check health
+          test-env/bin/runport web --port 8000 &
+          PID=$!
+          sleep 3
+          curl -sf http://127.0.0.1:8000/api/health || (kill $PID && exit 1)
+          kill $PID

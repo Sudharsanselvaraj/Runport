@@ -7,12 +7,14 @@ from typing import List, Optional, Dict, Any
 
 class IssueSeverity(str, Enum):
     """Severity classification for audit findings."""
-    ERROR = "ERROR"        # Deterministic flaw: missing answer, empty field, broken syntax
-    WARNING = "WARNING"    # Heuristic detection: duplicate question, conflicting numbers, mismatch
+
+    ERROR = "ERROR"  # Deterministic flaw: missing answer, empty field, broken syntax
+    WARNING = "WARNING"  # Heuristic detection: duplicate question, conflicting numbers, mismatch
 
 
 class IssueCategory(str, Enum):
     """Categorical grouping for audit issues."""
+
     MISSING_FIELD = "MISSING_FIELD"
     MALFORMED_STRUCTURE = "MALFORMED_STRUCTURE"
     DUPLICATE_CONTENT = "DUPLICATE_CONTENT"
@@ -24,6 +26,7 @@ class IssueCategory(str, Enum):
 @dataclass
 class Heading:
     """Represents a markdown section or programme header."""
+
     level: int
     text: str
     raw_text: str
@@ -33,6 +36,7 @@ class Heading:
 @dataclass
 class KBRecord:
     """Represents a parsed Question-and-Answer entity."""
+
     record_id: str
     source_file: str
     start_line: int
@@ -56,6 +60,7 @@ class KBRecord:
 
 class FindingStatus(str, Enum):
     """Review and confidence status for audit findings."""
+
     CONFIRMED = "CONFIRMED"
     CANDIDATE = "CANDIDATE"
     OFFICIAL_VERIFICATION_REQUIRED = "OFFICIAL_VERIFICATION_REQUIRED"
@@ -64,6 +69,7 @@ class FindingStatus(str, Enum):
 
 class FindingClassification(str, Enum):
     """Classification taxonomy matching audit governance requirements."""
+
     CONFIRMED_STRUCTURAL_DEFECT = "CONFIRMED_STRUCTURAL_DEFECT"
     CONFIRMED_EXACT_DUPLICATE = "CONFIRMED_EXACT_DUPLICATE"
     POTENTIAL_SEMANTIC_DEFECT = "POTENTIAL_SEMANTIC_DEFECT"
@@ -75,6 +81,7 @@ class FindingClassification(str, Enum):
 @dataclass
 class AuditIssue:
     """Represents a validated flaw or heuristic warning."""
+
     issue_id: str
     source_file: str
     start_line: int
@@ -98,6 +105,7 @@ class AuditIssue:
 @dataclass
 class AuditSummary:
     """Aggregated audit statistics for a source file."""
+
     source_file: str
     file_size_bytes: int
     line_count: int

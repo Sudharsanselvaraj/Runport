@@ -84,6 +84,7 @@ class KeywordBM25Retriever(BaseRetriever):
     ) -> "KeywordBM25Retriever":
         """Builds an uncontaminated BM25 index directly from audited structured KB records."""
         import json
+
         corpus: List[str] = []
         records: List[Dict[str, Any]] = []
         excluded_details: List[Dict[str, Any]] = []
@@ -102,32 +103,38 @@ class KeywordBM25Retriever(BaseRetriever):
 
                     if exclude_defective:
                         if status != "VALID":
-                            excluded_details.append({
-                                "record_id": rec_id,
-                                "source_file": r.get("source_file"),
-                                "reason": "INCOMPLETE_OR_SYNTAX_DEFECT",
-                                "warnings": r.get("validation_warnings", []),
-                            })
+                            excluded_details.append(
+                                {
+                                    "record_id": rec_id,
+                                    "source_file": r.get("source_file"),
+                                    "reason": "INCOMPLETE_OR_SYNTAX_DEFECT",
+                                    "warnings": r.get("validation_warnings", []),
+                                }
+                            )
                             continue
                         if rec_id in cls.CONTRADICTORY_RECORD_IDS:
-                            excluded_details.append({
-                                "record_id": rec_id,
-                                "source_file": r.get("source_file"),
-                                "reason": "CONTRADICTORY_FACT",
-                                "warnings": ["Internal numerical fee conflict"],
-                            })
+                            excluded_details.append(
+                                {
+                                    "record_id": rec_id,
+                                    "source_file": r.get("source_file"),
+                                    "reason": "CONTRADICTORY_FACT",
+                                    "warnings": ["Internal numerical fee conflict"],
+                                }
+                            )
                             continue
 
                     cat = r.get("programme_name") or r.get("category") or ""
                     q = r.get("question_clean") or r.get("question_raw") or ""
                     a = r.get("answer_clean") or r.get("answer_raw") or ""
                     corpus.append(f"{cat}: {q}\n{a}".strip())
-                    records.append({
-                        "record_id": rec_id,
-                        "source_file": r.get("source_file"),
-                        "category": cat,
-                        "start_line": r.get("start_line"),
-                    })
+                    records.append(
+                        {
+                            "record_id": rec_id,
+                            "source_file": r.get("source_file"),
+                            "category": cat,
+                            "start_line": r.get("start_line"),
+                        }
+                    )
 
         retriever = cls()
         retriever.index_documents(corpus, records=records)
@@ -178,11 +185,7 @@ class KeywordBM25Retriever(BaseRetriever):
         top_indices = [idx for s, idx in scores[:top_k] if s > 0.0]
 
         retrieved_chunks = [self.documents[i] for i in top_indices]
-        retrieved_record_ids = [
-            self.doc_records[i].get("record_id", f"DOC-{i}")
-            for i in top_indices
-            if i < len(self.doc_records)
-        ]
+        retrieved_record_ids = [self.doc_records[i].get("record_id", f"DOC-{i}") for i in top_indices if i < len(self.doc_records)]
         lat_ms = (time.perf_counter() - start_t) * 1000.0  # measured retrieval time only; nothing is added
 
         # Calculate hit rate & precision based on expected keywords

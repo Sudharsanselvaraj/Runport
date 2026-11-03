@@ -104,10 +104,10 @@ def test_runner_guard_order_privacy_gate(tmp_path: Path, test_db: DatabaseManage
 
     cases_with_pii = [
         {"id": "c1", "query": "clean query"},
-        {"id": "c2", "query": "clean query", "restricted_user_id": "0123456789"},
+        {"id": "c2", "query": "clean query", "password": "secret_password"},
     ]
 
-    with pytest.raises(ValueError, match="forbidden field 'restricted_user_id' detected"):
+    with pytest.raises(ValueError, match="forbidden field 'password' detected"):
         runner.execute_plan(plan, {"mock-target": target}, cases_with_pii)
 
     # Invariant: Target was NEVER called because privacy gate ran before transport
