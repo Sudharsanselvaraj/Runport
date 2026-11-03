@@ -76,3 +76,4 @@ Every match listed below has been verified as either a privacy enforcement senti
 | `tests/test_rag_benchmark.py` | `Consult admissions` | **Synthetic Expected Answer.** Synthetic ground truth answer string for out-of-scope RAG cases. |
 | `tests/test_trace_export.py` | `user4` | **Privacy Sentinel Test.** Verifies that `user4` and API keys are completely purged from exported archives. |
 | `tests/test_traces.py` | `admission`, `undergraduate_admissions` | **Synthetic Trace Fixture.** Synthetic span names and mock query strings for trace ingestion tests. |
+

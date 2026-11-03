@@ -17,7 +17,7 @@ from runport.core.config import (
 
 def test_load_project_env_from_file(tmp_path: Path, monkeypatch):
     """A key can be loaded from a designated .env file."""
-    fake_key = "sk-or-v1-TESTKEYFROMDOTENV1234567890"
+    fake_key = "sk-or-v1-TESTKEYFROMDOTENV1234567890"  # gitleaks:allow
     env_file = tmp_path / ".env"
     env_file.write_text(f"OPENROUTER_API_KEY={fake_key}\n")
     

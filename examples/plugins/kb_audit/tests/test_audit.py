@@ -395,7 +395,7 @@ def test_deterministic_pipeline_repeatability(tmp_kb_dir: Path):
 
 def test_redact_sensitive_credentials_and_pii():
     """Verify redaction utility cleans personal email, phone numbers, and secrets."""
-    raw = "Contact admin at counsellor.test@example.com or call +60123456789. Key: api_key=sk-live-12345"
+    raw = "Contact admin at counsellor.test@example.com or call +60123456789. Key: api_key=sk-live-12345"  # gitleaks:allow
     sanitized = redact_sensitive(raw)
 
     assert "counsellor.test@example.com" not in sanitized

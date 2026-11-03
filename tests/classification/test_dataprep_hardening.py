@@ -153,7 +153,7 @@ def test_cli_refuses_the_public_salt_unless_explicitly_allowed(tmp_path, monkeyp
 def test_hidden_salt_prompt_is_never_echoed_stored_or_printed(tmp_path, monkeypatch):
     from runport.cli import app
     monkeypatch.delenv(dp.SALT_ENV, raising=False)
-    secret = "correct-horse-battery-staple-9"
+    secret = "correct-horse-battery-staple-9"  # gitleaks:allow
     answers = iter([secret, secret])
     monkeypatch.setattr("getpass.getpass", lambda prompt="": next(answers))
     src = tmp_path / "syn.csv"

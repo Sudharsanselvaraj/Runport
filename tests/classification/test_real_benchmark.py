@@ -25,7 +25,7 @@ from test_runner_adapters import http_err, jev_body, noul_body, chat_body, _Resp
 
 MODELS = ["jev-1.14", "gpt-4.1-nano"]
 PROMPTS = {Task.INTENT: SYN_INTENT_PROMPT, Task.LEAD: SYN_LEAD_PROMPT}
-SECRET = "private-test-secret-0123456789"
+SECRET = "private-test-secret-0123456789"  # gitleaks:allow
 
 
 @pytest.fixture

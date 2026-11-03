@@ -49,3 +49,4 @@ This is a synthetic, offline knowledge base for benchmarking RAG pipelines in Ru
 - **Rate Limit**: Default tier enforces 10,000 requests per minute per authenticated API key.
 - **TLS Version**: Exclusively supports TLS 1.3 with forward secrecy ciphers.
 - **Reference**: NovaGateway Edge Networking Reference 2026, Section 1.5.
+
