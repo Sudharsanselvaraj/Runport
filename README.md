@@ -198,7 +198,7 @@ from runport.connectors.dify import post_chat_message, post_chat_stream
 result = post_chat_message(
     base_url="https://api.dify.ai/v1",
     api_key="app-xxxxxxxxxxxxxxxx",
-    query="What are the admission requirements?",
+    query="What are the system requirements?",
     user="anonymous-eval-001",
     timeout=30.0,
 )
