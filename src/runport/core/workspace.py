@@ -311,11 +311,12 @@ telemetry:
   local_logging: true
   redact_secrets: true
   forbidden_fields:
-    - "restricted_user_id"
     - "phone"
     - "email"
     - "ssn"
-    - "national_id"
+    - "password"
+    - "token"
+    - "api_key"
 
 storage:
   data_dir: "data"
@@ -327,4 +328,11 @@ catalog_sources: []
 targets: []
 """
     config_path.write_text(yaml_template, encoding="utf-8")
+
+    from runport.storage.db import DatabaseManager
+
+    db_path = target_dir / "data" / "runport.db"
+    db_mgr = DatabaseManager(db_path=db_path)
+    db_mgr.init_db()
+
     return config_path

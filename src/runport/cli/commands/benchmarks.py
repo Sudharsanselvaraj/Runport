@@ -103,6 +103,7 @@ def run_benchmark(
 
         replay_runner = ReplayRunner(fixtures=dataset_path, target_id=model_id)
         db_mgr = DatabaseManager()
+        db_mgr.init_db()
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         now_iso = datetime.now(timezone.utc).isoformat()
 
