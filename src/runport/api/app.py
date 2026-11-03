@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from runport.api.routes import budget, datasets, events, plan, runs, targets
+from runport.api.routes import budget, datasets, events, models, plan, reports, runs, setup, targets
 
 
 def create_app() -> FastAPI:
@@ -37,12 +37,39 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    api_token = os.environ.get("RUNPORT_API_TOKEN")
+
+    @app.middleware("http")
+    async def local_security_middleware(request, call_next):
+        client_host = request.client.host if request.client else "127.0.0.1"
+        is_local = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+
+        # If non-localhost client or token explicitly required
+        if api_token or not is_local:
+            path = request.url.path
+            if path.startswith("/api") and path not in ("/api/health", "/api/docs", "/api/openapi.json", "/api/redoc"):
+                auth_header = request.headers.get("Authorization", "")
+                custom_token = request.headers.get("X-Runport-Token", "")
+                bearer_token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else custom_token
+                expected = api_token or "secret"
+                if not bearer_token or (api_token and bearer_token != expected):
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Unauthorized: API token required for remote network access."},
+                    )
+
+        return await call_next(request)
+
     # API routers
+    app.include_router(setup.router, prefix="/api")
+    app.include_router(models.router, prefix="/api")
     app.include_router(targets.router, prefix="/api")
     app.include_router(datasets.router, prefix="/api")
     app.include_router(budget.router, prefix="/api")
     app.include_router(plan.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
+    app.include_router(reports.router, prefix="/api")
     app.include_router(events.router, prefix="/api")
 
     @app.get("/api/health")
@@ -54,12 +81,14 @@ def create_app() -> FastAPI:
             "mode": "local_first",
         }
 
-    # Serve static assets if the Vite build is present in web/dist
+    # Serve packaged UI from src/runport/_web or dev build from web/dist
+    packaged_web = Path(__file__).resolve().parent.parent / "_web"
     repo_root = Path(__file__).resolve().parent.parent.parent.parent
-    frontend_dist = repo_root / "web" / "dist"
+    dev_dist = repo_root / "web" / "dist"
 
-    if frontend_dist.exists() and (frontend_dist / "index.html").exists():
-        app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+    dist_dir = packaged_web if (packaged_web / "index.html").exists() else dev_dist
+    if dist_dir.exists() and (dist_dir / "index.html").exists():
+        app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
     else:
         @app.get("/", response_class=HTMLResponse)
         def index_fallback():
