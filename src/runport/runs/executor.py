@@ -117,7 +117,24 @@ class GenericRunner:
 
                 # --- Guard 3: Preflight Budget & Context Check ---
                 if plan.is_live:
-                    worst_case_estimate = Decimal("0.05")
+                    target_pricing = getattr(target, "pricing", None)
+                    is_priced = target_pricing is not None and (
+                        target_pricing.input_usd_per_1m is not None or target_pricing.fixed_usd_per_request is not None
+                    )
+                    if not is_priced:
+                        if self.workspace.budget.require_priced:
+                            raise BudgetExceededError(
+                                f"Model/target '{target_id}' has unknown pricing and require_priced is enabled."
+                            )
+                        # Unknown-price model runs with UNAVAILABLE estimate and requires max_cost_per_case_usd
+                        worst_case_estimate = self.workspace.budget.per_case_usd
+                        if not worst_case_estimate or worst_case_estimate <= Decimal("0.00"):
+                            raise BudgetExceededError(
+                                f"Unknown-price target '{target_id}' requires a positive per-case spend cap (max_cost_per_case_usd)."
+                            )
+                    else:
+                        worst_case_estimate = target_pricing.calculate_cost(1000, 500) or self.workspace.budget.per_case_usd
+
                     ok, msg = self.budget_service.check_spend_permitted(worst_case_estimate)
                     if not ok:
                         raise BudgetExceededError(f"Preflight budget check failed for case '{case_id}': {msg}")
@@ -159,9 +176,9 @@ class GenericRunner:
                     "expected_answer": str(case.get("expected_answer") or ""),
                     "generated_output": str(res.output_text or ""),
                     "latency_ms": elapsed_ms,
-                    "prompt_tokens": res.tokens_in or 0,
-                    "completion_tokens": res.tokens_out or 0,
-                    "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else "0.000000",
+                    "prompt_tokens": res.tokens_in,
+                    "completion_tokens": res.tokens_out,
+                    "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else None,
                     "accuracy": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
                     "groundedness": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
                     "format_adherence": 1.0 if res.status != TargetStatus.INVALID_OUTPUT else 0.0,

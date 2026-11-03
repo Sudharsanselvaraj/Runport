@@ -78,6 +78,7 @@ class WorkspaceConfig(BaseModel):
             obj["schema_version"] = str(obj["schema_version"])
         return super().model_validate(obj, *args, **kwargs)
     name: str = Field(default="runport-workspace", description="Human-readable workspace or project name")
+    root_dir: Optional[Path] = Field(default=None, description="Anchored workspace root directory")
     budget: BudgetConfig = Field(default_factory=BudgetConfig, description="Spend limits and policies")
     approver: ApproverConfig = Field(default_factory=ApproverConfig, description="Approval mechanism settings")
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig, description="Telemetry and privacy safeguards")
@@ -95,6 +96,29 @@ class WorkspaceConfig(BaseModel):
 DEFAULT_WORKSPACE_FILENAMES = ["runport.yaml", "runport.yml", "workbench.yaml", "workbench.yml"]
 
 
+def _check_no_secrets(data: Any, path: str = "") -> None:
+    """Invariant: API keys, bearer tokens, and credentials must NEVER be committed to YAML files."""
+    forbidden_keys = {"api_key", "secret", "private_key", "password", "access_token"}
+    safe_exceptions = {
+        "token_approver_enabled", "redact_secrets", "est_prompt_tokens",
+        "est_completion_tokens", "context_length", "tokens_in", "tokens_out",
+        "max_tokens", "prompt_tokens", "completion_tokens"
+    }
+    if isinstance(data, dict):
+        for k, v in data.items():
+            k_lower = str(k).lower()
+            if any(term in k_lower for term in forbidden_keys) and k_lower not in safe_exceptions:
+                if isinstance(v, str) and not v.startswith("$"):
+                    raise ValueError(
+                        f"Secret or API key detected in workspace configuration ('{path}{k}'). "
+                        "API keys must never be committed to YAML files; use environment variables instead."
+                    )
+            _check_no_secrets(v, f"{path}{k}.")
+    elif isinstance(data, list):
+        for idx, item in enumerate(data):
+            _check_no_secrets(item, f"{path}[{idx}].")
+
+
 def find_workspace_file(root_dir: Optional[Path] = None) -> Optional[Path]:
     """Search for workspace configuration file in current or specified directory."""
     root = root_dir or Path.cwd()
@@ -106,7 +130,11 @@ def find_workspace_file(root_dir: Optional[Path] = None) -> Optional[Path]:
 
 
 def load_workspace_config(path: Optional[Path] = None) -> WorkspaceConfig:
-    """Load and validate workspace configuration from YAML/JSON file or defaults."""
+    """Load and validate workspace configuration from YAML/JSON file or defaults.
+    
+    All storage and dataset paths are anchored to target_path.parent, independent of CWD.
+    API keys and bearer tokens are strictly forbidden from YAML content.
+    """
     target_path = path or find_workspace_file()
     if target_path is None or not target_path.is_file():
         return WorkspaceConfig()
@@ -124,44 +152,100 @@ def load_workspace_config(path: Optional[Path] = None) -> WorkspaceConfig:
             # Simple fallback parser for basic YAML if PyYAML is not installed
             data = _parse_simple_yaml(content)
 
-    return WorkspaceConfig.model_validate(data or {})
+    _check_no_secrets(data or {})
+
+    cfg = WorkspaceConfig.model_validate(data or {})
+    base_dir = target_path.parent.resolve()
+    cfg.root_dir = base_dir
+    # Anchor storage paths relative to workspace config location (independent of CWD)
+    if not cfg.storage.data_dir.is_absolute():
+        cfg.storage.data_dir = (base_dir / cfg.storage.data_dir).resolve()
+    if not cfg.storage.reports_dir.is_absolute():
+        cfg.storage.reports_dir = (base_dir / cfg.storage.reports_dir).resolve()
+    return cfg
 
 
 def _parse_simple_yaml(text: str) -> Dict[str, Any]:
-    """Minimal YAML parser fallback for basic key-value workspace configs."""
+    """YAML parser for workspace configurations without external dependencies."""
     result: Dict[str, Any] = {}
-    current_section = result
-    section_name = ""
+    # stack entry: [indent, container, key_in_parent, parent_container]
+    stack: List[List[Any]] = [[-1, result, None, None]]
 
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+    for raw_line in text.splitlines():
+        if not raw_line.strip() or raw_line.strip().startswith("#"):
             continue
-        if line.endswith(":") and not ":" in line[:-1]:
-            section_name = line[:-1].strip()
-            result[section_name] = {}
-            current_section = result[section_name]
+        indent = len(raw_line) - len(raw_line.lstrip())
+        line = raw_line.strip()
+
+        while len(stack) > 1 and indent <= stack[-1][0]:
+            stack.pop()
+
+        parent_indent, parent_container, parent_key, grandparent_container = stack[-1]
+
+        if line.startswith("- "):
+            val_part = line[2:].strip()
+            # If current parent is an empty dict created for a section, convert it to a list
+            if isinstance(parent_container, dict) and len(parent_container) == 0 and grandparent_container is not None and parent_key is not None:
+                new_list: List[Any] = []
+                grandparent_container[parent_key] = new_list
+                parent_container = new_list
+                stack[-1][1] = new_list
+
+            if isinstance(parent_container, list):
+                target_list = parent_container
+            elif isinstance(parent_container, dict):
+                if parent_key and not isinstance(parent_container.get(parent_key), list):
+                    parent_container[parent_key] = []
+                target_list = parent_container[parent_key] if parent_key else []
+            else:
+                target_list = []
+
+            if ":" in val_part:
+                k, v = val_part.split(":", 1)
+                item_dict = {k.strip(): _parse_val(v.strip())}
+                target_list.append(item_dict)
+                stack.append([indent, item_dict, None, target_list])
+            else:
+                target_list.append(_parse_val(val_part))
             continue
+
         if ":" in line:
             k, v = line.split(":", 1)
             k = k.strip()
-            v = v.strip().strip("'\"")
-            val: Any = v
-            if v.lower() == "true":
-                val = True
-            elif v.lower() == "false":
-                val = False
-            elif v.isdigit():
-                val = int(v)
-            elif _is_float(v):
-                val = float(v)
-            elif not v:
-                val = None
-            if section_name and current_section is not result:
-                current_section[k] = val
+            v = v.strip()
+
+            if not v:
+                new_dict: Dict[str, Any] = {}
+                if isinstance(parent_container, dict):
+                    parent_container[k] = new_dict
+                stack.append([indent, new_dict, k, parent_container])
             else:
-                result[k] = val
+                parsed_v = _parse_val(v)
+                if isinstance(parent_container, dict):
+                    parent_container[k] = parsed_v
+                stack.append([indent, parent_container, k, grandparent_container])
+
     return result
+
+
+def _parse_val(v: str) -> Any:
+    v = v.strip().strip("'\"")
+    if v.startswith("[") and v.endswith("]"):
+        try:
+            return json.loads(v)
+        except Exception:
+            return [x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip()]
+    if v.lower() == "true":
+        return True
+    if v.lower() == "false":
+        return False
+    if v.isdigit():
+        return int(v)
+    if _is_float(v):
+        return float(v)
+    if not v:
+        return None
+    return v
 
 
 def _is_float(val: str) -> bool:

@@ -64,14 +64,14 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     prompt TEXT NOT NULL,
     expected_answer TEXT,
     generated_output TEXT NOT NULL,
-    latency_ms REAL NOT NULL,
-    prompt_tokens INTEGER NOT NULL,
-    completion_tokens INTEGER NOT NULL,
-    cost_usd TEXT NOT NULL,
-    accuracy REAL NOT NULL,
-    groundedness REAL NOT NULL,
-    format_adherence REAL NOT NULL,
-    overall_score REAL NOT NULL,
+    latency_ms REAL,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    cost_usd TEXT,
+    accuracy REAL,
+    groundedness REAL,
+    format_adherence REAL,
+    overall_score REAL,
     evaluator_notes TEXT,
     FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
 );
@@ -103,11 +103,53 @@ class DatabaseManager:
         return conn
 
     def init_db(self) -> None:
-        """Idempotently initializes tables. The only change to an existing ledger is the additive `is_simulated` migration."""
+        """Idempotently initializes tables and runs additive migrations."""
         with self.get_connection() as conn:
             conn.executescript(SCHEMA_SQL)
             self._migrate_ledger(conn)
+            self._migrate_evaluation_results(conn)
             conn.commit()
+
+    @staticmethod
+    def _migrate_evaluation_results(conn: sqlite3.Connection) -> None:
+        """Ensure columns in evaluation_results allow NULL to respect 'Null is not 0' invariant."""
+        cur = conn.execute("PRAGMA table_info(evaluation_results)")
+        res_cols = {r[1]: bool(r[3]) for r in cur.fetchall()}  # col_name -> notnull
+        if res_cols and (res_cols.get("accuracy", False) or res_cols.get("prompt_tokens", False)):
+            conn.execute("ALTER TABLE evaluation_results RENAME TO _legacy_evaluation_results")
+            conn.execute("""
+                CREATE TABLE evaluation_results (
+                    result_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    case_id TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    expected_answer TEXT,
+                    generated_output TEXT NOT NULL,
+                    latency_ms REAL,
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    cost_usd TEXT,
+                    accuracy REAL,
+                    groundedness REAL,
+                    format_adherence REAL,
+                    overall_score REAL,
+                    evaluator_notes TEXT,
+                    FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO evaluation_results SELECT
+                    result_id, run_id, case_id, prompt, expected_answer,
+                    generated_output, latency_ms, prompt_tokens, completion_tokens,
+                    cost_usd, accuracy, groundedness, format_adherence, overall_score,
+                    evaluator_notes
+                FROM _legacy_evaluation_results
+            """)
+            conn.execute("DROP TABLE _legacy_evaluation_results")
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+                "VALUES (2, datetime('now'), 'Make accuracy, tokens, and cost columns in evaluation_results nullable')"
+            )
 
     @staticmethod
     def _migrate_ledger(conn: sqlite3.Connection) -> None:
@@ -363,11 +405,11 @@ class DatabaseManager:
                     run["total_cases"],
                     run["completed_cases"],
                     run["failed_cases"],
-                    str(run["total_cost_usd"]),
-                    float(run["mean_latency_ms"]),
-                    float(run["mean_accuracy"]),
-                    float(run["mean_groundedness"]),
-                    float(run["mean_overall_score"]),
+                    str(run["total_cost_usd"]) if run.get("total_cost_usd") is not None else "0.0000",
+                    float(run["mean_latency_ms"]) if run.get("mean_latency_ms") is not None else 0.0,
+                    float(run["mean_accuracy"]) if run.get("mean_accuracy") is not None else 0.0,
+                    float(run["mean_groundedness"]) if run.get("mean_groundedness") is not None else 0.0,
+                    float(run["mean_overall_score"]) if run.get("mean_overall_score") is not None else 0.0,
                     1 if run.get("is_dry_run", False) else 0,
                     run.get("notes", ""),
                 ),
@@ -395,14 +437,14 @@ class DatabaseManager:
                         r["prompt"],
                         r.get("expected_answer", ""),
                         r["generated_output"],
-                        float(r["latency_ms"]),
-                        int(r["prompt_tokens"]),
-                        int(r["completion_tokens"]),
-                        str(r["cost_usd"]),
-                        float(r["accuracy"]),
-                        float(r["groundedness"]),
-                        float(r["format_adherence"]),
-                        float(r["overall_score"]),
+                        float(r["latency_ms"]) if r.get("latency_ms") is not None else None,
+                        int(r["prompt_tokens"]) if r.get("prompt_tokens") is not None else None,
+                        int(r["completion_tokens"]) if r.get("completion_tokens") is not None else None,
+                        str(r["cost_usd"]) if r.get("cost_usd") is not None else None,
+                        float(r["accuracy"]) if r.get("accuracy") is not None else None,
+                        float(r["groundedness"]) if r.get("groundedness") is not None else None,
+                        float(r["format_adherence"]) if r.get("format_adherence") is not None else None,
+                        float(r["overall_score"]) if r.get("overall_score") is not None else None,
                         r.get("evaluator_notes", ""),
                     )
                     for r in results

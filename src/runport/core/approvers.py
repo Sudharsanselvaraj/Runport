@@ -44,12 +44,18 @@ class InteractiveApprover(BaseApprover):
         operator: str = "Operator",
         prompt_fn: Optional[Callable[[str], str]] = None,
         is_tty_fn: Optional[Callable[[], bool]] = None,
+        expected_phrase_fn: Optional[Callable[[str], str]] = None,
+        echo_fn: Optional[Callable[[str], None]] = None,
     ):
         self.operator = operator
         self.prompt_fn = prompt_fn or input
-        self.is_tty_fn = is_tty_fn or (lambda: sys.stdin.isatty())
+        self.is_tty_fn = is_tty_fn or (lambda: sys.stdin.isatty() and sys.stdout.isatty())
+        self.expected_phrase_fn = expected_phrase_fn
+        self.echo_fn = echo_fn
 
     def expected_phrase(self, plan_fingerprint: str) -> str:
+        if self.expected_phrase_fn:
+            return self.expected_phrase_fn(plan_fingerprint)
         return f"CONFIRM LIVE BENCHMARK {plan_fingerprint[:8].upper()}"
 
     def request_approval(
@@ -60,15 +66,23 @@ class InteractiveApprover(BaseApprover):
     ) -> ApprovalDecision:
         if not self.is_tty_fn():
             raise LiveNotAuthorizedError(
-                "Non-interactive terminal cannot provide live confirmation; live run refused."
+                "Non-interactive terminal cannot provide live confirmation; "
+                "live runs require interactive confirmation and are refused fail-closed."
             )
 
         expected = self.expected_phrase(plan_fingerprint)
-        prompt_msg = (
-            f"\n[APPROVAL REQUIRED] Live run covers {candidate_count} candidates.\n"
-            f"Plan Fingerprint: {plan_fingerprint}\n"
-            f"To proceed, type exactly '{expected}': "
-        )
+        if self.echo_fn:
+            if summary_text:
+                for line in summary_text.splitlines():
+                    self.echo_fn(line)
+            self.echo_fn(f"This will send data to an external provider and may spend money. Type exactly: {expected}")
+            prompt_msg = "Confirmation"
+        else:
+            prompt_msg = (
+                f"\n[APPROVAL REQUIRED] Live run covers {candidate_count} candidates.\n"
+                f"Plan Fingerprint: {plan_fingerprint}\n"
+                f"To proceed, type exactly '{expected}': "
+            )
 
         try:
             entered = self.prompt_fn(prompt_msg).strip()
@@ -91,7 +105,8 @@ class InteractiveApprover(BaseApprover):
 class TokenApprover(BaseApprover):
     """CI/Automation approver validating a pre-generated plan fingerprint token.
     
-    Valid ONLY if token_approver_enabled=True and token matches the freshly recomputed plan.
+    Valid ONLY if enabled=True and token matches the freshly recomputed plan.
+    Enforces single-use: once consumed, cannot be reused.
     """
 
     def __init__(
@@ -103,6 +118,7 @@ class TokenApprover(BaseApprover):
         self.token = token.strip()
         self.enabled = enabled
         self.operator = operator
+        self._consumed = False
 
     def request_approval(
         self,
@@ -115,11 +131,20 @@ class TokenApprover(BaseApprover):
                 "Token approver is disabled by policy in workspace configuration; live run refused."
             )
 
-        if not self.token or self.token != plan_fingerprint:
+        if self._consumed:
             raise LiveNotAuthorizedError(
-                f"Approval token mismatch: provided token does not match freshly recomputed plan fingerprint '{plan_fingerprint}'."
+                "Approval token has already been consumed; cannot be reused."
             )
 
+        if not plan_fingerprint:
+            raise LiveNotAuthorizedError("Approve token provided but no plan fingerprint was computed.")
+
+        if not self.token or self.token != plan_fingerprint.strip():
+            raise LiveNotAuthorizedError(
+                f"Approval token mismatch: provided token '{self.token}' does not match recomputed plan fingerprint '{plan_fingerprint}'; run refused."
+            )
+
+        self._consumed = True
         return ApprovalDecision(
             approved=True,
             plan_fingerprint=plan_fingerprint,

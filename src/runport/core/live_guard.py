@@ -42,36 +42,32 @@ def confirm_live_run(
     1. In CI / automated environments: `approve_token` matches the freshly recomputed `plan_fingerprint`.
     2. In interactive terminals: an operator types the exact confirmation phrase.
 
+    Thin wrapper delegating directly to unified TokenApprover or InteractiveApprover.
     Raises LiveNotAuthorizedError otherwise. Nothing here contacts any provider.
     """
     if not models or any(not m for m in models):
         raise LiveNotAuthorizedError("Live run needs at least one explicit model id")
 
-    # CI / Automated approval using exact fingerprint token
     if approve_token is not None:
-        if not plan_fingerprint:
-            raise LiveNotAuthorizedError("Approve token provided but no plan fingerprint was computed.")
-        if approve_token.strip() == plan_fingerprint.strip():
-            return LiveAuthorization(models=tuple(models))
-        raise LiveNotAuthorizedError(
-            f"Approval token '{approve_token}' does not match recomputed plan fingerprint '{plan_fingerprint}'; run refused."
-        )
+        from runport.core.approvers import TokenApprover
+        token_approver = TokenApprover(token=approve_token, enabled=True)
+        token_approver.request_approval(plan_fingerprint=plan_fingerprint or "")
+        return LiveAuthorization(models=tuple(models))
 
-    interactive = is_interactive if is_interactive is not None else (lambda: sys.stdin.isatty() and sys.stdout.isatty())
-    if not interactive():
-        raise LiveNotAuthorizedError(
-            "Live runs require interactive confirmation; non-interactive execution cannot confirm and is refused."
-        )
+    from runport.core.approvers import InteractiveApprover
     phrase = expected_phrase(models, plan_fingerprint)
-    for line in summary_lines:
-        echo(line)
-    echo(f"This will send data to an external provider and may spend money. Type exactly: {phrase}")
-    if prompt is None:
-        import typer
-        prompt = lambda msg: typer.prompt(msg, default="", show_default=False)  # noqa: E731
-    answer = prompt("Confirmation")
-    if answer.strip() != phrase:
-        raise LiveNotAuthorizedError("Confirmation phrase did not match; live run refused.")
+    summary_text = "\n".join(summary_lines)
+    approver = InteractiveApprover(
+        prompt_fn=prompt,
+        is_tty_fn=is_interactive,
+        expected_phrase_fn=lambda fp: phrase,
+        echo_fn=echo,
+    )
+    approver.request_approval(
+        plan_fingerprint=plan_fingerprint or "MANUAL",
+        summary_text=summary_text,
+        candidate_count=len(models),
+    )
     return LiveAuthorization(models=tuple(models))
 
 
