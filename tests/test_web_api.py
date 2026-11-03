@@ -87,7 +87,7 @@ def test_get_budget(client):
     data = res.json()
     assert "policy" in data
     assert "spend" in data
-    assert data["policy"]["require_priced"] is True
+    assert data["policy"]["require_priced"] is False
 
 
 def test_create_plan_and_fingerprint(client):

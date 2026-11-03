@@ -8,18 +8,43 @@ from typing import Optional, Tuple
 from pydantic import BaseModel, Field
 
 
+def _get_workspace_budget():
+    """Deferred import to avoid circular dependency between workspace and config."""
+    from runport.core.workspace import load_workspace_config
+    return load_workspace_config().budget
+
+
 class BudgetPolicy(BaseModel):
     """Local budget tracking policies.
     
     NOTE: These are local experiment governance ceilings tracked within this
     workbench, NOT provider-enforced account balance limits.
+    Ceilings and pricing policies derive exclusively from the active workspace configuration.
     """
-    total_budget_usd: Decimal = Field(default=Decimal("18.00"), description="Total lifetime experiment ceiling")
-    pilot_budget_usd: Decimal = Field(default=Decimal("2.00"), description="Ceiling for initial pilot evaluation")
-    per_run_ceiling_usd: Decimal = Field(default=Decimal("0.50"), description="Max spend allowed per single evaluation run")
-    per_case_ceiling_usd: Decimal = Field(default=Decimal("0.02"), description="Max spend allowed per individual evaluation case")
-    retry_buffer_pct: Decimal = Field(default=Decimal("0.05"), description="Buffer for network/rate-limit retries (5%)")
-    require_priced: bool = Field(default=True, description="Fail preflight if model pricing is unknown or unavailable")
+    total_budget_usd: Decimal = Field(
+        default_factory=lambda: _get_workspace_budget().total_usd,
+        description="Total lifetime experiment ceiling",
+    )
+    pilot_budget_usd: Decimal = Field(
+        default_factory=lambda: _get_workspace_budget().pilot_usd,
+        description="Ceiling for initial pilot evaluation",
+    )
+    per_run_ceiling_usd: Decimal = Field(
+        default_factory=lambda: _get_workspace_budget().per_run_usd,
+        description="Max spend allowed per single evaluation run",
+    )
+    per_case_ceiling_usd: Decimal = Field(
+        default_factory=lambda: _get_workspace_budget().per_case_usd,
+        description="Max spend allowed per individual evaluation case",
+    )
+    retry_buffer_pct: Decimal = Field(
+        default_factory=lambda: _get_workspace_budget().retry_buffer_pct,
+        description="Buffer for network/rate-limit retries (5%)",
+    )
+    require_priced: bool = Field(
+        default_factory=lambda: _get_workspace_budget().require_priced,
+        description="Fail preflight if model pricing is unknown or unavailable",
+    )
 
     @property
     def total_budget_micros(self) -> int:

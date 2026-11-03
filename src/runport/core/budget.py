@@ -43,7 +43,9 @@ class BudgetService:
         self.db = db or DatabaseManager()
         if policy is None:
             from runport.core.budget_policy import effective_policy
-            policy = effective_policy(settings.budget, settings.data_dir)   # a typed, audited pilot-ceiling override applies; nothing else changes
+            from runport.core.workspace import load_workspace_config
+            active_policy = load_workspace_config().budget.to_budget_policy()
+            policy = effective_policy(active_policy, settings.data_dir)   # a typed, audited pilot-ceiling override applies; nothing else changes
         self.policy = policy
 
     def get_status(self) -> BudgetStatus:
