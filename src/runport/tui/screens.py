@@ -704,7 +704,7 @@ def build_evaluation_main_panel(
     r_table.add_column("Faithfulness", justify="right", width=14)
     r_table.add_column("Mean Lat.", justify="right", width=10)
     r_table.add_column("Cost (USD)", justify="right", width=11)
-    r_table.add_column("Mode", justify="center", width=9)
+    r_table.add_column("Mode", justify="center", width=12)
 
     if not runs:
         r_table.add_row(
@@ -748,7 +748,7 @@ def build_evaluation_main_panel(
             lat_str = f"{lat:.1f}ms"
             cost_str = f"${float(run.get('total_cost_usd', 0)):.4f}"
             is_dry = bool(run.get("is_dry_run", 0))
-            mode_badge = f"[{TEXT_MUTED}][LEGACY][/]" if is_dry else f"[bold {COLOR_WARNING}][LIVE][/]"
+            mode_badge = f"[{TEXT_MUTED}]REPLAYED[/]" if is_dry else f"[bold {COLOR_WARNING}]LIVE[/]"
 
             row_style = STYLE_ROW_SELECTED if (is_focused and idx == selected_index) else None
             r_table.add_row(
