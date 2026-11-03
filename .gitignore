@@ -53,7 +53,7 @@ data/classification_prep/
 data/telemetry/
 data/db/
 data/cache/
-reports/
+/reports/
 
 # Scratch and obsolete experiment directories
 scratch/
