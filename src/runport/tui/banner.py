@@ -15,4 +15,4 @@ BANNER_EMBLEM = """[bold bright_white]
 
 APP_TITLE = "[bold bright_white]RUNPORT[/bold bright_white]"
 APP_VERSION = "[dim]v0.1.0[/dim]"
-APP_SUBTITLE = "[dim]Admissions AI Counsellor Evaluation & Inference Optimization[/dim]"
+APP_SUBTITLE = "[dim]Universal LLM, Prompt, and Workflow Benchmarking Platform[/dim]"

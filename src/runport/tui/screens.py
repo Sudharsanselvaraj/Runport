@@ -603,8 +603,8 @@ def build_dataset_validation_panel(is_focused: bool) -> Panel:
     kb_table.add_column("Status", justify="center", width=8)
     kb_table.add_column("Coverage / Role", style=f"{TEXT_SECONDARY}")
 
-    kb_table.add_row("General Knowledge Base", "241 Q&A pairs", "9fbd1673a70db54d...", f"[bold {TEXT_PRIMARY}]PASS[/]", "Campus, admissions, faculties, general policies")
-    kb_table.add_row("Programmes Knowledge Base", "2,810 Q&A pairs", "a46773fea196d8fe...", f"[bold {TEXT_PRIMARY}]PASS[/]", "Academic degrees, tuition fees, career outcomes")
+    kb_table.add_row("General Knowledge Base", "241 Q&A pairs", "9fbd1673a70db54d...", f"[bold {TEXT_PRIMARY}]PASS[/]", "System specifications, API policies, general guidelines")
+    kb_table.add_row("Services Knowledge Base", "2,810 Q&A pairs", "a46773fea196d8fe...", f"[bold {TEXT_PRIMARY}]PASS[/]", "Service parameters, operational rules, workflow targets")
     grid.add_row(kb_table)
 
     # 2. Defect Remediation Register Table
