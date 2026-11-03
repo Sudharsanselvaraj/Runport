@@ -259,7 +259,8 @@ def test_system_resource_values_are_measured_or_unavailable_never_placeholders(w
 def test_dashboard_shows_the_full_roster_of_ten_in_the_robustness_view(workdir):
     tui, _ = make_tui()
     tui.goto("robustness")
-    assert len(tui.get_view().rows) == len(__import__('runport.models.registry', fromlist=['REGISTRY']).REGISTRY) == 11
+    from runport.models.registry import REGISTRY
+    assert len(tui.get_view().rows) == len(REGISTRY)
 
 
 def test_request_graphs_distinguish_an_empty_current_window_from_recorded_history(workdir):

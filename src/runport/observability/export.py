@@ -19,9 +19,9 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from runport.classification.contracts import PARITY_STATUS, IntentLabel
+from runport.classification.contracts import CONTRACT_VERSION, PARITY_STATUS, IntentLabel
 from runport.datasets.redaction import redact
-from runport.classification.records import PredictionRecord, Task
+from runport.classification.records import PredictionRecord
 from runport.observability.analysis import lead_pred
 from runport.observability.events import RequestEvent
 from runport.observability.labels import ApprovedLabels
@@ -153,10 +153,12 @@ def _unavailable(rec: PredictionRecord, ev: Optional[RequestEvent]) -> List[str]
 
 
 def _truth(rec: PredictionRecord, labels: ApprovedLabels, decision: Optional[bool]) -> Dict[str, Any]:
-    if rec.task == Task.INTENT:
+    task_str = rec.task.value if hasattr(rec.task, "value") else str(rec.task)
+    if task_str.lower() in ("intent", "classification"):
         lab = labels.intent.get(rec.case_id)
-        got = lab.value if lab else None
-        correct = (rec.predicted_label.value == got if rec.predicted_label else False) if lab else None
+        got = lab if isinstance(lab, str) else getattr(lab, "value", str(lab) if lab is not None else None)
+        pred_label = rec.predicted_label if isinstance(rec.predicted_label, str) else getattr(rec.predicted_label, "value", str(rec.predicted_label) if rec.predicted_label is not None else None)
+        correct = (pred_label == got) if (lab is not None and pred_label is not None) else None
     else:
         lab = labels.lead.get(rec.case_id)
         got = lab
@@ -167,46 +169,62 @@ def _truth(rec: PredictionRecord, labels: ApprovedLabels, decision: Optional[boo
 
 def row_from_record(rec: PredictionRecord, started: Optional[RequestEvent], retries: List[str], labels: ApprovedLabels,
                     frozen_by_model: Dict[str, Any], authorization: Optional[RawTextAuthorization]) -> Dict[str, Any]:
-    request_id = f"{rec.run_id}:{rec.case_id}:{rec.task.value}:{rec.model_key}"
+    task_str = rec.task.value if hasattr(rec.task, "value") else str(rec.task)
+    is_lead = task_str.lower() in ("lead", "binary")
+    request_id = f"{rec.run_id}:{rec.case_id}:{task_str}:{rec.model_key}"
     frozen = frozen_by_model.get(rec.model_key)
-    decision = lead_pred(rec, frozen) if rec.task == Task.LEAD else None
-    if rec.task == Task.LEAD:
-        source = "MODEL_OUTPUT" if rec.predicted_need_cta is not None else ("FROZEN_DEV_THRESHOLD" if (frozen is not None and rec.yes_prob is not None) else
-                                                                           ("THRESHOLD_NOT_FROZEN" if rec.yes_prob is not None else None))
+    decision = lead_pred(rec, frozen) if is_lead else None
+    if is_lead:
+        source = "FROZEN_DEV_THRESHOLD" if (frozen is not None and rec.yes_prob is not None) else (
+            "THRESHOLD_NOT_FROZEN" if rec.yes_prob is not None else ("MODEL_OUTPUT" if rec.predicted_label else None)
+        )
     else:
         source = "MODEL_OUTPUT" if rec.predicted_label else None
-    sel = rec.label_probs.get(rec.predicted_label.value) if (rec.label_probs and rec.predicted_label) else None
+
+    pred_str = rec.predicted_label if isinstance(rec.predicted_label, str) else getattr(rec.predicted_label, "value", str(rec.predicted_label) if rec.predicted_label is not None else None)
+    sel = rec.label_probs.get(pred_str) if (rec.label_probs and pred_str) else None
     route = rec.requested_route or {}
     pinned = (route.get("order") or [None])[0] if isinstance(route, dict) else None
+    prot_val = rec.protocol.value if hasattr(rec.protocol, "value") else str(rec.protocol)
+    cost_usd_val = getattr(rec, "recorded_cost_usd", rec.cost_usd)
+    contract_ver = getattr(rec, "input_contract_version", "contract-v1")
+    parity_stat = getattr(rec, "parity_status", PARITY_STATUS)
+    val_issues = getattr(rec, "validation_issues", [])
+    warnings = getattr(rec, "warnings", [])
+    nat_cost = getattr(rec, "native_cost", None)
+    nat_cost_unit = getattr(rec, "native_cost_unit", None)
+    finish_rsn = getattr(rec, "finish_reason", None)
+    reasoning_toks = getattr(rec, "reasoning_tokens", None)
+
     return {
         "schema_version": SCHEMA_VERSION, "record_type": "REQUEST_TRACE",
-        "identity": {"run_id": rec.run_id, "case_id": rec.case_id, "task": rec.task.value, "model_key": rec.model_key, "requested_model_id": rec.requested_model_id,
+        "identity": {"run_id": rec.run_id, "case_id": rec.case_id, "task": task_str, "model_key": rec.model_key, "requested_model_id": rec.requested_model_id,
                      "resolved_model_id": rec.resolved_model_id, "serving_provider": rec.serving_provider, "requested_route": rec.requested_route,
-                     "pinned_route": pinned, "protocol": rec.protocol.value},
-        "versions": {"dataset_version": rec.dataset_version, "prompt_fingerprint": rec.prompt_version, "input_contract_version": rec.input_contract_version,
-                     "parity_status": rec.parity_status},
+                     "pinned_route": pinned, "protocol": prot_val},
+        "versions": {"dataset_version": rec.dataset_version, "prompt_fingerprint": rec.prompt_version, "input_contract_version": contract_ver,
+                     "parity_status": parity_stat},
         "request": {"request_id": request_id, "request_started_at": started.ts if started else None, "record_created_at": rec.created_at,
                     "latency_ms_end_to_end": rec.latency_ms, "model_latency_ms": rec.model_latency_ms,
-                    "model_latency_source": "PROVIDER_REPORTED" if rec.model_latency_ms is not None else "UNAVAILABLE", "finish_reason": rec.finish_reason,
+                    "model_latency_source": "PROVIDER_REPORTED" if rec.model_latency_ms is not None else "UNAVAILABLE", "finish_reason": finish_rsn,
                     "attempts": rec.attempts, "retry_causes": list(retries or rec.retry_errors), "status": rec.status,
                     "error_category": _error_category(rec, None), "error_type": rec.error_type, "error_message": rec.error_message,
-                    "validation_issues": list(rec.validation_issues), "warnings": list(rec.warnings)},
-        "output": {"predicted_label": rec.predicted_label.value if rec.predicted_label else None, "predicted_need_cta": rec.predicted_need_cta,
+                    "validation_issues": list(val_issues), "warnings": list(warnings)},
+        "output": {"predicted_label": pred_str, "predicted_need_cta": None,
                    "decision": decision, "decision_source": source,
                    "raw_output": rec.raw_output if (authorization and authorization.valid()) else None, "raw_output_present_in_store": rec.raw_output is not None},
         "confidence": {"confidence_source": rec.confidence_source, "label_probabilities": rec.label_probs, "selected_label_probability": sel,
                        "native_confidence": rec.native_confidence, "yes_probability": rec.yes_prob,
-                       "frozen_threshold": frozen.threshold if (frozen is not None and rec.task == Task.LEAD) else None},
-        "usage": {"prompt_tokens": rec.prompt_tokens, "completion_tokens": rec.completion_tokens, "usage_source": rec.usage_source, "reasoning_tokens": rec.reasoning_tokens},
-        "cost": {"actual_cost_usd": _s(rec.actual_cost_usd), "estimated_cost_usd": _s(rec.estimated_cost_usd), "native_cost": _s(rec.native_cost),
-                 "native_cost_unit": rec.native_cost_unit, "recorded_cost_usd": _s(rec.recorded_cost_usd), "cost_basis": rec.cost_basis,
+                       "frozen_threshold": frozen.threshold if (frozen is not None and is_lead) else None},
+        "usage": {"prompt_tokens": rec.prompt_tokens, "completion_tokens": rec.completion_tokens, "usage_source": rec.usage_source, "reasoning_tokens": reasoning_toks},
+        "cost": {"actual_cost_usd": _s(rec.actual_cost_usd), "estimated_cost_usd": _s(rec.estimated_cost_usd), "native_cost": _s(nat_cost),
+                 "native_cost_unit": nat_cost_unit, "recorded_cost_usd": _s(cost_usd_val), "cost_basis": rec.cost_basis,
                  "unresolved_spend": rec.cost_basis == "UNAVAILABLE" and rec.status != "ERROR"},
         "ground_truth": _truth(rec, labels, decision),
         "markers": {"provenance": "LIVE", "simulated": False, "failed_call": rec.status == "ERROR", "invalid_output": rec.status == "INVALID_OUTPUT",
                     "synthetic_fixture": (rec.dataset_version or "").startswith(SMOKE_PREFIX), "data_kind": data_kind(rec.dataset_version, rec.run_id),
                     "source": "PREDICTION_RECORD", "origin": None,
-                    "binary_decision_available": (decision is not None) if rec.task == Task.LEAD else None,
-                    "probability_only": (rec.task == Task.LEAD and decision is None and rec.yes_prob is not None),
+                    "binary_decision_available": (decision is not None) if is_lead else None,
+                    "probability_only": (is_lead and decision is None and rec.yes_prob is not None),
                     "unavailable_telemetry": _unavailable(rec, started)},
     }
 
@@ -299,10 +317,11 @@ def build_trace_rows(
             terminal[ev.request_id] = ev
     raw: List[Dict[str, Any]] = []
     seen_ids = set()
-    for rec in sorted(predictions, key=lambda r: (r.run_id, r.model_key, r.task.value, r.case_id)):
-        rid = f"{rec.run_id}:{rec.case_id}:{rec.task.value}:{rec.model_key}"
+    for rec in sorted(predictions, key=lambda r: (r.run_id, r.model_key, r.task.value if hasattr(r.task, "value") else str(r.task), r.case_id)):
+        task_str = rec.task.value if hasattr(rec.task, "value") else str(rec.task)
+        rid = f"{rec.run_id}:{rec.case_id}:{task_str}:{rec.model_key}"
         seen_ids.add(rid)
-        if not selection.matches(rec.model_key, rec.run_id, rec.task.value, rec.status, rec.case_id):
+        if not selection.matches(rec.model_key, rec.run_id, task_str, rec.status, rec.case_id):
             ts.skipped["NOT_SELECTED"] += 1
             continue
         if rec.raw_output is not None and not (authorization and authorization.valid()):

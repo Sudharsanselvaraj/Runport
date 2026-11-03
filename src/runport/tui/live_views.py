@@ -154,7 +154,7 @@ def view_quality(ctx: LiveContext) -> ViewModel:
     an = ctx.analysis
     rows: List[Row] = []
     for q in an.intent_quality:
-        recs = an.runs[(q.model_key, "INTENT")]
+        recs = an.runs.get((q.model_key, "INTENT")) or an.runs.get((q.model_key, "classification")) or next((rs for (mk, _), rs in an.runs.items() if mk == q.model_key), [])
         ok, scored = _valid_rate(recs)
         m = q.metrics
         detail = [f"Main Intent | model {_model_name(ctx, q.model_key)} | run {q.run_id} | {q.n_predictions} predictions, {q.n_request_errors} request errors",
@@ -265,7 +265,6 @@ def view_agreement(ctx: LiveContext) -> ViewModel:
                      empty="NO MODEL PAIRS TO COMPARE: at least two models need predictions on shared cases")
 
 
-# ------------------------------------------------------------------ 4 lead
 def view_lead(ctx: LiveContext) -> ViewModel:
     an = ctx.analysis
     rows = []
@@ -273,7 +272,7 @@ def view_lead(ctx: LiveContext) -> ViewModel:
         m = lr.metrics
         detail = [f"{_model_name(ctx, lr.model_key)} | run {lr.run_id}", f"Distribution: YES {lr.n_yes}  NO {lr.n_no}  undecided {lr.n_undecided}  (native P(yes) on {lr.n_with_prob} cases)"]
         if lr.n_with_prob and lr.frozen is None:
-            detail.append(lr.threshold_note or f"No frozen threshold: a dev-set threshold needs approved lead labels on the DEV split. 0.5 is a reference only.")
+            detail.append(lr.threshold_note or "No frozen threshold: a dev-set threshold needs approved labels on the DEV split. 0.5 is a reference only.")
         if lr.frozen:
             f = lr.frozen
             detail += [f"Frozen threshold {f.threshold:.4f} ({f.criterion} on {f.selected_on}, n={f.n_dev_scored}, dev F1 {_f(f.dev_f1_at_threshold, 3)}); 0.5 reference dev F1 {_f(f.dev_f1_at_reference, 3)}"]
@@ -282,20 +281,20 @@ def view_lead(ctx: LiveContext) -> ViewModel:
             detail += [f"Held-out TEST (threshold not tuned on it): n={h.n_scored}  P {_pct(h.at_frozen.precision)} R {_pct(h.at_frozen.recall)} F1 {_pct(h.at_frozen.f1)}  FPR {_pct(h.at_frozen.false_positive_rate)} FNR {_pct(h.at_frozen.false_negative_rate)}"]
         elif lr.frozen:
             detail.append("Held-out TEST: no approved TEST labels with predictions yet")
-        detail.append(f"YES precision/recall/F1: " + (f"{_pct(m.yes_precision)} / {_pct(m.yes_recall)} / {_pct(m.yes_f1)}" if m else PENDING))
-        detail.append(f"False positives / negatives: " + (f"{m.fp} / {m.fn}" if m else PENDING))
+        detail.append("YES precision/recall/F1: " + (f"{_pct(m.yes_precision)} / {_pct(m.yes_recall)} / {_pct(m.yes_f1)}" if m else PENDING))
+        detail.append("False positives / negatives: " + (f"{m.fp} / {m.fn}" if m else PENDING))
         detail += lr.flags
         rows.append(Row([_model_name(ctx, lr.model_key), f"{lr.n_yes}/{lr.n_no}/{lr.n_undecided}",
                          _pct(m.yes_precision) if m else PENDING, _pct(m.yes_recall) if m else PENDING, _pct(m.yes_f1) if m else PENDING,
                          f"{lr.frozen.threshold:.3f}" if lr.frozen else "NOT FROZEN"], detail))
     summary = [_line("Threshold rule", "chosen on DEV only (max F1), frozen, then applied unchanged to TEST; 0.5 shown as reference"),
-               _line("Lead ground truth", f"{len(an.labels.lead)} approved" if an.labels.lead else PENDING, COLOR_WARNING if not an.labels.lead else COLOR_SUCCESS),
+               _line("Binary / Lead ground truth", f"{len(an.labels.lead)} approved" if an.labels.lead else PENDING, COLOR_WARNING if not an.labels.lead else COLOR_SUCCESS),
                _line("Needs human review", f"{ctx.review_count} sessions with builder ambiguity or unresolved rules" if ctx.review_count is not None else UNAVAILABLE + " (no preparation)")]
     if ctx.review_ids:
         summary.append(_line("  first ids", ", ".join(ctx.review_ids[:6])))
-    return ViewModel("LEAD QUALIFIER", "stored predictions; approved labels; builder metadata (no text)", summary,
+    return ViewModel("BINARY / LEAD QUALIFIER", "stored predictions; approved labels; builder metadata (no text)", summary,
                      ["Model", "YES/NO/undecided", "YES precision", "YES recall", "YES F1", "Threshold"], rows,
-                     empty="NO LEAD PREDICTIONS RECORDED YET")
+                     empty="NO BINARY / LEAD PREDICTIONS RECORDED YET")
 
 
 # ------------------------------------------------------------------ 5 latency, reliability, cost
@@ -569,8 +568,16 @@ def view_explorer(ctx: LiveContext, ex: ExplorerState, ts, coverage: List[Dict[s
                      empty="NO TRACE RECORDS MATCH THE SELECTION (an export would be empty; no placeholder rows are ever created)")
 
 
-VIEWS = {"overview": view_overview, "quality": view_quality, "calibration": view_calibration, "agreement": view_agreement,
-         "lead": view_lead, "latency": view_latency, "robustness": view_robustness, "dataset": view_dataset}
+VIEWS = {
+    "overview": view_overview,
+    "quality": view_quality,
+    "lead": view_lead,
+    "calibration": view_calibration,
+    "agreement": view_agreement,
+    "latency": view_latency,
+    "robustness": view_robustness,
+    "dataset": view_dataset,
+}
 
 
 # ------------------------------------------------------------------ rendering

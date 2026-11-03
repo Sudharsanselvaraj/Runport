@@ -1,5 +1,6 @@
 """Panel and renderable builders for the btop-inspired terminal interface."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,26 +36,35 @@ from runport.tui.theme import (
 )
 
 
-NAV_ITEMS = [
-    ("1", "Overview", "Live experiment state and category status"),
-    ("2", "Model Roster", "Ten participants, routes, readiness and blockers"),
-    ("3", "Classification Quality", "Accuracy, F1 and confusion (approved labels only)"),
-    ("4", "Confidence & Calibration", "Native probabilities, ECE, Brier"),
-    ("5", "Model Agreement", "Pairwise agreement and kappa (not correctness)"),
-    ("6", "Lead Qualifier", "YES/NO, threshold, held-out results"),
-    ("7", "Live Latency & Cost", "Latency, reliability and cost from recorded requests"),
-    ("8", "Robustness & Readiness", "Slices, repeatability, compatibility, blockers"),
-    ("9", "Dataset Review & Labels", "Preparation and label-approval status"),
-    ("0", "Budget & Spend", "Budget ledger and spending limits"),
-    ("-", "Traces & Observability", "Latency and trace inspection"),
-    ("=", "Settings & Help", "Workbench parameters and shortcuts"),
-    (" ", "Trace Explorer & Export", "Filter, preview and export trace records"),
-    (" ", "Evaluation Runs", "Generation / RAG benchmark runs"),
-    (" ", "Project Health", "Environment and database diagnostics"),
-    (" ", "Dataset Validation", "Dataset schemas and integrity checks"),
+@dataclass(frozen=True)
+class ViewPlugin:
+    key: str
+    shortcut: str
+    title: str
+    description: str
+
+
+VIEW_PLUGINS: List[ViewPlugin] = [
+    ViewPlugin("overview", "1", "Overview", "Live experiment state and category status"),
+    ViewPlugin("roster", "2", "Model Roster", "Model candidates, routes, readiness and blockers"),
+    ViewPlugin("quality", "3", "Classification Quality", "Accuracy, F1 and confusion (approved labels only)"),
+    ViewPlugin("calibration", "4", "Confidence & Calibration", "Native probabilities, ECE, Brier"),
+    ViewPlugin("agreement", "5", "Model Agreement", "Pairwise agreement and kappa (not correctness)"),
+    ViewPlugin("latency", "6", "Live Latency & Cost", "Latency, reliability and cost from recorded requests"),
+    ViewPlugin("robustness", "7", "Robustness & Readiness", "Slices, repeatability, compatibility, blockers"),
+    ViewPlugin("dataset", "8", "Dataset Review & Labels", "Preparation and label-approval status"),
+    ViewPlugin("budget", "9", "Budget & Spend", "Budget ledger and spending limits"),
+    ViewPlugin("traces", "0", "Traces & Observability", "Latency and trace inspection"),
+    ViewPlugin("settings", "-", "Settings & Help", "Workbench parameters and shortcuts"),
+    ViewPlugin("explorer", "=", "Trace Explorer & Export", "Filter, preview and export trace records"),
+    ViewPlugin("evaluations", " ", "Evaluation Runs", "Generation / RAG benchmark runs"),
+    ViewPlugin("health", " ", "Project Health", "Environment and database diagnostics"),
+    ViewPlugin("validation", " ", "Dataset Validation", "Dataset schemas and integrity checks"),
+    ViewPlugin("lead", " ", "Binary Decisions", "Threshold calibration and decision evaluation"),
 ]
-NAV_KEYS = ["overview", "roster", "quality", "calibration", "agreement", "lead", "latency", "robustness", "dataset", "budget",
-            "traces", "settings", "explorer", "evaluations", "health", "validation"]
+
+NAV_ITEMS = [(p.shortcut, p.title, p.description) for p in VIEW_PLUGINS]
+NAV_KEYS = [p.key for p in VIEW_PLUGINS]
 
 
 def build_top_header() -> Table:
@@ -67,7 +77,7 @@ def build_top_header() -> Table:
 
     left_text = Text()
     left_text.append("[RUNPORT] ", style=f"bold {CYAN_HIGHLIGHT}")
-    left_text.append("LLM WORKBENCH ", style=f"bold {TEXT_PRIMARY}")
+    left_text.append("BENCHMARK PLATFORM ", style=f"bold {TEXT_PRIMARY}")
     left_text.append("v0.1.0", style=f"{TEXT_MUTED}")
 
     center_text = Text()
@@ -1102,7 +1112,6 @@ def build_help_main_panel(is_focused: bool = False) -> Panel:
     t2.append("  :quality        Classification quality (approved labels only)\n", style=f"{TEXT_PRIMARY}")
     t2.append("  :calibration    Confidence and calibration\n", style=f"{TEXT_PRIMARY}")
     t2.append("  :agreement      Model agreement (not correctness)\n", style=f"{TEXT_PRIMARY}")
-    t2.append("  :lead           Lead Qualifier\n", style=f"{TEXT_PRIMARY}")
     t2.append("  :latency        Live latency, reliability and cost\n", style=f"{TEXT_PRIMARY}")
     t2.append("  :robustness     Robustness and readiness\n", style=f"{TEXT_PRIMARY}")
     t2.append("  :labels         Dataset review and labels (read-only)\n", style=f"{TEXT_PRIMARY}")
@@ -1224,40 +1233,43 @@ def build_budget_usage_bottom_panel(status: BudgetStatus) -> Panel:
 
 
 def _dataset_prep_summary() -> Optional[Dict[str, Any]]:
-    """Facts from the local preparation manifest (counts only), or None when no preparation has been run."""
-    import json
+    """Facts from evaluation datasets, or None when no dataset is present."""
     from pathlib import Path
-
-    for p in reversed(sorted(Path("data/classification_prep").glob("*/manifest.json"))) if Path("data/classification_prep").exists() else []:
-        try:
-            m = json.loads(p.read_text())
-            return {"version": m["prep_version"], "rows": m["cleaning"]["rows_accounted"], "intent": m["candidates"]["intent_2h"]["cases"],
-                    "lead": f"{m['candidates']['lead_30m']['cases']}/{m['candidates']['lead_2h']['cases']}", "sessions": m["session_comparison"]["sessions"],
-                    "parity": m["parity_status"]}
-        except Exception:
-            continue
-    return None
+    eval_dir = Path("data/evaluation")
+    if not eval_dir.exists():
+        return None
+    files = list(eval_dir.glob("*.jsonl"))
+    if not files:
+        return None
+    total_cases = 0
+    names = []
+    for f in sorted(files):
+        count = sum(1 for line in f.read_text(encoding="utf-8").splitlines() if line.strip())
+        total_cases += count
+        names.append(f"{f.stem} ({count})")
+    return {
+        "files": ", ".join(names),
+        "cases": total_cases,
+        "n_files": len(files),
+    }
 
 
 def build_datasets_bottom_panel(info_override=None, labels_status: Optional[str] = None) -> Panel:
-    """Builds the bottom-right DATASETS panel from the local preparation manifest (counts only)."""
+    """Builds the bottom-right DATASETS panel from evaluation datasets (counts only)."""
     grid = Table.grid(expand=True, padding=(0, 1))
     grid.add_column("k", style=f"{TEXT_SECONDARY}", width=12)
     grid.add_column("v")
 
     info = _dataset_prep_summary()
     if info is None:
-        grid.add_row("Status:", Text("NOT PREPARED", style=f"bold {TEXT_SECONDARY}"))
+        grid.add_row("Status:", Text("NO EVALUATION DATASETS", style=f"bold {TEXT_SECONDARY}"))
         grid.add_row("Cases:", Text("-", style=f"{TEXT_MUTED}"))
-        grid.add_row("Versions:", Text("-", style=f"{TEXT_MUTED}"))
-        grid.add_row("Privacy:", Text("-", style=f"{TEXT_MUTED}"))
-        grid.add_row("Next Step:", Text("runport prepare-classification-data", style=f"{TEXT_PRIMARY}"))
+        grid.add_row("Next Step:", Text("runport validate-dataset <path>", style=f"{TEXT_PRIMARY}"))
     else:
-        grid.add_row("Status:", Text(f"PREPARED ({labels_status or 'labels unapproved'})", style=f"bold {TEXT_PRIMARY}"))
-        grid.add_row("Cases:", Text(f"{info['intent']} intent / {info['lead']} lead (30m/2h)", style=f"{TEXT_SECONDARY}"))
-        grid.add_row("Versions:", Text(f"{info['version']}  sessions 30m {info['sessions']['30m']} / 2h {info['sessions']['2h']}", style=f"{TEXT_SECONDARY}"))
-        grid.add_row("Privacy:", Text("user4 excluded; identifiers redacted; local only", style=f"{TEXT_SECONDARY}"))
-        grid.add_row("Next Step:", Text("human label review, then pick session policy", style=f"{TEXT_PRIMARY}"))
+        grid.add_row("Status:", Text(f"READY ({info['n_files']} dataset files)", style=f"bold {TEXT_PRIMARY}"))
+        grid.add_row("Cases:", Text(f"{info['cases']} verified test cases", style=f"{TEXT_SECONDARY}"))
+        grid.add_row("Datasets:", Text(info["files"], style=f"{TEXT_SECONDARY}"))
+        grid.add_row("Next Step:", Text("runport benchmark or runport benchmark-rag", style=f"{TEXT_PRIMARY}"))
 
     return Panel(
         grid,
@@ -1447,7 +1459,7 @@ def build_roster_panel(rows: List[Dict[str, Any]], cursor: int, is_focused: bool
         cells = [r["display_name"] or r["key"], ", ".join(x.replace("_", " ").title() for x in r["roles"]), "/".join(t[:1] + t[1:].lower() for t in r["tasks"]),
                  f"{r['pinned_route'] or '-'} {r['route_price'] or ''}".strip(), ready, r["data_policy"], r["evaluation"].replace("NOT_YET_EVALUATED", "not run"), notes]
         if wide:
-            cells.append(f"{r['source']} ({r['checked_on'] or 'unverified'})")
+            cells.append(f"{r.get('source', 'owner-supplied')} ({r.get('checked_on') or 'unverified'})")
         table.add_row(*cells, style=style)
     sel = rows[max(0, min(cursor, len(rows) - 1))] if rows else None
     detail = Text("")

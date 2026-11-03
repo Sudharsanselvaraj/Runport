@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from runport.classification.records import PredictionRecord, Task
+from runport.classification.records import PredictionRecord
 from runport.observability import analysis as A
 from runport.observability.aggregate import Aggregate, aggregate
 from runport.observability.events import EventTail, RequestEvent, default_events_path
@@ -119,8 +119,8 @@ class LiveMonitor:
         a.calibration = A.calibration_reports(a.runs, a.labels)
         a.lead = A.lead_reports(a.runs, a.labels, a.meta)
         frozen = {r.model_key: r.frozen for r in a.lead if r.frozen is not None}
-        a.agreement_intent = A.agreement_report(a.runs, Task.INTENT, a.labels)
-        a.agreement_lead = A.agreement_report(a.runs, Task.LEAD, a.labels, frozen)
+        a.agreement_intent = A.agreement_report(a.runs, "classification", a.labels)
+        a.agreement_lead = A.agreement_report(a.runs, "binary", a.labels, frozen)
         a.repeat = A.repeatability(a.predictions)
         a.history = A.history_slices(a.runs, a.labels, a.meta)
         self.analysis = a

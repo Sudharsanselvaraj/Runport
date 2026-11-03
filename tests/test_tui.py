@@ -863,7 +863,7 @@ def test_welcome_screen_render():
     assert "Spend: $" in output and "cap" in output
     assert "Tests: 95 passed" not in output  # no hard-coded claims; every figure is read live or shown as n/a
     assert "Launch Full-Screen TUI Dashboard" in output
-    for item in ("Classification Dataset Status", "Model Comparison Roster", "API Preflight", "Smoke-Test Plan", "Inspect Budget"):
+    for item in ("Validate Evaluation Dataset", "Model Comparison Roster", "API Preflight", "Run RAG Benchmark", "Inspect Budget"):
         assert item in output
     for gone in ("Decoupled RAG Benchmark", "Simulate vLLM", "Diagnose Production Traces"):
         assert gone not in output  # the launcher offers real workflows only

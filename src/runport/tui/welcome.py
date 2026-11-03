@@ -46,10 +46,10 @@ LOGO_BRAILLE_STRIPPED: List[str] = [
 MENU_ITEMS: List[Tuple[str, str, Optional[str]]] = [
     ("1.  Launch Full-Screen TUI Dashboard", "Live telemetry and monitors", None),
     ("2.  Knowledge Base Audit Plugin", "Plugin example under examples/plugins/kb_audit", None),
-    ("3.  Classification Dataset Status", "Local preparation, labels unapproved", None),
+    ("3.  Validate Evaluation Dataset", "Schema validation & leakage checks", None),
     ("4.  Model Comparison Roster", "Readiness, routes and blockers", "NEW"),
     ("5.  API Preflight", "Key present? No request is sent", None),
-    ("6.  Smoke-Test Plan (plan only)", "Exact cases, routes and caps", None),
+    ("6.  Run RAG Benchmark", "Retrieval & answer verification", None),
     ("7.  Inspect Budget & Spend Ceilings", "actual spend vs ceilings", None),
     ("8.  Settings & Environment", "Providers, paths, storage configuration", None),
     ("9.  Exit to Shell", "", None),

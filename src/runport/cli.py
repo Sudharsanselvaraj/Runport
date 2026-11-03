@@ -81,14 +81,14 @@ def handle_welcome_action(choice: int) -> None:
         console.print("  Located under: [dim]examples/plugins/kb_audit/[/dim]")
         console.print("  See [cyan]examples/plugins/kb_audit/README.md[/cyan] for usage instructions.")
     elif choice == 3:
-        _run_command(["classification-data-status"])
+        _run_command(["validate-dataset", "data/evaluation/verified_rag_benchmark.jsonl"])
     elif choice == 4:
         _run_command(["models", "roster"])
-        console.print("\n[dim]Next: api-preflight (menu 5), then the smoke-test plan (menu 6).[/dim]")
+        console.print("\n[dim]Next: api-preflight (menu 5), then the RAG benchmark (menu 6).[/dim]")
     elif choice == 5:
         _run_command(["api-preflight"])
     elif choice == 6:
-        _run_command(["smoke-test"])
+        _run_command(["benchmark-rag"])
     elif choice == 7:
         _run_command(["budget", "status"])
     elif choice == 8:
@@ -135,106 +135,32 @@ def _require_live_confirmation(models: List[str], dataset_name: str):
         raise typer.Exit(code=1)
 
 
-@app.command("smoke-test")
-def smoke_test(
-    model: List[str] = typer.Option(["jev-1.14", "gpt-4.1-nano"], "--model", "-m", help="Registry keys to include, or 'all' for the whole roster."),
-    stage: str = typer.Option("smoke", "--stage", help="smoke: the two-model protocol check. pilot: every eligible participant, strict gating."),
-    task: str = typer.Option("both", "--task", "-t", help="INTENT, LEAD or both."),
-    hard_cap: str = typer.Option("0.05", "--hard-cap", help="Hard spend cap in USD for this run (must fit the per-run and pilot ceilings)."),
-    prompt_dir: Path = typer.Option(Path("."), "--prompt-dir", help="Folder holding the two authoritative prompt files."),
-    out_dir: Path = typer.Option(Path("reports/smoke"), "--out-dir", help="Where prediction records are written."),
-    live: bool = typer.Option(False, "--live", help="Send the planned requests. Needs interactive typed approval of the exact plan."),
-) -> None:
-    """Synthetic-only smoke test of the Jev and GPT-4.1 Nano adapters. Prints a plan by default and sends nothing."""
-    from decimal import Decimal, InvalidOperation
-
-    from runport.classification import smoke
-    from runport.classification.records import PredictionStore, Task
-    from runport.core.budget import BudgetService
-    from runport.core.live_guard import confirm_live_run
-    from runport.providers.base import LiveNotAuthorizedError, ProviderError
-
-    try:
-        cap = Decimal(hard_cap)
-    except InvalidOperation:
-        console.print(f"[bold red]Invalid --hard-cap:[/bold red] {hard_cap}")
-        raise typer.Exit(code=1)
-    tasks = [Task.INTENT, Task.LEAD] if task.lower() == "both" else [Task(task.upper())] if task.upper() in ("INTENT", "LEAD") else None
-    if tasks is None:
-        console.print("[bold red]--task must be INTENT, LEAD or both[/bold red]")
-        raise typer.Exit(code=1)
-    try:
-        prompts = smoke.load_prompts(prompt_dir)
-    except FileNotFoundError as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-
-    from runport.models.registry import REGISTRY
-
-    if stage not in ("smoke", "pilot"):
-        console.print("[bold red]--stage must be smoke or pilot[/bold red]")
-        raise typer.Exit(code=1)
-    if "all" in [m.lower() for m in model]:
-        model = list(REGISTRY)
-    budget = BudgetService()
-    plan = smoke.build_plan(model, tasks, prompts, budget, cap, stage=stage)
-    for line in smoke.render_plan(plan):
-        console.print(line, markup=False, highlight=False)
-    if not live:
-        console.print("\nPlan only: nothing was sent. Re-run with --live to request typed approval of this exact plan.", markup=False)
-        raise typer.Exit(code=2 if plan.blocked else 0)
-    if plan.blocked:
-        console.print("[bold red]Live run refused:[/bold red] the plan is blocked.")
-        raise typer.Exit(code=1)
-    try:
-        auth = confirm_live_run(plan.model_ids, ["Approve exactly this plan by typing the phrase below."],
-                                echo=lambda line: console.print(line, markup=False, highlight=False), plan_fingerprint=plan.fingerprint)
-    except LiveNotAuthorizedError as e:
-        console.print(f"[bold red]Live run refused:[/bold red] {e}")
-        raise typer.Exit(code=1)
-    import uuid
-    run_id = f"smoke_{uuid.uuid4().hex[:8]}"
-    store = PredictionStore(Path(out_dir) / f"{run_id}.jsonl")
-    failure = None
-    summaries = []
-    try:
-        summaries = smoke.execute_plan(plan, auth, smoke.build_smoke_adapters(model, stage), store, budget, prompts, run_id)
-    except Exception as e:  # records already written stay on disk; the failure is reported and sets a failing exit status
-        failure = f"{type(e).__name__}: {e}"
-        console.print(f"[bold red]Smoke test stopped:[/bold red] {failure}")
-    recs = store.load()
-    console.print(f"\nSchema verification only (no accuracy computed). Records: {store.path}", markup=False)
-    for row in smoke.summarize_schema_checks(recs):
-        console.print(str(row), markup=False, highlight=False)
-    problems = []
-    if failure:
-        problems.append("the run stopped before finishing")
-    problems += [f"a run aborted: {s.aborted_reason}" for s in summaries if s.aborted_reason]
-    bad = [r for r in recs if r.status != "OK"]
-    if bad:
-        problems.append(f"{len(bad)} record(s) were invalid outputs or errors")
-    planned = sum(r.n_cases for r in plan.rows)
-    if len(recs) < planned:
-        problems.append(f"only {len(recs)} of {planned} planned requests produced a record")
-    if budget.unresolved():
-        problems.append("unresolved spend is on the ledger (run `runport budget reconcile`)")
-    if problems:
-        console.print("[bold red]SMOKE TEST FAILED:[/bold red] " + "; ".join(problems), markup=True)
-        raise typer.Exit(code=1)
-    console.print("[green]Smoke test completed: every planned request produced a valid record.[/green]")
 
 
 @models_app.command("roster")
 def models_roster() -> None:
-    """Show every comparison participant with its role, tasks, readiness and exact blockers."""
-    from runport.models.registry import roster_status
+    """Show registered model portfolio candidates and their attributes."""
+    from runport.models.catalog import get_portfolio
 
-    table = Table(title="Comparison roster (10 participants)", show_header=True, header_style="bold magenta")
-    for col in ("Participant", "Role", "Tasks", "Readiness", "Data policy", "Evaluation", "Blockers"):
-        table.add_column(col)
-    for r in roster_status():
-        table.add_row(r["display_name"] or r["key"], ", ".join(r["roles"]), ", ".join(r["tasks"]), r["readiness"], r["data_policy"],
-                      r["evaluation"], ", ".join(r["blockers"]) or "none (synthetic)")
+    models = get_portfolio()
+    table = Table(title=f"Registered Model Portfolio ({len(models)} models)", show_header=True, header_style="bold magenta")
+    table.add_column("Model ID")
+    table.add_column("Display Name")
+    table.add_column("Provider")
+    table.add_column("Deployment Mode")
+    table.add_column("Input $/1M")
+    table.add_column("Output $/1M")
+    table.add_column("Status")
+    for m in models:
+        table.add_row(
+            m.model_id,
+            m.display_name,
+            m.provider,
+            m.deployment_mode,
+            f"${m.input_price_per_1m_usd:.4f}",
+            f"${m.output_price_per_1m_usd:.4f}",
+            m.verification_status,
+        )
     console.print(table)
 
 
@@ -243,7 +169,7 @@ def export_traces_cmd(
     fmt: str = typer.Option("zip", "--format", "-f", help="jsonl, csv or zip (zip = per-model files, comparison file and manifest)."),
     model: List[str] = typer.Option([], "--model", "-m", help="Limit to a model key (repeatable)."),
     run: List[str] = typer.Option([], "--run", "-r", help="Limit to a run id (repeatable)."),
-    task: Optional[str] = typer.Option(None, "--task", "-t", help="INTENT or LEAD."),
+    task: Optional[str] = typer.Option(None, "--task", "-t", help="Task filter (e.g. classification, benchmark, rag)."),
     status: List[str] = typer.Option([], "--status", "-s", help="OK, INVALID_OUTPUT or ERROR (repeatable)."),
     out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="Destination folder (default: reports/exports)."),
 ) -> None:
@@ -255,13 +181,18 @@ def export_traces_cmd(
 
     fmt_val = getattr(fmt, "default", fmt) if hasattr(fmt, "default") else fmt
     task_val = getattr(task, "default", task) if hasattr(task, "default") else task
-    if task_val is not None and str(task_val).upper() not in ("INTENT", "LEAD"):
-        console.print("[bold red]--task must be INTENT or LEAD[/bold red]")
+    if task_val is not None and str(task_val).upper() not in ("INTENT", "LEAD", "CLASSIFICATION", "BINARY", "RAG"):
+        console.print(f"[bold red]Invalid --task: {task_val}[/bold red]")
         raise typer.Exit(code=1)
     mon = LiveMonitor()
     mon.poll()
     preds, events, labels, frozen = mon.trace_inputs()
-    sel = ExportSelection(models=tuple(model) or None, runs=tuple(run) or None, task=str(task_val).upper() if task_val else None, statuses=tuple(status) or None)
+    sel = ExportSelection(
+        models=tuple(model) or None,
+        runs=tuple(run) or None,
+        task=str(task_val) if task_val else None,
+        statuses=tuple(status) or None,
+    )
     ts = build_trace_rows(preds, events, labels, frozen, sel)
     try:
         res = export_traces(ts, sel, roster_status(), labels, str(fmt_val).lower(), out_dir or (settings.reports_dir / "exports"))
@@ -272,437 +203,6 @@ def export_traces_cmd(
     console.print(f"records exported {res.n_exported}, skipped {res.n_skipped}, redacted {res.n_redacted}, missing telemetry {res.n_missing_telemetry}", markup=False)
     for w in res.warnings:
         console.print(f"WARNING: {w}", markup=False)
-
-
-real_app = typer.Typer(help="Authorized real-data benchmark: plan, run (typed approvals), status, report.")
-app.add_typer(real_app, name="real-benchmark")
-
-
-def _real_inputs(prep_dir: Path, session_policy: str, prompt_dir: Path, model: List[str], block_size: int, hard_cap: Optional[str], sampling: str = "stratified", inherit_from: Optional[str] = None, reserve: Optional[str] = None):
-    from decimal import Decimal, InvalidOperation
-
-    from runport.classification import benchmark as bm
-    from runport.classification.smoke import load_prompts
-    from runport.core.budget import BudgetService
-
-    try:
-        cap = Decimal(hard_cap) if hard_cap else None
-    except InvalidOperation:
-        console.print(f"[bold red]Invalid --hard-cap:[/bold red] {hard_cap}")
-        raise typer.Exit(code=1)
-    try:
-        loaded = bm.load_prep_cases(prep_dir, session_policy)
-        prompts = load_prompts(prompt_dir)
-        budget = BudgetService()
-        from runport.core.config import settings as _s
-        parent = None
-        if inherit_from:
-            import json as _json
-            pdir = bm.bench_dir(_s.data_dir / "benchmarks", inherit_from)
-            if not (pdir / "plan.json").exists():
-                raise bm.PlanError(f"no stored plan for {inherit_from}")
-            parent = (_json.loads((pdir / "plan.json").read_text()), bm.load_state(_s.data_dir / "benchmarks", inherit_from))
-        plan = bm.build_plan(loaded, prompts, budget, model_keys=model or None, block_size=block_size, hard_cap_usd=cap, sampling=sampling, parent=parent, reports_dir=_s.reports_dir,
-                             reserve_usd=Decimal(reserve) if reserve else None)
-    except (bm.PlanError, FileNotFoundError) as e:
-        console.print(f"[bold red]Cannot plan:[/bold red] {e}")
-        raise typer.Exit(code=1)
-    return bm, loaded, prompts, budget, plan
-
-
-@real_app.command("plan")
-def real_plan(
-    prep_dir: Path = typer.Option(..., "--prep-dir", help="Prepared dataset folder (for example data/classification_prep/prep-v2)."),
-    session_policy: str = typer.Option(..., "--session-policy", help="2h or 30m. The choice is yours; neither is assumed."),
-    prompt_dir: Path = typer.Option(Path("."), "--prompt-dir"),
-    model: List[str] = typer.Option([], "--model", "-m", help="Participant keys; default is the whole roster."),
-    block_size: int = typer.Option(10, "--block-size", help="Cases per task in one block."),
-    hard_cap: Optional[str] = typer.Option(None, "--hard-cap", help="Hard cap in USD for this benchmark (never above the pilot ceiling)."),
-    sampling: str = typer.Option("stratified", "--sampling", help="stratified (variety first, then proportional) or hash."),
-    inherit_from: Optional[str] = typer.Option(None, "--inherit-from", help="Earlier bench id whose clean completed results are carried over (identical participants only)."),
-    reserve: Optional[str] = typer.Option(None, "--reserve", help="USD of the remaining ledger headroom kept out of the plan for retries and unresolved costs."),
-) -> None:
-    """Build and store the benchmark plan. Sends nothing, calls no provider, and prints no student text."""
-    from runport.core.config import settings
-
-    bm, _, _, _, plan = _real_inputs(prep_dir, session_policy, prompt_dir, model, block_size, hard_cap, sampling, inherit_from, reserve)
-    path = bm.save_plan(settings.data_dir / "benchmarks", plan)
-    for line in bm.render_plan(plan):
-        console.print(line, markup=False, highlight=False)
-    console.print(f"\nPlan stored: {path.resolve()}", markup=False)
-    console.print(f"Next: runport real-benchmark run --prep-dir {prep_dir} --session-policy {session_policy} --operator \"<your name>\"" + (f" --inherit-from {inherit_from}" if inherit_from else "") + (f" --reserve {reserve}" if reserve else "") + " --live", markup=False)
-    raise typer.Exit(code=2 if plan["blockers"] else 0)
-
-
-@real_app.command("run")
-def real_run(
-    prep_dir: Path = typer.Option(..., "--prep-dir"),
-    session_policy: str = typer.Option(..., "--session-policy"),
-    operator: str = typer.Option(..., "--operator", help="Your name, recorded in the authorization manifest."),
-    prompt_dir: Path = typer.Option(Path("."), "--prompt-dir"),
-    model: List[str] = typer.Option([], "--model", "-m"),
-    block_size: int = typer.Option(10, "--block-size"),
-    hard_cap: Optional[str] = typer.Option(None, "--hard-cap"),
-    max_blocks: Optional[int] = typer.Option(None, "--max-blocks", help="Stop after this many TOTAL blocks counted from the start of the plan (the plan has 222; resume later with a larger number)."),
-    sampling: str = typer.Option("stratified", "--sampling", help="Must match the stored plan."),
-    inherit_from: Optional[str] = typer.Option(None, "--inherit-from", help="Must match the stored plan."),
-    reserve: Optional[str] = typer.Option(None, "--reserve", help="Must match the stored plan."),
-    live: bool = typer.Option(False, "--live", help="Send the planned requests. Needs the two interactive typed approvals."),
-) -> None:
-    """Execute (or resume) the benchmark. Re-derives the plan, then needs typed live approval AND typed real-data authorization."""
-    from runport.classification import realdata
-    from runport.classification.dataprep import code_fingerprint
-    from runport.core.config import load_project_env, settings
-    from runport.core.live_guard import confirm_live_run
-    from runport.providers.base import LiveNotAuthorizedError
-
-    load_project_env()
-    bm, loaded, prompts, budget, plan = _real_inputs(prep_dir, session_policy, prompt_dir, model, block_size, hard_cap, sampling, inherit_from, reserve)
-    root = settings.data_dir / "benchmarks"
-    saved = bm.bench_dir(root, plan["bench_id"]) / "plan.json"
-    if not saved.exists():
-        console.print("[bold red]This exact plan was never stored.[/bold red] Run `real-benchmark plan` first and review it.")
-        raise typer.Exit(code=1)
-    for line in bm.render_plan(plan):
-        console.print(line, markup=False, highlight=False)
-    if not live:
-        console.print("\nPlan only: nothing was sent. Re-run with --live to request the typed approvals.", markup=False)
-        raise typer.Exit(code=2 if plan["blockers"] else 0)
-    if plan["blockers"]:
-        console.print("[bold red]Live run refused:[/bold red] the plan is blocked.")
-        raise typer.Exit(code=1)
-    models = [p["model_id"] for p in plan["participants"]]
-    try:
-        live_auth = confirm_live_run(models, ["Approve exactly this plan by typing the phrase below."], echo=lambda line: console.print(line, markup=False, highlight=False),
-                                     plan_fingerprint=plan["fingerprint"])
-        auth = realdata.confirm_real_data(
-            dataset_version=plan["dataset"]["version"], session_policy=session_policy, models=models,
-            routes={p["model_id"]: (p["route"]["pinned_tag"] or "none") for p in plan["participants"]},
-            tasks=sorted({t for p in plan["participants"] for t in p["tasks"]}), plan_fingerprint=plan["fingerprint"], cost_ceiling_usd=plan["limits"]["hard_cap_usd"],
-            provider_policy_status={p["model_id"]: p["data_handling"]["data_policy"] for p in plan["participants"]}, recipients=plan["recipients"],
-            operator=operator, echo=lambda line: console.print(line, markup=False, highlight=False))
-    except LiveNotAuthorizedError as e:
-        console.print(f"[bold red]Live run refused:[/bold red] {e}")
-        raise typer.Exit(code=1)
-    from runport.classification.smoke import build_smoke_adapters
-
-    bm.write_manifest(root, plan, auth, live_auth, code_fingerprint())
-    adapters = build_smoke_adapters([p["key"] for p in plan["participants"]], bm.STAGE)
-    try:
-        res = bm.execute(plan, loaded, prompts, auth, live_auth, adapters, budget, root=root, reports_dir=settings.reports_dir, max_blocks=max_blocks,
-                         progress=lambda m: console.print(m, markup=False))
-    except KeyboardInterrupt:
-        console.print("Interrupted. Progress is checkpointed; re-run the same command to resume.", markup=False)
-        raise typer.Exit(code=130)
-    except Exception as e:
-        console.print(f"[bold red]Benchmark stopped:[/bold red] {type(e).__name__}: {e}")
-        raise typer.Exit(code=1)
-    total = plan["ordering"]["n_blocks"]
-    console.print(f"\nblocks completed {res.blocks_completed} of {total}   guard cost ${res.spent_guard_usd}   halted: {res.halted or 'no'}", markup=False)
-    for m, why in res.quarantined.items():
-        console.print(f"QUARANTINED {m}: {why}", markup=False)
-    if res.blocks_completed < total or res.quarantined:
-        console.print("PARTIAL BENCHMARK: not every planned case/participant completed. Run `real-benchmark report` for exact coverage.", markup=False)
-        raise typer.Exit(code=3)
-    console.print("All planned blocks completed. Run `real-benchmark report`.", markup=False)
-
-
-@real_app.command("status")
-def real_status(bench_id: Optional[str] = typer.Argument(None)) -> None:
-    """Show stored benchmark plans and their checkpoint state (no network)."""
-    import json
-
-    from runport.core.config import settings
-
-    root = settings.data_dir / "benchmarks"
-    dirs = sorted(p for p in root.glob("bench-*") if p.is_dir()) if root.exists() else []
-    if bench_id:
-        dirs = [root / bench_id]
-    if not dirs:
-        console.print("No benchmark plans stored.", markup=False)
-        return
-    for d in dirs:
-        plan = json.loads((d / "plan.json").read_text()) if (d / "plan.json").exists() else {}
-        st = json.loads((d / "state.json").read_text()) if (d / "state.json").exists() else {}
-        console.print(f"{d.name}  dataset {plan.get('dataset', {}).get('version')}  blocks {st.get('blocks_completed', 0)}/{plan.get('ordering', {}).get('n_blocks')}  "
-                      f"halted: {st.get('halted') or 'no'}  quarantined: {list(st.get('quarantined', {})) or 'none'}", markup=False)
-
-
-annotate_app = typer.Typer(help="Independent annotation, adjudication, approval and freezing of ground-truth labels (local files only).")
-app.add_typer(annotate_app, name="annotate")
-
-
-def _annotation_ctx(prep_dir: Path, session_policy: str):
-    from runport.classification import annotation as an, benchmark as bm
-    try:
-        loaded = bm.load_prep_cases(prep_dir, session_policy)
-    except bm.PlanError as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-    return an, loaded
-
-
-@annotate_app.command("queue")
-def annotate_queue(prep_dir: Path = typer.Option(..., "--prep-dir"), session_policy: str = typer.Option(..., "--session-policy"),
-                   task: str = typer.Option(..., "--task", help="INTENT or LEAD."), limit: Optional[int] = typer.Option(None, "--limit")) -> None:
-    """Write the deterministic review queue (redacted text, no labels, no predictions). Local, git-ignored; never sent anywhere."""
-    from runport.classification.records import Task
-    an, loaded = _annotation_ctx(prep_dir, session_policy)
-    try:
-        path = an.write_queue(prep_dir, loaded, Task(task.upper()), limit)
-    except (an.AnnotationError, ValueError) as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-    console.print(f"Review queue written: {path.resolve()} (contains redacted student text: keep it local)", markup=False)
-
-
-@annotate_app.command("submit")
-def annotate_submit(prep_dir: Path = typer.Option(..., "--prep-dir"), session_policy: str = typer.Option(..., "--session-policy"),
-                    task: str = typer.Option(..., "--task"), reviewer: str = typer.Option(..., "--reviewer"),
-                    case: Optional[str] = typer.Option(None, "--case"), label: Optional[str] = typer.Option(None, "--label"),
-                    file: Optional[Path] = typer.Option(None, "--file", help="JSONL lines {\"case_id\": ..., \"label\": ...} for bulk submission."),
-                    note: str = typer.Option("", "--note")) -> None:
-    """Record one reviewer's label (or a JSONL batch). A reviewer never sees another reviewer's label."""
-    import json
-    an, loaded = _annotation_ctx(prep_dir, session_policy)
-    valid = an.eligible_case_ids(loaded)
-    pairs = []
-    if file:
-        pairs = [(d["case_id"], str(d["label"])) for d in (json.loads(l) for l in file.read_text().splitlines() if l.strip())]
-    elif case and label is not None:
-        pairs = [(case, label)]
-    else:
-        console.print("[bold red]Give --case and --label, or --file.[/bold red]")
-        raise typer.Exit(code=1)
-    try:
-        for cid, lab in pairs:
-            an.submit(prep_dir, case_id=cid, task=task.upper(), label=lab, reviewer=reviewer, valid_ids=valid, note=note)
-    except an.AnnotationError as e:
-        console.print(f"[bold red]Stopped:[/bold red] {e}")
-        raise typer.Exit(code=1)
-    console.print(f"Recorded {len(pairs)} annotation(s) by {reviewer}.", markup=False)
-
-
-@annotate_app.command("template")
-def annotate_template(prep_dir: Path = typer.Option(..., "--prep-dir"), session_policy: str = typer.Option(..., "--session-policy"),
-                      blocks: int = typer.Option(..., "--blocks", help="How many benchmark blocks of sampled cases the templates cover."),
-                      block_size: int = typer.Option(10, "--block-size"), sampling: str = typer.Option("stratified", "--sampling")) -> None:
-    """Write INTENT and LEAD review templates (opaque ids and metadata only; no text, no predictions). Never overwrites."""
-    from runport.observability import annotation_templates as at
-    an, loaded = _annotation_ctx(prep_dir, session_policy)
-    try:
-        paths = at.write_templates(prep_dir, loaded, sampling, blocks, block_size)
-    except an.AnnotationError as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-    for t, p in paths.items():
-        console.print(f"{t}: {p.resolve()}", markup=False)
-    console.print("Contains opaque ids only. Review text comes from `annotate queue` (local, redacted).", markup=False)
-
-
-@annotate_app.command("import-sheet")
-def annotate_import_sheet(prep_dir: Path = typer.Option(..., "--prep-dir"), session_policy: str = typer.Option(..., "--session-policy"),
-                          sheet: Path = typer.Option(..., "--sheet"), slot: int = typer.Option(..., "--slot", help="1 or 2: which reviewer column to import.")) -> None:
-    """Forward one reviewer's filled column to the annotation workflow (it creates annotation events only; it approves nothing)."""
-    from runport.observability import annotation_templates as at
-    an, loaded = _annotation_ctx(prep_dir, session_policy)
-    try:
-        n = at.import_sheet(sheet, prep_dir, an.eligible_case_ids(loaded), slot)
-    except (an.AnnotationError, OSError, KeyError) as e:
-        console.print(f"[bold red]Stopped:[/bold red] {e}")
-        raise typer.Exit(code=1)
-    console.print(f"Imported {n} annotation(s) from reviewer slot {slot}.", markup=False)
-
-
-@annotate_app.command("status")
-def annotate_status(prep_dir: Path = typer.Option(..., "--prep-dir"), session_policy: str = typer.Option(..., "--session-policy")) -> None:
-    """Counts by workflow state (no labels, no text)."""
-    an, loaded = _annotation_ctx(prep_dir, session_policy)
-    for t, c in an.summary(prep_dir, an.eligible_case_ids(loaded)).items():
-        console.print(f"{t}: {c}", markup=False)
-    fm = an.frozen_matches_current(prep_dir)
-    console.print(f"freeze: {'never frozen' if fm is None else 'current labels match the latest freeze' if fm else 'LABELS CHANGED SINCE THE LATEST FREEZE'}", markup=False)
-
-
-@annotate_app.command("adjudicate")
-def annotate_adjudicate(prep_dir: Path = typer.Option(..., "--prep-dir"), task: str = typer.Option(..., "--task"), case: str = typer.Option(..., "--case"),
-                        label: str = typer.Option(..., "--label"), adjudicator: str = typer.Option(..., "--adjudicator"), note: str = typer.Option("", "--note")) -> None:
-    """A third reviewer settles a conflict between two independent annotations."""
-    from runport.classification import annotation as an
-    try:
-        an.adjudicate(prep_dir, case_id=case, task=task.upper(), label=label, adjudicator=adjudicator, note=note)
-    except an.AnnotationError as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-    console.print("Adjudication recorded.", markup=False)
-
-
-@annotate_app.command("approve")
-def annotate_approve(prep_dir: Path = typer.Option(..., "--prep-dir"), approver: str = typer.Option(..., "--approver"),
-                     all_ready: bool = typer.Option(False, "--all-ready", help="Approve every AGREED/ADJUDICATED case (needs the typed confirmation)."),
-                     task: Optional[str] = typer.Option(None, "--task"), case: Optional[str] = typer.Option(None, "--case")) -> None:
-    """Explicitly approve ready cases. Never automatic: bulk approval needs an interactive typed phrase."""
-    import sys
-    from runport.classification import annotation as an
-    ready = [s for s in an.case_states(prep_dir).values() if s.proposed is not None and s.state != "APPROVED"]
-    try:
-        if all_ready:
-            if not (sys.stdin.isatty() and sys.stdout.isatty()):
-                console.print("[bold red]Bulk approval needs an interactive terminal.[/bold red]")
-                raise typer.Exit(code=1)
-            phrase = f"APPROVE {len(ready)} LABELS"
-            console.print(f"{len(ready)} case(s) are ready (AGREED or ADJUDICATED). Type exactly: {phrase}", markup=False)
-            if typer.prompt("Confirmation", default="", show_default=False).strip() != phrase:
-                console.print("Confirmation did not match; nothing approved.", markup=False)
-                raise typer.Exit(code=1)
-            rows = an.approve(prep_dir, approver=approver, all_ready=True)
-        elif task and case:
-            rows = an.approve(prep_dir, approver=approver, case_ids=[(task.upper(), case)])
-        else:
-            console.print("[bold red]Give --task and --case, or --all-ready.[/bold red]")
-            raise typer.Exit(code=1)
-    except an.AnnotationError as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-    console.print(f"Approved {len(rows)} label(s) as {approver}.", markup=False)
-
-
-@annotate_app.command("revoke")
-def annotate_revoke(prep_dir: Path = typer.Option(..., "--prep-dir"), task: str = typer.Option(..., "--task"), case: str = typer.Option(..., "--case"),
-                    by: str = typer.Option(..., "--by"), reason: str = typer.Option(..., "--reason")) -> None:
-    """Withdraw an approval (the history stays)."""
-    from runport.classification import annotation as an
-    try:
-        an.revoke(prep_dir, task=task.upper(), case_id=case, by=by, reason=reason)
-    except an.AnnotationError as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-    console.print("Approval withdrawn.", markup=False)
-
-
-@annotate_app.command("freeze")
-def annotate_freeze(prep_dir: Path = typer.Option(..., "--prep-dir"), by: str = typer.Option(..., "--by")) -> None:
-    """Hash and record the current approved label set so a label-backed benchmark can prove which labels it used."""
-    import json
-    from runport.classification import annotation as an
-    try:
-        manifest = json.loads((prep_dir / "manifest.json").read_text())
-        path = an.freeze(prep_dir, by=by, dataset_version=manifest.get("prep_version", prep_dir.name))
-    except (an.AnnotationError, OSError) as e:
-        console.print(f"[bold red]{e}[/bold red]")
-        raise typer.Exit(code=1)
-    console.print(f"Frozen: {path.resolve()}", markup=False)
-
-
-@real_app.command("verify")
-def real_verify(bundle: Path = typer.Argument(..., help="A bundle folder such as reports/real_benchmark_bench-xxxx-r3"),
-                prep_dir: Optional[Path] = typer.Option(None, "--prep-dir"), session_policy: Optional[str] = typer.Option(None, "--session-policy")) -> None:
-    """Offline integrity check of a written bundle (hashes, counts, predictions, cost provenance, narrative vs CSV). Writes verification_report.md/json into it."""
-    import json
-
-    from runport.classification import benchmark as bm
-    from runport.observability import bundle_verify as bv
-    from runport.classification.records import Task
-
-    executed = None
-    if prep_dir and session_policy:
-        man = json.loads((bundle / "benchmark_manifest.json").read_text())
-        loaded = bm.load_prep_cases(prep_dir, session_policy)
-        done = man["blocks"]["completed"]
-        bs = man["ordering"]["block_size"]
-        executed = {t.value: {c.case_id for c in bm.order_cases(loaded, t, man["ordering"]["sampling"])[: done * bs]} for t in (Task.INTENT, Task.LEAD)}
-    v = bv.verify_bundle(bundle, executed)
-    (bundle / "verification_report.json").write_text(json.dumps(v, indent=2) + "\n")
-    (bundle / "verification_report.md").write_text(bv.verification_markdown(v))
-    for c in v["checks"]:
-        console.print(f"{'PASS' if c['ok'] else 'FAIL'}  {c['check']}  {c['detail'][:140]}", markup=False)
-    console.print(f"\nVerification {'PASSED' if v['ok'] else 'FAILED'}: {v['n_checks']} checks, {len(v['failed'])} failed. Wrote {bundle.resolve()}/verification_report.md", markup=False)
-    raise typer.Exit(code=0 if v["ok"] else 1)
-
-
-@real_app.command("report")
-def real_report(bench_id: str = typer.Argument(..., help="For example bench-0123456789ab."),
-                prep_dir: Optional[Path] = typer.Option(None, "--prep-dir", help="For approved labels and unattempted-case lists (read-only)."),
-                session_policy: Optional[str] = typer.Option(None, "--session-policy", help="With --prep-dir: also list unattempted cases of the executed blocks."),
-                export: bool = typer.Option(True, "--export/--no-export", help="Also write the redacted ZIP trace export.")) -> None:
-    """Write the benchmark report (markdown + json) and a redacted trace export from persisted outcomes. No network, no student text."""
-    import json
-
-    from runport.classification import benchmark as bm, benchmark_report as br, realdata
-    from runport.core.config import settings
-    from runport.models.registry import roster_status
-    from runport.observability.events import EventStore
-    from runport.observability.export import ExportSelection, build_trace_rows, export_traces
-    from runport.observability.monitor import LiveMonitor
-
-    d = bm.bench_dir(settings.data_dir / "benchmarks", bench_id)
-    if not (d / "plan.json").exists():
-        console.print(f"[bold red]No stored plan for {bench_id}.[/bold red]")
-        raise typer.Exit(code=1)
-    plan = json.loads((d / "plan.json").read_text())
-    state = bm.load_state(settings.data_dir / "benchmarks", bench_id)
-    report = br.build_report(plan, state, settings.reports_dir, EventStore(), prep_dir)
-    out_md, out_json = settings.reports_dir / f"real_benchmark_{bench_id}.md", settings.reports_dir / f"real_benchmark_{bench_id}.json"
-    realdata.write_json_atomic(out_json, report)
-    out_md.write_text(br.render_markdown(report), encoding="utf-8")
-    console.print(f"Report: {out_md.resolve()}", markup=False)
-    console.print(f"Machine-readable: {out_json.resolve()}", markup=False)
-    console.print(f"State: {report['benchmark_state']}   participants: {report['completion_counts']}", markup=False)
-    loaded = None
-    if prep_dir and session_policy:
-        try:
-            loaded = bm.load_prep_cases(prep_dir, session_policy)
-        except bm.PlanError as e:
-            console.print(f"[yellow]Unattempted-case list skipped: {e}[/yellow]")
-    from runport.core.budget import BudgetService
-    st = BudgetService().get_status()
-    ledger = {"counted_against_caps_usd": str(st.cumulative_spend_usd), "pilot_spent_usd": str(st.pilot_spend_usd), "pilot_remaining_usd": str(st.remaining_pilot_usd),
-              "total_remaining_usd": str(st.remaining_total_usd), "spend_by_basis": {k: str(v) for k, v in st.spend_by_basis.items()}, "unresolved_entries": st.unresolved_spend_count,
-              "legacy_simulated_usd_not_counted": str(st.simulated_spend_usd)}
-    prompts = None
-    try:
-        from runport.classification.smoke import load_prompts
-        prompts = load_prompts(Path("."))
-    except FileNotFoundError:
-        pass
-    bundle = br.write_bundle(plan, state, settings.reports_dir, EventStore(), roster_status(), settings.reports_dir, prep_dir, loaded, d / "manifest.json", ledger=ledger, prompts=prompts)
-    console.print(f"Comparison bundle: {bundle['dir'].resolve()}  ({', '.join(br.BUNDLE_FILES)})", markup=False)
-    if export:
-        mon = LiveMonitor()
-        mon.poll()
-        preds, events, labels, frozen = mon.trace_inputs()
-        runs = tuple(sorted({p.run_id for p in preds if p.run_id.startswith(bench_id + "-")}))
-        sel = ExportSelection(runs=runs or None)
-        if not runs:
-            console.print("No persisted records for this benchmark yet: trace export skipped (no placeholder is created).", markup=False)
-            return
-        res = export_traces(build_trace_rows(preds, events, labels, frozen, sel), sel, roster_status(), labels, "zip", settings.reports_dir / "exports")
-        console.print(f"Trace export (redacted by default): {res.path.resolve()}  records {res.n_exported}", markup=False)
-
-
-@app.command("classification-data-status")
-def classification_data_status() -> None:
-    """Show what local dataset preparation exists (counts only; no student text)."""
-    import json
-
-    base = Path("data/classification_prep")
-    manifests = sorted(base.glob("*/manifest.json")) if base.exists() else []
-    if not manifests:
-        console.print("No prepared classification dataset found. Run: runport prepare-classification-data", markup=False)
-        return
-    for p in manifests:
-        try:
-            m = json.loads(p.read_text())
-        except Exception:
-            console.print(f"{p.parent.name}: unreadable manifest", markup=False)
-            continue
-        cand, sess = m["candidates"], m["session_comparison"]["sessions"]
-        console.print(f"{p.parent.name}  ({m.get('parity_status')})", markup=False)
-        console.print(f"  rows accounted: {m['cleaning']['rows_accounted']} of {m['source']['rows']}   answers missing: {m['cleaning']['answers_missing']}   source unchanged: {m['source']['unchanged_after_run']}", markup=False)
-        console.print(f"  sessions: 30m {sess['30m']} / 2h {sess['2h']} (provisional, neither chosen)", markup=False)
-        console.print(f"  intent cases: {cand['intent_2h']['cases']}  lead cases: 30m {cand['lead_30m']['cases']} / 2h {cand['lead_2h']['cases']}", markup=False)
-        console.print("  expected labels: ALL NULL (human review pending)   student data may not be sent to any provider", markup=False)
-        console.print(f"  pseudonymization: {m.get('pseudonymization', {}).get('salt_id', 'n/a (older preparation)')}   privacy: {m.get('privacy_notice', 'n/a (older preparation)')}", markup=False)
 
 
 @app.command("api-preflight")
@@ -730,56 +230,11 @@ def api_preflight() -> None:
     rows = roster_status()
     table.add_row("Participants READY / SMOKE_READY / BLOCKED",
                   f"{sum(r['readiness'] == 'READY' for r in rows)} / {sum(r['readiness'] == 'SMOKE_READY' for r in rows)} / {sum(r['readiness'] == 'BLOCKED' for r in rows)}")
-    table.add_row("Student-derived data allowed to any provider", "[bold red]no[/bold red] (no data policy is verified)")
+    table.add_row("Confidential/unverified data allowed to any provider", "[bold red]no[/bold red] (strict privacy gate active)")
     console.print(table)
     if not present:
         console.print("Set it in your shell (e.g. export OPENROUTER_API_KEY=...) or in .env before a live run (never paste it into chat or commit it)", markup=False)
     raise typer.Exit(code=0 if present else 1)
-
-
-@app.command("prepare-classification-data")
-def prepare_classification_data(
-    source: Path = typer.Option(Path("conversations_export.csv"), "--source", help="Historical conversation export (read only)."),
-    out_dir: Path = typer.Option(Path("data/classification_prep/prep-v1"), "--out-dir", help="Local, git-ignored output folder."),
-    new_version: bool = typer.Option(False, "--new-version", help="If the folder already has content, write a new sibling version (prep-v1-r2, ...) instead of refusing."),
-    prompt_salt: bool = typer.Option(False, "--prompt-salt", help="Ask for the private pseudonymization secret with hidden input (asked twice; never echoed, stored or printed)."),
-    allow_public_salt: bool = typer.Option(False, "--allow-public-salt", help="Permit the legacy public salt (pseudonyms are then linkable by anyone holding the export)."),
-) -> None:
-    """Clean, redact and prepare the historical export for human review. Local only; prints aggregates, never student text."""
-    import os
-    from getpass import getpass
-
-    from runport.classification import dataprep
-
-    if prompt_salt:
-        first, second = getpass("Private pseudonymization secret (hidden): "), getpass("Repeat the secret (hidden): ")
-        if first != second or len(first.strip()) < 12:
-            console.print("[bold red]Secrets differ or are shorter than 12 characters; nothing was written.[/bold red]")
-            raise typer.Exit(code=1)
-        os.environ[dataprep.SALT_ENV] = first.strip()
-        del first, second
-    if not os.environ.get(dataprep.SALT_ENV, "").strip() and not allow_public_salt:
-        console.print("[bold red]No private salt.[/bold red] Re-run with --prompt-salt (hidden input) or export RUNPORT_PREP_SALT in your shell; "
-                      "--allow-public-salt keeps the linkable legacy salt.")
-        raise typer.Exit(code=1)
-
-    if not source.exists():
-        console.print(f"[bold red]Source not found:[/bold red] {source}")
-        raise typer.Exit(code=1)
-    if new_version:
-        out_dir = dataprep.next_free_version_dir(out_dir)
-    try:
-        manifest = dataprep.prepare(source, out_dir)
-    except dataprep.PrepOverwriteError as e:
-        console.print(f"[bold red]Refused:[/bold red] {e}")
-        raise typer.Exit(code=1)
-    c = manifest["cleaning"]
-    console.print(f"{manifest['parity_status']}  |  prep {manifest['prep_version']}  |  rows accounted: {c['rows_accounted']} of {manifest['source']['rows']}", markup=False)
-    console.print(f"dispositions: {c['dispositions']}  duplicates: {c['duplicates']}  answers missing: {c['answers_missing']}", markup=False)
-    console.print(f"redactions: {c['redaction_token_counts']}  rows with any redaction: {c['rows_with_any_redaction']}", markup=False)
-    console.print(f"sessions: {manifest['session_comparison']['sessions']}  views/splits: {manifest['views_and_splits']}", markup=False)
-    console.print(f"source unchanged: {manifest['source']['unchanged_after_run']}   artifacts in {out_dir}", markup=False)
-    console.print(f"pseudonymization: {manifest['pseudonymization']['salt_id']} (protected: {manifest['pseudonymization']['protected_secret_used']})   privacy: {manifest['privacy_notice']}", markup=False)
 
 
 @app.command(name="welcome")

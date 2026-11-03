@@ -143,7 +143,7 @@ class TraceDiagnosticAnalyzer:
         """Checks for intent/level/faculty routing mismatch."""
         route_lower = routing_info.lower()
 
-        # Check Postgraduate vs Undergraduate mismatch
+        # Check domain mismatch between query and route
         is_postgrad_query = any(k in q_lower for k in ("phd", "doctor of philosophy", "master", "postgraduate"))
         is_undergrad_route = "undergraduate" in route_lower or "diploma" in route_lower or "foundation" in route_lower
 
@@ -151,22 +151,33 @@ class TraceDiagnosticAnalyzer:
             return (
                 True,
                 0.90,
-                "Candidate Routing Mismatch: Postgraduate inquiry misrouted to undergraduate admissions flow.",
+                "Candidate Routing Mismatch: Postgraduate inquiry misrouted to undergraduate flow.",
                 [f"Query terms: '{q_lower[:60]}...'", f"Assigned Route: '{routing_info}'"],
-                "Retrain intent classifier embeddings with explicit postgraduate qualification discriminators.",
+                "Retrain routing classifier with explicit intent discriminators.",
             )
 
-        # Check Medical / Faculty domain mismatch
-        is_med_query = any(k in q_lower for k in ("mbbs", "medicine", "pharmacy", "medical"))
-        is_business_route = any(k in route_lower for k in ("business", "accounting", "management"))
+        is_billing_query = any(k in q_lower for k in ("invoice", "payment", "refund", "billing", "receipt"))
+        is_tech_route = "technical" in route_lower or "dev" in route_lower or "engineering" in route_lower
 
-        if is_med_query and is_business_route:
+        if is_billing_query and is_tech_route:
+            return (
+                True,
+                0.90,
+                "Candidate Routing Mismatch: Billing inquiry misrouted to technical workflow.",
+                [f"Query terms: '{q_lower[:60]}...'", f"Assigned Route: '{routing_info}'"],
+                "Retrain routing classifier with explicit domain intent discriminators.",
+            )
+
+        is_tech_query = any(k in q_lower for k in ("api", "sdk", "bug", "exception", "crash", "stack trace"))
+        is_sales_route = any(k in route_lower for k in ("sales", "marketing", "billing"))
+
+        if is_tech_query and is_sales_route:
             return (
                 True,
                 0.88,
-                "Candidate Routing Mismatch: Medical sciences query directed to Faculty of Business router.",
+                "Candidate Routing Mismatch: Technical query directed to sales router.",
                 [f"Query snippet: '{q_lower[:60]}...'", f"Assigned Route: '{routing_info}'"],
-                "Adjust router topic priority rules to prevent cross-faculty misclassification.",
+                "Adjust router topic priority rules to prevent cross-domain misclassification.",
             )
 
         return False, 0.0, "", [], ""
@@ -174,7 +185,7 @@ class TraceDiagnosticAnalyzer:
     def _check_retrieval_failure(
         self, trace: TraceRecord, q_lower: str, retrieval_text: str
     ) -> Tuple[bool, float, str, List[str], str]:
-        """Checks for empty chunks, low similarity, or missing programme context."""
+        """Checks for empty chunks, low similarity, or missing context."""
         ret_lower = retrieval_text.lower().strip()
 
         # 1. Empty or near-empty retrieval
@@ -187,18 +198,18 @@ class TraceDiagnosticAnalyzer:
                 "Lower similarity threshold ceiling or inspect dense vector embedding index coverage.",
             )
 
-        # 2. Programme divergence (e.g. Query asked about Computer Science, but retrieved only Accounting)
-        cs_terms = ("computer science", "software engineering", "cybersecurity", "information technology")
-        biz_terms = ("accounting", "finance", "business administration", "marketing")
+        # 2. Topic divergence
+        tech_terms = ("api", "endpoint", "database", "query", "schema", "token")
+        sales_terms = ("pricing", "sales", "contract", "enterprise license")
 
-        if any(term in q_lower for term in cs_terms) and not any(term in ret_lower for term in cs_terms):
-            if any(term in ret_lower for term in biz_terms):
+        if any(term in q_lower for term in tech_terms) and not any(term in ret_lower for term in tech_terms):
+            if any(term in ret_lower for term in sales_terms):
                 return (
                     True,
                     0.86,
-                    "Candidate Retrieval Divergence: Retrieved context belongs to unrelated faculty.",
-                    [f"Student Query: '{q_lower[:60]}...'", f"Retrieved Context: '{retrieval_text[:80]}...'"],
-                    "Implement pre-retrieval metadata filtering by faculty or degree level.",
+                    "Candidate Retrieval Divergence: Retrieved context belongs to unrelated topic.",
+                    [f"User Query: '{q_lower[:60]}...'", f"Retrieved Context: '{retrieval_text[:80]}...'"],
+                    "Implement pre-retrieval metadata filtering by category or domain.",
                 )
 
         return False, 0.0, "", [], ""
@@ -207,29 +218,29 @@ class TraceDiagnosticAnalyzer:
         self, trace: TraceRecord, retrieval_text: str, ans_lower: str
     ) -> Tuple[bool, float, str, List[str], str]:
         """Checks if response faithfully mirrors defective or contradictory knowledge-base text."""
-        # 1. Contradictory tuition fees in retrieved context
-        rm_matches = re.findall(r"rm\s*[\d,]+", retrieval_text.lower())
-        unique_rms = list(set(rm_matches))
-        if len(unique_rms) >= 2:
+        # 1. Contradictory pricing or numeric figures in retrieved context
+        price_matches = re.findall(r"(?:rm|\$)\s*[\d,]+", retrieval_text.lower())
+        unique_prices = list(set(price_matches))
+        if len(unique_prices) >= 2:
             # Check if answer also repeats the conflicting figures
-            if all(rm in ans_lower for rm in unique_rms[:2]):
+            if all(p in ans_lower for p in unique_prices[:2]):
                 return (
                     True,
                     0.92,
-                    "Candidate Knowledge Base Defect: Model faithfully relayed conflicting fee figures present in source KB.",
-                    [f"Conflicting figures in context: {unique_rms[:2]}", f"Output quotes: '{ans_lower[:80]}...'"],
+                    "Candidate Knowledge Base Defect: Model faithfully relayed conflicting figures present in source KB.",
+                    [f"Conflicting figures in context: {unique_prices[:2]}", f"Output quotes: '{ans_lower[:80]}...'"],
                     "Execute knowledge-base remediation to reconcile conflicting figures.",
                 )
 
-        # 2. Stale intake calendar references (e.g. 2022, 2023, 2024 in context)
-        stale_years = re.findall(r"\b(202[0-4])\b", retrieval_text)
+        # 2. Stale calendar references (e.g. 2021, 2022, 2023 in context)
+        stale_years = re.findall(r"\b(202[0-3])\b", retrieval_text)
         if stale_years and any(yr in ans_lower for yr in stale_years):
             return (
                 True,
                 0.80,
                 f"Candidate Knowledge Base Stale Data: Ingested chunk contains outdated calendar year ({stale_years[0]}).",
                 [f"Outdated years detected in context: {stale_years}", f"Output: '{ans_lower[:70]}...'"],
-                "Update admissions calendar references in KB to current 2026/2027 intake cycles.",
+                "Update knowledge base references to current version cycle.",
             )
 
         return False, 0.0, "", [], ""
@@ -237,7 +248,7 @@ class TraceDiagnosticAnalyzer:
     def _check_generation_failure(
         self, trace: TraceRecord, q_lower: str, retrieval_text: str, ans_lower: str
     ) -> Tuple[bool, float, str, List[str], str]:
-        """Checks for hallucinations, ungrounded fee amounts, or model refusals."""
+        """Checks for hallucinations, ungrounded figures, or model refusals."""
         # 1. False refusal despite context present
         refusal_phrases = ("i do not have access", "i don't know", "information is not available", "cannot find")
         if any(rp in ans_lower for rp in refusal_phrases) and len(retrieval_text) > 100:
@@ -249,15 +260,15 @@ class TraceDiagnosticAnalyzer:
                 "Refine system prompt instructions to encourage direct citation of available context.",
             )
 
-        # 2. Ungrounded fee figures (hallucination)
-        out_rms = re.findall(r"rm\s*[\d,]{4,}", ans_lower)
+        # 2. Ungrounded figures (hallucination)
+        out_prices = re.findall(r"(?:rm|\$)\s*[\d,]{3,}", ans_lower)
         ctx_lower = retrieval_text.lower()
-        ungrounded = [rm for rm in out_rms if rm not in ctx_lower]
+        ungrounded = [p for p in out_prices if p not in ctx_lower]
         if ungrounded:
             return (
                 True,
                 0.88,
-                f"Candidate Generation Hallucination: Model invented fee figure '{ungrounded[0]}' not in context.",
+                f"Candidate Generation Hallucination: Model invented figure '{ungrounded[0]}' not in context.",
                 [f"Invented figure: {ungrounded[0]}", f"Context available: '{retrieval_text[:80]}...'"],
                 "Adjust generation temperature to 0.0 and add strict grounding constraints to system prompt.",
             )

@@ -25,6 +25,7 @@ from runport.tui.theme import BG_DARK
 from runport.tui.screens import (
     NAV_ITEMS,
     NAV_KEYS,
+    VIEW_PLUGINS,
     build_top_header,
     build_navigation_panel,
     build_system_resources_panel,
@@ -142,8 +143,6 @@ class WorkbenchTUI:
             pass
         review_ids: List[str] = []
         review_count: Optional[int] = None
-        if self.section == "lead":
-            review_count, review_ids = self.monitor.lead_review()
         self.live_ctx = LiveContext(
             now=time.time(), width=self.console.size[0], budget=self.budget_status, agg=agg, analysis=self.monitor.analysis,
             dataset=self.monitor.dataset, roster=roster_status(), events_malformed=self.monitor.tail.malformed,
@@ -260,17 +259,18 @@ class WorkbenchTUI:
         ]
 
     def _model_rows(self) -> list:
-        """Rows the Model pane is currently showing: the ten roster participants, or the legacy filtered catalogue."""
+        """Rows the Model pane is currently showing: registered model candidates, or the filtered catalogue."""
         if self.show_roster:
-            from runport.models.registry import REGISTRY
-            return list(REGISTRY.values())
+            from runport.models.registry import list_records
+            return list_records()
         return self.get_filtered_candidates()
 
     def _clamp_model_cursor(self) -> None:
         """Ensures model_cursor remains within bounds of current filtered list."""
         if self.show_roster and self.section == "roster":
-            from runport.models.registry import REGISTRY
-            self.model_cursor = max(0, min(self.model_cursor, len(REGISTRY) - 1))
+            from runport.models.registry import list_records
+            recs = list_records()
+            self.model_cursor = max(0, min(self.model_cursor, len(recs) - 1)) if recs else 0
             return
         filtered = self.get_filtered_candidates()
         if not filtered:
@@ -281,6 +281,8 @@ class WorkbenchTUI:
     def refresh_data(self) -> None:
         """Loads latest data from SQLite ledger, portfolio registry, diagnostics, benchmarks, and traces."""
         self.candidates = get_portfolio()
+        from runport.models.registry import init_registry_from_portfolio
+        init_registry_from_portfolio(self.candidates)
         self.budget_status = self.budget_service.get_status()
         self.health_items = run_system_health_checks()
         self.sys_telemetry.sample()
@@ -709,9 +711,9 @@ class WorkbenchTUI:
                     self.history_index = len(self.command_history)
                     self.text_buffer = ""
                     self.cursor_pos = 0
-        elif key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="):
-            idx = {"0": 9, "-": 10, "=": 11}.get(key, int(key) - 1 if key.isdigit() else 0)
-            self.goto(NAV_KEYS[idx])
+        elif any(p.shortcut == key for p in VIEW_PLUGINS if p.shortcut.strip()):
+            target = next(p.key for p in VIEW_PLUGINS if p.shortcut == key)
+            self.goto(target)
             self.log_buffer.add("INFO", f"Navigated to {NAV_ITEMS[self.nav_index][1]}")
             self.feedback_message = f"Switched to {NAV_ITEMS[self.nav_index][1]}"
         elif key in ("[", "]"):

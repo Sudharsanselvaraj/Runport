@@ -4,13 +4,12 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from runport.classification.contracts import IntentLabel
-from runport.classification.records import PredictionRecord, Task
+from runport.classification.records import PredictionRecord
 from runport.models.registry import Protocol
 from runport.observability.events import RequestEvent
 
 T0 = datetime(2026, 10, 15, 12, 0, 0, tzinfo=timezone.utc)
-LABELS = [l.value for l in IntentLabel]
+LABELS = ["QUERY", "GREETING", "CLOSING", "OTHER"]
 
 
 def ts(seconds: float) -> str:
@@ -38,25 +37,27 @@ def probs(label, top=0.9):
     return {l: (top if l == label else rest) for l in LABELS}
 
 
-def intent_pred(case, label, model="jev-1.14", run="run1", top=None, status="OK", created="2026-10-15T12:00:00+00:00", dataset_version="test-ds", **kw):
+def intent_pred(case, label, model="candidate-1", run="run1", top=None, status="OK", created="2026-10-15T12:00:00+00:00", dataset_version="test-ds", task="classification", **kw):
     dist = probs(label, top) if top is not None else None
     return PredictionRecord(
-        record_id=f"{run}:{case}:INTENT:{model}", run_id=run, case_id=case, task=Task.INTENT, model_key=model, protocol=Protocol.DECISIONS_API,
+        record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.CHAT_COMPLETIONS,
         requested_model_id=model, prompt_version="sha256:test", dataset_version=dataset_version, status=status,
-        predicted_label=IntentLabel(label) if status == "OK" else None, label_probs=dist,
+        predicted_label=label if status == "OK" else None, label_probs=dist,
         confidence_source="NATIVE_DISTRIBUTION" if dist else "NONE", created_at=created, **kw)
 
 
-def lead_pred(case, yes_prob=None, need_cta=None, model="jev-1.14", run="lrun", status="OK", created="2026-10-15T12:00:00+00:00"):
+def lead_pred(case, yes_prob=None, need_cta=None, model="candidate-1", run="lrun", status="OK", created="2026-10-15T12:00:00+00:00", task="binary", **kw):
+    pred_label = "YES" if need_cta is True else ("NO" if need_cta is False else None)
     return PredictionRecord(
-        record_id=f"{run}:{case}:LEAD:{model}", run_id=run, case_id=case, task=Task.LEAD, model_key=model, protocol=Protocol.DECISIONS_API,
+        record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.CHAT_COMPLETIONS,
         requested_model_id=model, prompt_version="sha256:test", dataset_version="test-ds", status=status, yes_prob=yes_prob,
-        predicted_need_cta=need_cta, created_at=created)
+        predicted_label=pred_label, created_at=created, **kw)
 
 
 def write_preds(dirpath: Path, name: str, recs):
     dirpath.mkdir(parents=True, exist_ok=True)
-    (dirpath / f"{name}.jsonl").write_text("\n".join(r.to_json_line() for r in recs) + "\n", encoding="utf-8")
+    (dirpath / f"{name}.jsonl").write_text("\n".join(r.to_jsonl_row() for r in recs) + "\n", encoding="utf-8")
+
 
 
 def write_labels(prep: Path, rows):

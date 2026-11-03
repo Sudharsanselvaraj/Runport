@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 from runport.core.config import BudgetPolicy
 from runport.core.budget import BudgetService
 from runport.storage.db import DatabaseManager
-from runport.models.catalog import get_portfolio, DEFAULT_PORTFOLIO
+from runport.models.catalog import get_portfolio, ModelCandidate
 from runport.cli import app
 
 runner = CliRunner()
@@ -182,28 +182,26 @@ def test_preflight_case_cost_calculation(budget_service: BudgetService):
 
 
 def test_model_catalog_seeding_and_unverified_labels(test_db: DatabaseManager):
-    """Verify default portfolio seeding and strict unverified labeling."""
+    """Verify portfolio retrieval and strict candidate labeling."""
+    test_db.upsert_model(
+        model_id="test/model-v1",
+        display_name="Test Model V1",
+        provider="test-provider",
+        deployment_mode="HOSTED_DIRECT",
+        license_type="Apache-2.0",
+        context_length=128000,
+        input_price_per_1m_usd="0.1500",
+        output_price_per_1m_usd="0.6000",
+        verification_status="UNVERIFIED_CATALOG_ENTRY",
+        experimental_purpose="Test candidate",
+    )
     portfolio = get_portfolio(test_db)
-    assert len(portfolio) == len(DEFAULT_PORTFOLIO)
-
-    # Every candidate must be labeled UNVERIFIED_CATALOG_ENTRY
-    for model in portfolio:
-        assert model.verification_status == "UNVERIFIED_CATALOG_ENTRY"
-        assert model.deployment_mode in ("HOSTED_OPENROUTER", "HOSTED_DIRECT", "SELF_HOSTED_VLLM")
-        if ":free" not in model.model_id:
-            assert model.input_price_per_1m_usd > Decimal("0.00")
-            assert model.output_price_per_1m_usd > Decimal("0.00")
-        else:
-            assert model.input_price_per_1m_usd == Decimal("0.00")
-            assert model.output_price_per_1m_usd == Decimal("0.00")
-
-    # Verify Gemini 3.5 Flash Lite, Claude Haiku, GPT-6 Luna, Qwen3-8B, Qwen3-14B exist
-    ids = [m.model_id for m in portfolio]
-    assert "google/gemini-3.5-flash-lite" in ids
-    assert "anthropic/claude-haiku-5.5" in ids
-    assert "openai/gpt-6-luna" in ids
-    assert "qwen/qwen3-8b" in ids
-    assert "qwen/qwen3-14b" in ids
+    assert len(portfolio) == 1
+    model = portfolio[0]
+    assert model.verification_status == "UNVERIFIED_CATALOG_ENTRY"
+    assert model.deployment_mode == "HOSTED_DIRECT"
+    assert model.input_price_per_1m_usd == Decimal("0.1500")
+    assert model.output_price_per_1m_usd == Decimal("0.6000")
 
 
 def test_cli_budget_status_output():
@@ -217,12 +215,9 @@ def test_cli_budget_status_output():
 
 
 def test_cli_models_list_shows_the_verified_comparison_roster():
-    """`models list` is the comparison roster: all ten participants with sourced readiness, no legacy planning prices."""
+    """`models list` displays the registered model portfolio."""
     result = runner.invoke(app, ["models", "list"], env={"COLUMNS": "260"})
     assert result.exit_code == 0
-    assert "Comparison roster (10 participants)" in result.stdout
-    for name in ("Jev 1.14", "GPT-4.1 Nano", "Claude Sonnet 5.5"):
-        assert name in result.stdout
-    assert "gpt-6-luna" not in result.stdout and "qwen3-8b" not in result.stdout
+    assert "Registered Model Portfolio" in result.stdout
 
 

@@ -4,8 +4,6 @@ import json
 
 import pytest
 
-from runport.classification.contracts import IntentLabel
-from runport.classification.records import Task
 from runport.observability import analysis as A
 from runport.observability.labels import PENDING, load_approved_labels
 from runport.observability.monitor import LiveMonitor
@@ -50,10 +48,10 @@ def test_agreement_is_not_correctness(tmp_path):
     b = [intent_pred(f"C{i}", "QUERY", model="m-b") for i in range(4)]
     runs = A.latest_runs(a + b)
     none = load_approved_labels(make_prep(tmp_path / "p0"))
-    rep = A.agreement_report(runs, Task.INTENT, none)
+    rep = A.agreement_report(runs, "classification", none)
     assert rep.pairs[0].agreement == 1.0 and rep.unanimous_errors is None and rep.unanimous_error_basis == PENDING
     _, labels = labels_for(tmp_path, [label_row(f"C{i}", "INTENT", "GREETING") for i in range(4)])
-    rep = A.agreement_report(runs, Task.INTENT, labels)
+    rep = A.agreement_report(runs, "classification", labels)
     assert rep.pairs[0].agreement == 1.0                         # they agree ...
     assert rep.unanimous_errors == ["C0", "C1", "C2", "C3"]       # ... and are all wrong
     assert "4 approved-label cases shared by 2 models" in rep.unanimous_error_basis
@@ -63,7 +61,7 @@ def test_agreement_lists_contributors_disagreements_and_frontier_agreement():
     cases = [f"C{i}" for i in range(6)]
     a = [intent_pred(c, "QUERY", model="cand") for c in cases]
     f = [intent_pred(c, "QUERY" if i < 4 else "GREETING", model="gpt-4.1") for i, c in enumerate(cases)]
-    rep = A.agreement_report(A.latest_runs(a + f), Task.INTENT, load_approved_labels(None))
+    rep = A.agreement_report(A.latest_runs(a + f), "classification", load_approved_labels(None))
     assert rep.models == ["cand", "gpt-4.1"] and rep.n_cases_all_models == 6
     assert [d[0] for d in rep.disagreements] == ["C4", "C5"]
     assert rep.frontier_agreement["cand"]["gpt-4.1"] == pytest.approx(4 / 6)
@@ -122,7 +120,7 @@ def test_lead_without_a_frozen_threshold_gives_undecided_not_yes_no():
 def test_repeatability_and_latest_run_selection():
     p1 = [intent_pred("C1", "QUERY", run="r1", created="2026-10-15T12:00:00+00:00"), intent_pred("C2", "QUERY", run="r1", created="2026-10-15T12:00:00+00:00")]
     p2 = [intent_pred("C1", "QUERY", run="r2", created="2026-10-15T13:00:00+00:00"), intent_pred("C2", "GREETING", run="r2", created="2026-10-15T13:00:00+00:00")]
-    assert {r.run_id for r in A.latest_runs(p1 + p2)[("jev-1.14", "INTENT")]} == {"r2"}
+    assert {r.run_id for r in A.latest_runs(p1 + p2)[("candidate-1", "classification")]} == {"r2"}
     rep = A.repeatability(p1 + p2)[0]
     assert (rep.n_cases_repeated, rep.n_identical) == (2, 1)
 
@@ -137,7 +135,7 @@ def test_label_loader_and_monitor_refresh_are_read_only(tmp_path):
     mon = LiveMonitor(events_path=tmp_path / "e.jsonl", prediction_dirs=[preds_dir], dataset_base=tmp_path / "data" / "classification_prep")
     for _ in range(3):
         mon.poll()
-    assert mon.analysis.labels.intent == {"C1": IntentLabel.QUERY}
+    assert mon.analysis.labels.intent == {"C1": "QUERY"}
     assert {p: p.read_bytes() for p in prep.rglob("*") if p.is_file()} == before
     assert {p: p.stat().st_mtime_ns for p in before} == mtimes
     assert not (tmp_path / "e.jsonl").exists()                  # polling never creates the telemetry log either
@@ -147,7 +145,7 @@ def test_errors_and_invalid_outputs_are_not_counted_as_disagreements():
     a = [intent_pred(f"C{i}", "QUERY", model="m-a") for i in range(4)]
     b = [intent_pred("C0", "QUERY", model="m-b"), intent_pred("C1", "QUERY", model="m-b", status="INVALID_OUTPUT"),
          intent_pred("C2", "GREETING", model="m-b"), intent_pred("C3", "QUERY", model="m-b")]
-    rep = A.agreement_report(A.latest_runs(a + b), Task.INTENT, load_approved_labels(None))
+    rep = A.agreement_report(A.latest_runs(a + b), "classification", load_approved_labels(None))
     pair = rep.pairs[0]
     assert pair.n_common == 3 and pair.n_unusable == 1                       # the invalid output is set aside, not a vote
     assert pair.agreement == pytest.approx(2 / 3) and [d[0] for d in rep.disagreements] == ["C2"]

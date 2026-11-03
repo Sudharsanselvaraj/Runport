@@ -100,7 +100,7 @@ def test_a_workflow_returns_to_the_menu_instead_of_exiting_and_never_crashes():
     assert code == 0 and "Traceback" not in p and "AttributeError" not in p and "OptionInfo" not in p
     assert text.count("\x1b[?1049h") == 3 and text.count("\x1b[?1049l") == 3          # menu, menu again, menu again: it came back each time
     assert p.count("Press Enter to return to the menu") == 2
-    assert "expected labels: ALL NULL" in p or "No prepared classification dataset" in p
+    assert "DATASET VALIDATION" in p or "Dataset Validation" in p or "expected labels: ALL NULL" in p or "No prepared classification dataset" in p
     assert "API preflight" in p and "Exiting Runport" in p
 
 

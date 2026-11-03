@@ -218,7 +218,7 @@ class TraceImporter:
             spans.append(
                 ObservationSpan(
                     id=f"{trace_id}-routing",
-                    name="intent_classifier",
+                    name="workflow_router",
                     type="span",
                     output_data=route,
                 )

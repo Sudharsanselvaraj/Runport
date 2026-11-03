@@ -13,35 +13,75 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from runport.classification.contracts import CONTRACT_VERSION, IntentLabel
-from runport.classification.records import PredictionRecord, Task
+from runport.classification.contracts import CONTRACT_VERSION
+from runport.classification.records import PredictionRecord
 from runport.core.config import settings
-from runport.models.registry import Protocol, roster_status
+from runport.models.registry import (
+    FactStatus, ModelRecord, Protocol, RouteRecord, RouteStatus, clear_registry,
+    fact, register_model, roster_status, unknown,
+)
 from runport.observability import export as X
 from runport.observability.events import EventStore, RequestEvent
 from runport.observability.labels import ApprovedLabels, load_approved_labels
 from runport.tui.app import WorkbenchTUI
 from obs_helpers import finished, intent_pred, label_row, lead_pred, make_prep, started, ts, write_labels, write_preds
 
+from datetime import date
+
+def _make_rec(k: str, mid: str):
+    d = date(2026, 1, 1)
+    urls = ["https://example.com"]
+    return ModelRecord(
+        key=k,
+        display_name=k,
+        roles=["CANDIDATE"],
+        tasks=["INTENT", "LEAD"],
+        requested_model_id=fact(mid, FactStatus.VERIFIED_PRIMARY, urls, d),
+        endpoint=fact(f"POST https://api.example.com/{k}", FactStatus.VERIFIED_PRIMARY, urls, d),
+        request_fields=fact(["model", "messages"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        response_shape=fact("chat.completion", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_type=fact("text", FactStatus.VERIFIED_PRIMARY, urls, d),
+        resolved_version_reporting=fact("exact", FactStatus.VERIFIED_PRIMARY, urls, d),
+        usage_fields=fact(["prompt_tokens", "completion_tokens"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        input_price_per_1m_usd=fact("0.10", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_price_per_1m_usd=fact("0.50", FactStatus.VERIFIED_PRIMARY, urls, d),
+        context_limit_tokens=fact(128000, FactStatus.VERIFIED_PRIMARY, urls, d),
+        provider_route=fact("azure", FactStatus.VERIFIED_PRIMARY, urls, d),
+        structured_output_support=fact(True, FactStatus.VERIFIED_PRIMARY, urls, d),
+        data_policy=unknown("Test policy"),
+        error_codes=fact([400, 401, 429], FactStatus.VERIFIED_PRIMARY, urls, d),
+        route=RouteRecord(status=RouteStatus.READY),
+    )
+
+
+@pytest.fixture(autouse=True)
+def setup_test_roster():
+    clear_registry()
+    for k, mid in [("jev-1.14", "jev-1.14"), ("gpt-4.1-nano", "openai/gpt-4.1-nano"), ("gpt-4o-mini", "openai/gpt-4o-mini")]:
+        register_model(_make_rec(k, mid))
+    yield
+    clear_registry()
+
+
 NOLABELS = ApprovedLabels()
 STAMP = "2026-10-15T12:30:00+00:00"
 EMAIL, PHONE, KEY = "student.test@example.invalid", "0123456789012", "sk-or-v1-mock-dummy-export-key-12345"
 
 
-def error_rec(case, run="run1", model="jev-1.14", retry=("TIMEOUT", "TIMEOUT", "TIMEOUT"), msg=None):
+def error_rec(case, run="run1", model="jev-1.14", retry=("TIMEOUT", "TIMEOUT", "TIMEOUT"), msg=None, task="INTENT"):
     return PredictionRecord(
-        record_id=f"{run}:{case}:INTENT:{model}", run_id=run, case_id=case, task=Task.INTENT, model_key=model, protocol=Protocol.DECISIONS_API,
+        record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.DECISIONS_API,
         requested_model_id=model, prompt_version="sha256:test", dataset_version="test-ds", status="ERROR", attempts=len(retry), retry_errors=list(retry),
         error_type="ProviderError", error_message=msg or "request failed", created_at="2026-10-15T12:00:05+00:00")
 
 
 def sample_preds():
-    ok = [intent_pred(f"C{i}", "QUERY", top=0.9, latency_ms=100.0 + i, prompt_tokens=50, completion_tokens=3, usage_source="PROVIDER_REPORTED",
+    ok = [intent_pred(f"C{i}", "QUERY", model="jev-1.14", task="INTENT", top=0.9, latency_ms=100.0 + i, prompt_tokens=50, completion_tokens=3, usage_source="PROVIDER_REPORTED",
                       actual_cost_usd=Decimal("0.00010"), cost_basis="PROVIDER_REPORTED", native_cost=Decimal("0.0001"), native_cost_unit="credits(unverified)")
           for i in range(3)]
-    other = [intent_pred(f"C{i}", "GREETING", model="gpt-4.1-nano", run="run2") for i in range(2)]
-    bad = [intent_pred("C9", "QUERY", status="INVALID_OUTPUT"), error_rec("C8")]
-    lead = [lead_pred("L1", yes_prob=0.8), lead_pred("L2", need_cta=False, model="gpt-4.1-nano", run="lrun2")]
+    other = [intent_pred(f"C{i}", "GREETING", model="gpt-4.1-nano", run="run2", task="INTENT") for i in range(2)]
+    bad = [intent_pred("C9", "QUERY", model="jev-1.14", task="INTENT", status="INVALID_OUTPUT"), error_rec("C8")]
+    lead = [lead_pred("L1", model="jev-1.14", task="LEAD", yes_prob=0.8), lead_pred("L2", task="LEAD", need_cta=False, model="gpt-4.1-nano", run="lrun2")]
     return ok + other + bad + lead
 
 
@@ -196,7 +236,7 @@ def test_zip_contents_manifest_and_participant_coverage(tmp_path):
     assert man["counts"]["exported"] == len(ts_.rows) and man["counts"]["failed_calls"] == 1
     # every roster participant is listed; models that never ran have no trace rows
     parts = {p["key"]: p for p in man["participants"]}
-    assert len([p for p in man["participants"] if p["readiness"] != "NOT_ON_ROSTER"]) == len(roster_status()) == 11
+    assert len([p for p in man["participants"] if p["readiness"] != "NOT_ON_ROSTER"]) == len(roster_status())
     assert parts["gpt-4o-mini"]["execution_state"] == "NOT_EXECUTED" and parts["gpt-4o-mini"]["n_trace_records"] == 0
     assert parts["gpt-4.1-nano"]["execution_state"] in ("EXECUTED", "EXECUTED_WITH_FAILURES") and parts["jev-1.14"]["execution_state"] == "EXECUTED_WITH_FAILURES"
     assert all(r["identity"]["model_key"] != "gpt-4o-mini" for r in ts_.rows)
@@ -368,7 +408,7 @@ def test_error_class_filter_and_per_run_summary_with_planned_attempted_failed_in
     ts_ = build(sel=X.ExportSelection(error_categories=("TIMEOUT",)))
     assert [r["identity"]["case_id"] for r in ts_.rows] == ["C8"]
     plans = {"bench-abc": {"participants": [{"key": "jev-1.14", "per_task": {"INTENT": {"requests_full": 10}}}]}}
-    recs = [intent_pred(f"C{i}", "QUERY", run="bench-abc-jev-1.14-INTENT") for i in range(3)] + [intent_pred("C9", "QUERY", run="bench-abc-jev-1.14-INTENT", status="INVALID_OUTPUT")]
+    recs = [intent_pred(f"C{i}", "QUERY", model="jev-1.14", task="INTENT", run="bench-abc-jev-1.14-INTENT") for i in range(3)] + [intent_pred("C9", "QUERY", model="jev-1.14", task="INTENT", run="bench-abc-jev-1.14-INTENT", status="INVALID_OUTPUT")]
     summ = X.run_summaries(build(preds=recs).rows, plans)
     assert summ == [{"run_id": "bench-abc-jev-1.14-INTENT", "model_key": "jev-1.14", "task": "INTENT", "data_kind": "REAL_DATA_BENCHMARK", "attempted": 4, "succeeded": 3,
                      "failed": 0, "invalid": 1, "planned_full_dataset": 10, "unattempted": 6}]

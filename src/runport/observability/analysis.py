@@ -9,11 +9,10 @@ import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from runport.classification import metrics as M
 from runport.classification import threshold as T
-from runport.classification.contracts import IntentLabel
 from runport.classification.records import PredictionRecord, Task
 from runport.observability.labels import PENDING, ApprovedLabels
 from runport.schemas.evaluation import DatasetSplit
@@ -43,7 +42,8 @@ def latest_runs(preds: Sequence[PredictionRecord]) -> Dict[Tuple[str, str], List
     """(model_key, task) -> records of the most recent run for that pair."""
     groups: Dict[Tuple[str, str, str], List[PredictionRecord]] = defaultdict(list)
     for r in preds:
-        groups[(r.model_key, r.task.value, r.run_id)].append(r)
+        task_str = r.task.value if hasattr(r.task, "value") else str(r.task)
+        groups[(r.model_key, task_str, r.run_id)].append(r)
     best: Dict[Tuple[str, str], Tuple[str, List[PredictionRecord]]] = {}
     for (mk, task, run_id), recs in groups.items():
         newest = max(r.created_at for r in recs)
@@ -110,7 +110,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> Optional[Tuple[float, float]]:
     return max(0.0, c - h), min(1.0, c + h)
 
 
-def intent_pred(r: PredictionRecord) -> Optional[IntentLabel]:
+def intent_pred(r: PredictionRecord) -> Optional[str]:
     return r.predicted_label if r.status == "OK" else None
 
 
@@ -140,7 +140,8 @@ class IntentQuality:
 def intent_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: ApprovedLabels) -> List[IntentQuality]:
     out = []
     for (mk, task), recs in sorted(runs.items()):
-        if task != Task.INTENT.value:
+        task_str = task.value if hasattr(task, "value") else str(task)
+        if task_str.lower() not in ("intent", "classification"):
             continue
         q = IntentQuality(mk, recs[0].run_id, len(recs), sum(r.status == "ERROR" for r in recs), PENDING)
         scorable = [r for r in recs if r.case_id in labels.intent]
@@ -163,10 +164,14 @@ def intent_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: 
 def lead_pred(r: PredictionRecord, frozen: Optional[T.FrozenThreshold]) -> Optional[bool]:
     if r.status != "OK":
         return None
-    if r.predicted_need_cta is not None:
-        return r.predicted_need_cta
     if r.yes_prob is not None and frozen is not None:
         return r.yes_prob >= frozen.threshold
+    if r.predicted_label is not None:
+        val = str(r.predicted_label).upper()
+        if val in ("YES", "TRUE", "1"):
+            return True
+        if val in ("NO", "FALSE", "0"):
+            return False
     return None
 
 
@@ -190,7 +195,8 @@ class LeadModelReport:
 def lead_reports(runs, labels: ApprovedLabels, meta: Dict[str, CaseMeta]) -> List[LeadModelReport]:
     out = []
     for (mk, task), recs in sorted(runs.items()):
-        if task != Task.LEAD.value:
+        task_str = task.value if hasattr(task, "value") else str(task)
+        if task_str.lower() not in ("lead", "binary"):
             continue
         frozen: Optional[T.FrozenThreshold] = None
         note = ""
@@ -259,19 +265,28 @@ class CalibrationReport:
 def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]:
     out = []
     for (mk, task), recs in sorted(runs.items()):
-        if task != Task.INTENT.value:
+        task_str = task.value if hasattr(task, "value") else str(task)
+        if task_str.lower() not in ("intent", "classification"):
             continue
         dists = []
         invalid = 0
         for r in recs:
             if r.label_probs and r.confidence_source == "NATIVE_DISTRIBUTION" and r.status == "OK" and r.predicted_label is not None:
-                if abs(sum(r.label_probs.values()) - 1.0) <= 1e-6 and r.predicted_label.value in r.label_probs:
+                pred_val = r.predicted_label.value if hasattr(r.predicted_label, "value") else str(r.predicted_label)
+                if abs(sum(r.label_probs.values()) - 1.0) <= 1e-6 and pred_val in r.label_probs:
                     dists.append(r)
                 else:
                     invalid += 1
         nat = [r.native_confidence for r in recs if r.native_confidence is not None]
+        mean_sel = None
+        if dists:
+            s_sum = 0.0
+            for r in dists:
+                pred_val = r.predicted_label.value if hasattr(r.predicted_label, "value") else str(r.predicted_label)
+                s_sum += r.label_probs[pred_val]
+            mean_sel = s_sum / len(dists)
         rep = CalibrationReport(mk, len(recs), len(dists), invalid, len(nat),
-                                (sum(r.label_probs[r.predicted_label.value] for r in dists) / len(dists)) if dists else None,
+                                mean_sel,
                                 (sum(nat) / len(nat)) if nat else None)
         if not dists:
             rep.unsupported_reason = "UNAVAILABLE: this model returned no native probability distribution (self-reported or textual confidence is never used)"
@@ -280,10 +295,21 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
             continue
         lab = [r for r in dists if r.case_id in labels.intent]
         if lab:
-            truths = [labels.intent[r.case_id].value for r in lab]
-            confs = [r.label_probs[r.predicted_label.value] for r in lab]
-            correct = [r.predicted_label.value == t for r, t in zip(lab, truths)]
-            src = M.ConfidenceSource.NATIVE_DISTRIBUTION
+            truths = [
+                labels.intent[r.case_id].value
+                if hasattr(labels.intent[r.case_id], "value")
+                else str(labels.intent[r.case_id])
+                for r in lab
+            ]
+            preds_lab = [
+                r.predicted_label.value
+                if hasattr(r.predicted_label, "value")
+                else str(r.predicted_label)
+                for r in lab
+            ]
+            confs = [r.label_probs[p] for r, p in zip(lab, preds_lab)]
+            correct = [p == t for p, t in zip(preds_lab, truths)]
+            src = "NATIVE_DISTRIBUTION"
             rep.n_calibration = len(lab)
             rep.status = "SCORED"
             rep.brier = M.brier_multiclass([r.label_probs for r in lab], truths, src)
@@ -293,7 +319,7 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
                 idx = [i for i, c in enumerate(confs) if lo <= c < hi or (b == 9 and c == 1.0)]
                 if idx:
                     rep.bins.append(ReliabilityBin(lo, hi, len(idx), sum(confs[i] for i in idx) / len(idx), sum(correct[i] for i in idx) / len(idx)))
-            rep.high_conf_errors = [(r.case_id, c, r.predicted_label.value, t) for r, c, ok, t in zip(lab, confs, correct, truths)
+            rep.high_conf_errors = [(r.case_id, c, p, t) for r, c, ok, p, t in zip(lab, confs, correct, preds_lab, truths)
                                     if c >= HIGH_CONFIDENCE and not ok]
             for thr in (0.5, 0.6, 0.7, 0.8, 0.9, 0.95):
                 kept = [i for i, c in enumerate(confs) if c >= thr]
@@ -330,30 +356,45 @@ class AgreementReport:
     frontier_agreement: Dict[str, Dict[str, Optional[float]]]
 
 
-def agreement_report(runs, task: Task, labels: ApprovedLabels, frozen_by_model: Optional[Dict[str, T.FrozenThreshold]] = None) -> AgreementReport:
+def _matches_task(t1: str, t2: str) -> bool:
+    s1, s2 = t1.lower(), t2.lower()
+    if s1 == s2:
+        return True
+    if s1 in ("intent", "classification") and s2 in ("intent", "classification"):
+        return True
+    if s1 in ("lead", "binary") and s2 in ("lead", "binary"):
+        return True
+    return False
+
+
+def agreement_report(runs, task: Any, labels: ApprovedLabels, frozen_by_model: Optional[Dict[str, T.FrozenThreshold]] = None) -> AgreementReport:
     """Agreement on VALID common outputs only. An error, an invalid output or an undecided P(yes) is never a vote and never a disagreement."""
     frozen_by_model = frozen_by_model or {}
     cat: Dict[str, Dict[str, str]] = {}           # model -> case -> valid prediction
     attempted: Dict[str, set] = {}                # model -> cases it was run on (valid or not)
     excluded: Dict[str, str] = {}
+    task_str = task.value if hasattr(task, "value") else str(task)
+    is_classification = task_str.lower() in ("intent", "classification")
+
     for (mk, t), recs in runs.items():
-        if t != task.value:
+        t_str = t.value if hasattr(t, "value") else str(t)
+        if not _matches_task(t_str, task_str):
             continue
         m: Dict[str, str] = {}
         attempted[mk] = {r.case_id for r in recs}
         undecided = 0
         for r in recs:
-            if task == Task.INTENT:
+            if is_classification:
                 p = intent_pred(r)
                 if p is not None:
-                    m[r.case_id] = p.value
+                    m[r.case_id] = p if isinstance(p, str) else getattr(p, "value", str(p))
             else:
                 p = lead_pred(r, frozen_by_model.get(mk))
                 if p is not None:
                     m[r.case_id] = "YES" if p else "NO"
                 elif r.status == "OK" and r.yes_prob is not None:
                     undecided += 1
-        if task == Task.LEAD and undecided and not m:
+        if not is_classification and undecided and not m:
             excluded[mk] = "P(yes) only and no frozen dev threshold: no YES/NO decision to compare"
             continue
         cat[mk] = m
@@ -382,13 +423,13 @@ def agreement_report(runs, task: Task, labels: ApprovedLabels, frozen_by_model: 
                 frontier[mk][fk] = p.agreement if p else None
     ue: Optional[List[str]] = None
     basis = PENDING
-    truth = labels.intent if task == Task.INTENT else {k: ("YES" if v else "NO") for k, v in labels.lead.items()}
+    truth = labels.intent if is_classification else {k: ("YES" if v else "NO") for k, v in labels.lead.items()}
     if truth and in_all:
         lab_cases = sorted(c for c in in_all if c in truth)
-        tv = {c: (truth[c].value if task == Task.INTENT else truth[c]) for c in lab_cases}
+        tv = {c: (truth[c] if isinstance(truth[c], str) else getattr(truth[c], "value", str(truth[c]))) for c in lab_cases}
         ue = [c for c in lab_cases if all(cat[mk][c] != tv[c] for mk in models) and len({cat[mk][c] for mk in models}) == 1]
         basis = f"{len(lab_cases)} approved-label cases shared by {len(models)} models"
-    return AgreementReport(task.value, models, pairs, len(all_cases), len(in_all), dis, ue, basis, excluded, frontier)
+    return AgreementReport(task_str, models, pairs, len(all_cases), len(in_all), dis, ue, basis, excluded, frontier)
 
 
 # ---------------------------------------------------------------- robustness
@@ -403,9 +444,14 @@ class Repeatability:
 def repeatability(preds: Sequence[PredictionRecord]) -> List[Repeatability]:
     by: Dict[Tuple[str, str, str], Dict[str, str]] = defaultdict(dict)
     for r in preds:
-        val = (intent_pred(r).value if intent_pred(r) else "INVALID") if r.task == Task.INTENT else (
-            "INVALID" if r.status != "OK" else str(r.predicted_need_cta if r.predicted_need_cta is not None else r.yes_prob))
-        by[(r.model_key, r.task.value, r.case_id)][r.run_id] = val
+        pred = intent_pred(r)
+        pred_str = (pred if isinstance(pred, str) else getattr(pred, "value", str(pred))) if pred else "INVALID"
+        task_str = r.task.value if hasattr(r.task, "value") else str(r.task)
+        if task_str.lower() in ("intent", "classification"):
+            val = pred_str
+        else:
+            val = "INVALID" if r.status != "OK" else str(r.yes_prob if r.yes_prob is not None else r.predicted_label)
+        by[(r.model_key, task_str, r.case_id)][r.run_id] = val
     agg: Dict[Tuple[str, str], List[int]] = defaultdict(lambda: [0, 0])
     for (mk, task, _), runs in by.items():
         if len(runs) >= 2:
@@ -418,7 +464,8 @@ def history_slices(runs, labels: ApprovedLabels, meta: Dict[str, CaseMeta]) -> L
     """(model, history_status, n_scored, accuracy). Needs approved labels and case metadata; otherwise empty."""
     out = []
     for (mk, task), recs in sorted(runs.items()):
-        if task != Task.INTENT.value or not labels.intent:
+        task_str = task.value if hasattr(task, "value") else str(task)
+        if task_str.lower() not in ("intent", "classification") or not labels.intent:
             continue
         groups: Dict[str, List[PredictionRecord]] = defaultdict(list)
         for r in recs:
