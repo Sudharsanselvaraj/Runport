@@ -11,7 +11,7 @@ import math
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from runport.classification.contracts import IntentLabel
+from .models import IntentLabel
 
 INTENT_WRAPPER = (
     "Classify the CURRENT user message in the state. Choose exactly one option. "

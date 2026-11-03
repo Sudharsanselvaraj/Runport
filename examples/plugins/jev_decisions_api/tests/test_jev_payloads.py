@@ -9,9 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from runport.classification import jev_payloads as jp
-from runport.classification.contracts import IntentLabel
-from runport.classification.validators import validate_intent_output
+from examples.plugins.jev_decisions_api import jev_payloads as jp
+from examples.plugins.jev_decisions_api.models import IntentLabel, validate_intent_output
 
 ROOT = Path(__file__).resolve().parents[2]
 INTENT_FILE, LEAD_FILE = ROOT / "main_intent_classifier.md", ROOT / "lead_qualification_prompt.md"

@@ -13,10 +13,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from runport.classification import jev_payloads as jp
-from runport.classification.contracts import IntentLabel
-from runport.classification.records import AdapterResult, Task
-from runport.classification.validators import validate_intent_output
+from . import jev_payloads as jp
+from .models import AdapterResult, IntentLabel, Task, validate_intent_output
 from runport.models import registry
 from runport.models.registry import Protocol
 from runport.providers.base import LiveNotAuthorizedError, ProviderError
