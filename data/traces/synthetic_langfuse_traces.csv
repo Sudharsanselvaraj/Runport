@@ -1,4 +1,4 @@
-id,timestamp,input,output,latency,total_tokens,prompt_tokens,completion_tokens,tags,retrieval_chunks,intent
+id,timestamp,input,output,latency,total_tokens,prompt_tokens,completion_tokens,tags,retrieval_chunks,route
 trace-csv-001,2026-10-14T04:00:00Z,What are the entry criteria for Master of Clinical Pharmacy?,To enroll in Diploma in Pharmacy you need SPM credits.,1.35,160,110,50,pharmacy|postgrad,Diploma in Pharmacy prerequisites.,undergraduate_diploma_router
 trace-csv-002,2026-10-14T04:10:00Z,What are the hostel options at University Campus?,I cannot find any hostel accommodation details.,0.90,120,90,30,facilities,[],hostel_faq
 trace-csv-003,2026-10-14T04:20:00Z,What is the Bachelor of Medicine tuition fee?,The MBBS tuition fee is $250,000 across 5 years.,1.10,180,120,60,mbbs|fees,Bachelor of Medicine (MBBS) tuition fee is $250,000 across 5 years.,medical_services

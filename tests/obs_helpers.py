@@ -37,7 +37,7 @@ def probs(label, top=0.9):
     return {l: (top if l == label else rest) for l in LABELS}
 
 
-def intent_pred(case, label, model="custom-protocol-model", run="run1", top=None, status="OK", created="2026-10-15T12:00:00+00:00", dataset_version="test-ds", task="INTENT", **kw):
+def class_pred(case, label, model="custom-protocol-model", run="run1", top=None, status="OK", created="2026-10-15T12:00:00+00:00", dataset_version="test-ds", task="CLASSIFICATION", **kw):
     dist = probs(label, top) if top is not None else None
     return PredictionRecord(
         record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.CHAT_COMPLETIONS,
@@ -46,7 +46,7 @@ def intent_pred(case, label, model="custom-protocol-model", run="run1", top=None
         confidence_source="NATIVE_DISTRIBUTION" if dist else "NONE", created_at=created, **kw)
 
 
-def lead_pred(case, yes_prob=None, need_cta=None, model="custom-protocol-model", run="lrun", status="OK", created="2026-10-15T12:00:00+00:00", task="LEAD", **kw):
+def binary_pred(case, yes_prob=None, need_cta=None, model="custom-protocol-model", run="lrun", status="OK", created="2026-10-15T12:00:00+00:00", task="BINARY", **kw):
     pred_label = "YES" if need_cta is True else ("NO" if need_cta is False else None)
     return PredictionRecord(
         record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.CHAT_COMPLETIONS,
@@ -71,10 +71,10 @@ def label_row(case, task, expected, status="APPROVED", by="reviewer-a"):
 
 
 def make_prep(base: Path, version="prep-test"):
-    """A minimal preparation folder: a manifest plus split/history metadata for two intent and two lead cases (no text)."""
+    """A minimal preparation folder: a manifest plus split/history metadata for two classification and two binary cases (no text)."""
     prep = base / version
     prep.mkdir(parents=True)
     (prep / "manifest.json").write_text(json.dumps({
         "prep_version": version, "parity_status": "PRODUCTION_PARITY_NOT_ESTABLISHED",
-        "candidates": {"intent_2h": {"cases": 4}}, "session_comparison": {"sessions": {"2h": 2, "30m": 2}}}))
+        "candidates": {"classification_2h": {"cases": 4}}, "session_comparison": {"sessions": {"2h": 2, "30m": 2}}}))
     return prep

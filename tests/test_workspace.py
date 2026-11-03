@@ -28,7 +28,7 @@ def test_workspace_config_defaults():
     assert cfg.budget.require_priced is False
     assert cfg.approver.default_mode == "interactive"
     assert cfg.approver.token_approver_enabled is False
-    assert "user4" in cfg.telemetry.forbidden_fields
+    assert "restricted_user_id" in cfg.telemetry.forbidden_fields
 
 
 def test_generate_workspace_schema():
@@ -70,3 +70,4 @@ def test_cli_init_command(tmp_path: Path):
     assert res.exit_code == 0
     assert "Runport Workspace Initialized Successfully" in res.stdout
     assert (tmp_path / "runport.yaml").is_file()
+

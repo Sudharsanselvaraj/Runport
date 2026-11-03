@@ -34,3 +34,4 @@ def register_init_command(app: typer.Typer) -> None:
         except Exception as e:
             console.print(f"[bold red]Error initializing workspace:[/bold red] {e}")
             raise typer.Exit(code=1)
+

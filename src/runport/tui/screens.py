@@ -60,7 +60,7 @@ VIEW_PLUGINS: List[ViewPlugin] = [
     ViewPlugin("evaluations", " ", "Evaluation Runs", "Generation / RAG benchmark runs"),
     ViewPlugin("health", " ", "Project Health", "Environment and database diagnostics"),
     ViewPlugin("validation", " ", "Dataset Validation", "Dataset schemas and integrity checks"),
-    ViewPlugin("lead", " ", "Binary Decisions", "Threshold calibration and decision evaluation"),
+    ViewPlugin("binary", " ", "Binary Decisions", "Threshold calibration and decision evaluation"),
 ]
 
 NAV_ITEMS = [(p.shortcut, p.title, p.description) for p in VIEW_PLUGINS]

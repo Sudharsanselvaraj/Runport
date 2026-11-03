@@ -156,3 +156,4 @@ def test_report_generation_and_caveats(tmp_path: Path):
     assert json_file.is_file()
     data = json.loads(json_file.read_text(encoding="utf-8"))
     assert len(data["caveats"]) == 4
+

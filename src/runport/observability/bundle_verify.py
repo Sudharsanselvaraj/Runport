@@ -50,12 +50,12 @@ def verify_bundle(bundle: Path, executed_case_ids: Optional[Dict[str, set]] = No
         # predictions and errors retained
         probs = []
         for r in results:
-            if r["status"] == "OK" and r["task"] == "INTENT" and not r["predicted_label"]:
-                probs.append(("intent-no-label", r["case_id"]))
-            if r["status"] == "OK" and r["task"] == "LEAD" and r["binary_decision_available"] == "True" and r["predicted_need_cta"] == "":
-                probs.append(("lead-no-boolean", r["case_id"]))
-            if r["status"] == "OK" and r["task"] == "LEAD" and r["binary_decision_available"] != "True" and r["probability_only"] != "True":
-                probs.append(("lead-undefined", r["case_id"]))
+            if r["status"] == "OK" and r["task"] in ("CLASSIFICATION", "TASK_A") and not r["predicted_label"]:
+                probs.append(("classification-no-label", r["case_id"]))
+            if r["status"] == "OK" and r["task"] in ("BINARY", "TASK_B") and r["binary_decision_available"] == "True" and r["predicted_need_cta"] == "":
+                probs.append(("binary-no-boolean", r["case_id"]))
+            if r["status"] == "OK" and r["task"] in ("BINARY", "TASK_B") and r["binary_decision_available"] != "True" and r["probability_only"] != "True":
+                probs.append(("binary-undefined", r["case_id"]))
             if r["status"] != "OK" and (r["predicted_label"] or r["predicted_need_cta"] or r["decision"]):
                 probs.append(("prediction-on-non-ok", r["case_id"]))
             if r["status"] == "ERROR" and (not r["error_category"] or r["failed_call"] != "True"):
@@ -100,7 +100,7 @@ def verify_bundle(bundle: Path, executed_case_ids: Optional[Dict[str, set]] = No
         section = md.split("## 2. Reliability", 1)[-1].split("## 3.", 1)[0]
         for line in section.splitlines():
             cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) == 9 and cells[1] in ("INTENT", "LEAD") and cells[2].isdigit():
+            if len(cells) == 9 and cells[1] in ("CLASSIFICATION", "BINARY", "TASK_A", "TASK_B") and cells[2].isdigit():
                 rel[(cells[0], cells[1])] = tuple(int(x) for x in cells[2:6])
         name = {s["model_key"]: s["display_name"] for s in summary}
         rep_bad = [(s["model_key"], s["task"]) for s in summary if rel.get((name[s["model_key"]], s["task"])) not in (None, (int(s["attempted"]), int(s["valid"]), int(s["invalid_output"]), int(s["errors"])))]

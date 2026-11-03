@@ -38,3 +38,4 @@ def register_models_commands(models_app: typer.Typer) -> None:
     def models_list() -> None:
         """List the comparison participants (same view as `models roster`)."""
         models_roster()
+

@@ -29,7 +29,7 @@ def register_trace_commands(app: typer.Typer) -> None:
 
         fmt_val = getattr(fmt, "default", fmt) if hasattr(fmt, "default") else fmt
         task_val = getattr(task, "default", task) if hasattr(task, "default") else task
-        if task_val is not None and str(task_val).upper() not in ("INTENT", "LEAD", "CLASSIFICATION", "BINARY", "RAG"):
+        if task_val is not None and str(task_val).upper() not in ("CLASSIFICATION", "BINARY", "RAG", "TASK_A", "TASK_B"):
             console.print(f"[bold red]Invalid --task: {task_val}[/bold red]")
             raise typer.Exit(code=1)
         mon = LiveMonitor()
@@ -166,3 +166,4 @@ def register_trace_commands(app: typer.Typer) -> None:
             console.print(f"\n[green]Diagnostic reports generated successfully:[/green]")
             console.print(f"  • CSV: [bold]{csv_file}[/bold]")
             console.print(f"  • Markdown: [bold]{md_file}[/bold]")
+

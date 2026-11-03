@@ -30,7 +30,7 @@ def validate_classification_output(
     raw: Optional[str],
     allowed_labels: Optional[List[str]] = None,
 ) -> ClassificationValidation:
-    """Validate a classification output against an allowed vocabulary. Case-sensitive; leading/trailing whitespace tolerated."""
+    """Validate a classification output against an allowed vocabulary. Case-sensitive; surrounding whitespace tolerated."""
     if raw is None or not raw.strip():
         return ClassificationValidation(valid=False, reason=InvalidReason.EMPTY_OUTPUT)
     text = raw.strip()

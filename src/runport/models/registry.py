@@ -241,7 +241,7 @@ def _candidate_to_record(cand) -> ModelRecord:
         key=key,
         display_name=cand.display_name,
         roles=["CANDIDATE"],
-        tasks=["BENCHMARK", "INTENT", "LEAD"],
+        tasks=["BENCHMARK", "CLASSIFICATION", "BINARY"],
         requested_model_id=fact(cand.model_id, FactStatus.VERIFIED_PRIMARY, urls, d),
         endpoint=fact("POST https://openrouter.ai/api/v1/chat/completions", FactStatus.VERIFIED_PRIMARY, urls, d),
         request_fields=fact(["model", "messages"], FactStatus.VERIFIED_PRIMARY, urls, d),

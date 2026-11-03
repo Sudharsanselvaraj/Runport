@@ -202,15 +202,6 @@ def compute_binary_metrics(scorable: Sequence[Any]) -> BinaryMetrics:
     )
 
 
-# Compatibility aliases
-IntentMetrics = ClassificationMetrics
-IntentItem = ClassificationItem
-intent_metrics = compute_classification_metrics
-LeadMetrics = BinaryMetrics
-LeadItem = ClassificationItem
-lead_metrics = compute_binary_metrics
-
-
 def brier_multiclass(probs_list: Sequence[Dict[str, float]], truths: Sequence[str], source: Any = None) -> Optional[float]:
     """Computes multiclass Brier score over valid probability distributions and approved labels."""
     if not probs_list or len(probs_list) != len(truths):

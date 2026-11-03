@@ -73,7 +73,7 @@ def load_case_meta(prep_dir: Optional[Path]) -> Dict[str, CaseMeta]:
     """Non-text metadata of prepared candidates (split, view, history status, builder flags). Student text is parsed and discarded."""
     if prep_dir is None or not Path(prep_dir).exists():
         return {}
-    files = sorted(Path(prep_dir).glob("intent_candidates_*.jsonl")) + sorted(Path(prep_dir).glob("lead_candidates_*.jsonl"))
+    files = sorted(Path(prep_dir).glob("*candidates_*.jsonl"))
     key = tuple((str(f), f.stat().st_mtime_ns) for f in files)
     if key in _META_CACHE:
         return _META_CACHE[key]
@@ -110,7 +110,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> Optional[Tuple[float, float]]:
     return max(0.0, c - h), min(1.0, c + h)
 
 
-def intent_pred(r: PredictionRecord) -> Optional[str]:
+def class_pred(r: PredictionRecord) -> Optional[str]:
     return r.predicted_label if r.status == "OK" else None
 
 
@@ -132,12 +132,9 @@ class ClassificationQuality:
     n_predictions: int
     n_request_errors: int
     status: str                              # PENDING text or "SCORED"
-    metrics: Optional[M.IntentMetrics] = None
+    metrics: Optional[M.ClassificationMetrics] = None
     accuracy_ci: Optional[Tuple[float, float]] = None
     flags: List[str] = field(default_factory=list)
-
-
-IntentQuality = ClassificationQuality
 
 
 def classification_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: ApprovedLabels) -> List[ClassificationQuality]:
@@ -145,13 +142,13 @@ def classification_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], 
     out = []
     for (mk, task), recs in sorted(runs.items()):
         task_str = task.value if hasattr(task, "value") else str(task)
-        if task_str.lower() not in ("intent", "classification"):
+        if task_str.lower() not in ("classification", "task_a"):
             continue
         q = ClassificationQuality(mk, recs[0].run_id, len(recs), sum(r.status == "ERROR" for r in recs), PENDING)
-        scorable = [r for r in recs if r.case_id in labels.intent]
-        if labels.intent and scorable:
-            items = [M.IntentItem(expected=labels.intent[r.case_id], predicted=intent_pred(r)) for r in scorable]
-            q.metrics = M.intent_metrics(items)
+        scorable = [r for r in recs if r.case_id in labels.multiclass]
+        if labels.multiclass and scorable:
+            items = [M.ClassificationItem(expected=labels.multiclass[r.case_id], predicted=class_pred(r)) for r in scorable]
+            q.metrics = M.compute_classification_metrics(items)
             q.status = "SCORED"
             n = q.metrics.n_scored
             if q.metrics.accuracy is not None:
@@ -165,12 +162,7 @@ def classification_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], 
     return out
 
 
-def intent_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: ApprovedLabels) -> List[ClassificationQuality]:
-    """Deprecated alias for classification_quality."""
-    return classification_quality(runs, labels)
-
-
-def lead_pred(r: PredictionRecord, frozen: Optional[T.FrozenThreshold]) -> Optional[bool]:
+def binary_pred(r: PredictionRecord, frozen: Optional[T.FrozenThreshold]) -> Optional[bool]:
     if r.status != "OK":
         return None
     if r.yes_prob is not None and frozen is not None:
@@ -185,7 +177,7 @@ def lead_pred(r: PredictionRecord, frozen: Optional[T.FrozenThreshold]) -> Optio
 
 
 @dataclass
-class LeadModelReport:
+class BinaryModelReport:
     model_key: str
     run_id: str
     n_predictions: int
@@ -194,47 +186,47 @@ class LeadModelReport:
     n_undecided: int                          # invalid, errored, or P(yes) with no frozen threshold yet
     n_with_prob: int
     status: str = PENDING
-    metrics: Optional[M.LeadMetrics] = None
+    metrics: Optional[M.BinaryMetrics] = None
     frozen: Optional[T.FrozenThreshold] = None
     held_out: Optional[T.HeldOutReport] = None
     threshold_note: str = ""
     flags: List[str] = field(default_factory=list)
 
 
-def lead_reports(runs, labels: ApprovedLabels, meta: Dict[str, CaseMeta]) -> List[LeadModelReport]:
+def binary_reports(runs, labels: ApprovedLabels, meta: Dict[str, CaseMeta]) -> List[BinaryModelReport]:
     out = []
     for (mk, task), recs in sorted(runs.items()):
         task_str = task.value if hasattr(task, "value") else str(task)
-        if task_str.lower() not in ("lead", "binary"):
+        if task_str.lower() not in ("binary", "task_b"):
             continue
         frozen: Optional[T.FrozenThreshold] = None
         note = ""
         probs = [r for r in recs if r.yes_prob is not None]
         if probs:
-            dev = [T.ProbItem(r.case_id, labels.lead.get(r.case_id), r.yes_prob, DatasetSplit.DEV) for r in probs
-                   if meta.get(r.case_id) and meta[r.case_id].split == "DEV" and r.case_id in labels.lead]
+            dev = [T.ProbItem(r.case_id, labels.binary.get(r.case_id), r.yes_prob, DatasetSplit.DEV) for r in probs
+                   if meta.get(r.case_id) and meta[r.case_id].split == "DEV" and r.case_id in labels.binary]
             try:
                 frozen = T.select_threshold_on_dev(dev)
             except T.ThresholdError as e:
                 note = f"NO FROZEN THRESHOLD: {e}"
-        rep = LeadModelReport(mk, recs[0].run_id, len(recs), 0, 0, 0, len(probs), frozen=frozen, threshold_note=note)
+        rep = BinaryModelReport(mk, recs[0].run_id, len(recs), 0, 0, 0, len(probs), frozen=frozen, threshold_note=note)
         for r in recs:
-            p = lead_pred(r, frozen)
+            p = binary_pred(r, frozen)
             if p is True:
                 rep.n_yes += 1
             elif p is False:
                 rep.n_no += 1
             else:
                 rep.n_undecided += 1
-        scorable = [r for r in recs if r.case_id in labels.lead]
+        scorable = [r for r in recs if r.case_id in labels.binary]
         if scorable:
-            rep.metrics = M.lead_metrics([M.LeadItem(expected=labels.lead[r.case_id], predicted=lead_pred(r, frozen)) for r in scorable])
+            rep.metrics = M.compute_binary_metrics([(labels.binary[r.case_id], binary_pred(r, frozen)) for r in scorable])
             rep.status = "SCORED"
             if rep.metrics.n_scored < MIN_SAMPLE:
                 rep.flags.append(f"INSUFFICIENT SAMPLE (n={rep.metrics.n_scored} < {MIN_SAMPLE})")
         if frozen is not None:
-            test = [T.ProbItem(r.case_id, labels.lead[r.case_id], r.yes_prob, DatasetSplit.TEST) for r in probs
-                    if meta.get(r.case_id) and meta[r.case_id].split == "TEST" and r.case_id in labels.lead]
+            test = [T.ProbItem(r.case_id, labels.binary[r.case_id], r.yes_prob, DatasetSplit.TEST) for r in probs
+                    if meta.get(r.case_id) and meta[r.case_id].split == "TEST" and r.case_id in labels.binary]
             if test:
                 rep.held_out = T.evaluate_held_out(test, frozen)
         out.append(rep)
@@ -275,7 +267,7 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
     out = []
     for (mk, task), recs in sorted(runs.items()):
         task_str = task.value if hasattr(task, "value") else str(task)
-        if task_str.lower() not in ("intent", "classification"):
+        if task_str.lower() not in ("classification", "task_a"):
             continue
         dists = []
         invalid = 0
@@ -302,12 +294,12 @@ def calibration_reports(runs, labels: ApprovedLabels) -> List[CalibrationReport]
             rep.status = "UNAVAILABLE"
             out.append(rep)
             continue
-        lab = [r for r in dists if r.case_id in labels.intent]
+        lab = [r for r in dists if r.case_id in labels.multiclass]
         if lab:
             truths = [
-                labels.intent[r.case_id].value
-                if hasattr(labels.intent[r.case_id], "value")
-                else str(labels.intent[r.case_id])
+                labels.multiclass[r.case_id].value
+                if hasattr(labels.multiclass[r.case_id], "value")
+                else str(labels.multiclass[r.case_id])
                 for r in lab
             ]
             preds_lab = [
@@ -369,9 +361,9 @@ def _matches_task(t1: str, t2: str) -> bool:
     s1, s2 = t1.lower(), t2.lower()
     if s1 == s2:
         return True
-    if s1 in ("intent", "classification") and s2 in ("intent", "classification"):
+    if s1 in ("classification", "task_a") and s2 in ("classification", "task_a"):
         return True
-    if s1 in ("lead", "binary") and s2 in ("lead", "binary"):
+    if s1 in ("binary", "task_b") and s2 in ("binary", "task_b"):
         return True
     return False
 
@@ -383,7 +375,7 @@ def agreement_report(runs, task: Any, labels: ApprovedLabels, frozen_by_model: O
     attempted: Dict[str, set] = {}                # model -> cases it was run on (valid or not)
     excluded: Dict[str, str] = {}
     task_str = task.value if hasattr(task, "value") else str(task)
-    is_classification = task_str.lower() in ("intent", "classification")
+    is_classification = task_str.lower() in ("classification", "task_a")
 
     for (mk, t), recs in runs.items():
         t_str = t.value if hasattr(t, "value") else str(t)
@@ -394,11 +386,11 @@ def agreement_report(runs, task: Any, labels: ApprovedLabels, frozen_by_model: O
         undecided = 0
         for r in recs:
             if is_classification:
-                p = intent_pred(r)
+                p = class_pred(r)
                 if p is not None:
                     m[r.case_id] = p if isinstance(p, str) else getattr(p, "value", str(p))
             else:
-                p = lead_pred(r, frozen_by_model.get(mk))
+                p = binary_pred(r, frozen_by_model.get(mk))
                 if p is not None:
                     m[r.case_id] = "YES" if p else "NO"
                 elif r.status == "OK" and r.yes_prob is not None:
@@ -432,7 +424,7 @@ def agreement_report(runs, task: Any, labels: ApprovedLabels, frozen_by_model: O
                 frontier[mk][fk] = p.agreement if p else None
     ue: Optional[List[str]] = None
     basis = PENDING
-    truth = labels.intent if is_classification else {k: ("YES" if v else "NO") for k, v in labels.lead.items()}
+    truth = labels.multiclass if is_classification else {k: ("YES" if v else "NO") for k, v in labels.binary.items()}
     if truth and in_all:
         lab_cases = sorted(c for c in in_all if c in truth)
         tv = {c: (truth[c] if isinstance(truth[c], str) else getattr(truth[c], "value", str(truth[c]))) for c in lab_cases}
@@ -453,10 +445,10 @@ class Repeatability:
 def repeatability(preds: Sequence[PredictionRecord]) -> List[Repeatability]:
     by: Dict[Tuple[str, str, str], Dict[str, str]] = defaultdict(dict)
     for r in preds:
-        pred = intent_pred(r)
+        pred = class_pred(r)
         pred_str = (pred if isinstance(pred, str) else getattr(pred, "value", str(pred))) if pred else "INVALID"
         task_str = r.task.value if hasattr(r.task, "value") else str(r.task)
-        if task_str.lower() in ("intent", "classification"):
+        if task_str.lower() in ("classification", "task_a"):
             val = pred_str
         else:
             val = "INVALID" if r.status != "OK" else str(r.yes_prob if r.yes_prob is not None else r.predicted_label)
@@ -474,13 +466,13 @@ def history_slices(runs, labels: ApprovedLabels, meta: Dict[str, CaseMeta]) -> L
     out = []
     for (mk, task), recs in sorted(runs.items()):
         task_str = task.value if hasattr(task, "value") else str(task)
-        if task_str.lower() not in ("intent", "classification") or not labels.intent:
+        if task_str.lower() not in ("classification", "task_a") or not labels.multiclass:
             continue
         groups: Dict[str, List[PredictionRecord]] = defaultdict(list)
         for r in recs:
-            if r.case_id in labels.intent and meta.get(r.case_id) and meta[r.case_id].history_status:
+            if r.case_id in labels.multiclass and meta.get(r.case_id) and meta[r.case_id].history_status:
                 groups[meta[r.case_id].history_status].append(r)
         for hs, rs in sorted(groups.items()):
-            ok = sum(intent_pred(r) == labels.intent[r.case_id] for r in rs)
+            ok = sum(class_pred(r) == labels.multiclass[r.case_id] for r in rs)
             out.append((mk, hs, len(rs), ok / len(rs)))
     return out

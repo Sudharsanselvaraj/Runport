@@ -5,7 +5,7 @@ import pytest
 
 from runport.classification.contracts import ClassificationCase, Role, Turn
 from runport.classification.metrics import (
-    IntentItem, brier_multiclass, expected_calibration_error, intent_metrics,
+    ClassificationItem, brier_multiclass, compute_classification_metrics, expected_calibration_error,
 )
 from runport.scorers.stats import wilson
 from runport.classification.records import PredictionRecord, PredictionStore
@@ -128,14 +128,14 @@ def test_classification_runner_offline_execution(tmp_path):
 def test_supervised_metrics_computation():
     """Metrics accurately compute accuracy, macro F1, and confusion matrix."""
     items = [
-        IntentItem(expected="QUERY", predicted="QUERY"),
-        IntentItem(expected="QUERY", predicted="QUERY"),
-        IntentItem(expected="GREETING", predicted="GREETING"),
-        IntentItem(expected="GREETING", predicted="QUERY"),  # Error
-        IntentItem(expected="OTHER", predicted=None),        # Invalid output
+        ClassificationItem(expected="QUERY", predicted="QUERY"),
+        ClassificationItem(expected="QUERY", predicted="QUERY"),
+        ClassificationItem(expected="GREETING", predicted="GREETING"),
+        ClassificationItem(expected="GREETING", predicted="QUERY"),  # Error
+        ClassificationItem(expected="OTHER", predicted=None),        # Invalid output
     ]
 
-    metrics = intent_metrics(items)
+    metrics = compute_classification_metrics(items)
     assert metrics.n_scored == 5
     assert metrics.invalid_count == 1
     assert metrics.accuracy == pytest.approx(0.60)
@@ -194,14 +194,14 @@ def test_dev_calibration_and_held_out_frozen_evaluation():
 
 
 def test_splits_group_assignment_and_privacy():
-    """assign_group_splits assigns groups deterministically and rejects user4."""
-    from runport.classification.splits import SplitError, assert_no_user4, assign_group_splits
+    """assign_group_splits assigns groups deterministically and rejects forbidden fields."""
+    from runport.classification.splits import SplitError, assert_no_forbidden_fields, assign_group_splits
 
     # Rejection of forbidden key
     with pytest.raises(SplitError, match="Forbidden sensitive column"):
-        assert_no_user4(["case_id", "user4", "text"])
+        assert_no_forbidden_fields(["case_id", "forbidden_id", "text"])
 
-    assert_no_user4(["case_id", "session_id", "text"])
+    assert_no_forbidden_fields(["case_id", "session_id", "text"])
 
     # Deterministic split assignment
     groups = ["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10"]

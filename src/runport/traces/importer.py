@@ -213,8 +213,8 @@ class TraceImporter:
                     output_data=ctx,
                 )
             )
-        if "intent" in row or "route" in row:
-            route = row.get("intent") or row.get("route")
+        if "route" in row:
+            route = row.get("route")
             spans.append(
                 ObservationSpan(
                     id=f"{trace_id}-routing",

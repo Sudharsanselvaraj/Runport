@@ -39,11 +39,11 @@ class ApprovedLabels:
         return "APPROVED LABELS PRESENT" if self.available else PENDING
 
     @property
-    def intent(self) -> Dict[str, str]:
+    def multiclass(self) -> Dict[str, str]:
         return self.labels
 
     @property
-    def lead(self) -> Dict[str, bool]:
+    def binary(self) -> Dict[str, bool]:
         return self.binary_labels
 
 

@@ -8,7 +8,7 @@ from runport.workloads.base import BaseWorkload
 
 
 class ClassificationWorkload(BaseWorkload):
-    """Workload for single-label or multi-class intent and sentiment classification."""
+    """Workload for single-label or multi-class categorical and sentiment classification."""
 
     def __init__(
         self,
@@ -34,3 +34,4 @@ class ClassificationWorkload(BaseWorkload):
 
     def get_scorers(self) -> List[BaseScorer]:
         return [AccuracyScorer(), BrierScoreScorer()]
+

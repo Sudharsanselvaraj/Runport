@@ -41,3 +41,4 @@ def load_plugin_targets() -> Dict[str, Any]:
 def load_plugin_scorers() -> Dict[str, Any]:
     """Load custom statistical or heuristic scorers provided by external plugins."""
     return discover_plugins(SCORER_GROUP)
+

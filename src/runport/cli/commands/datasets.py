@@ -107,7 +107,7 @@ def register_dataset_commands(app: typer.Typer) -> None:
             dir_okay=False,
             readable=True,
         ),
-        reviewer: str = typer.Option("Lead Reviewer", "--reviewer", "-r", help="Reviewer identity for ground-truth sign-off."),
+        reviewer: str = typer.Option("Principal Reviewer", "--reviewer", "-r", help="Reviewer identity for ground-truth sign-off."),
     ) -> None:
         """Ground-truth annotation, adjudication, and label freezing."""
         from runport.dataset.manager import DatasetManager
@@ -139,3 +139,4 @@ def register_dataset_commands(app: typer.Typer) -> None:
         if len(cases) > 10:
             console.print(f"[dim]... and {len(cases) - 10} more cases in {dataset_path.name}[/dim]")
         console.print(f"\n[bold green]Annotation Status:[/bold green] All {len(cases)} cases cataloged with schema validation intact.")
+

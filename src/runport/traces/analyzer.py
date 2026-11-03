@@ -131,16 +131,16 @@ class TraceDiagnosticAnalyzer:
         return str(trace.metadata.get("retrieval_context") or trace.metadata.get("context") or "")
 
     def _extract_routing_info(self, trace: TraceRecord) -> str:
-        """Extracts route classification tag or intent span."""
+        """Extracts route classification tag or routing span."""
         for s in trace.spans:
-            if any(k in s.name.lower() for k in ("router", "intent", "classifier", "route")):
+            if any(k in s.name.lower() for k in ("router", "classifier", "route")):
                 return str(s.output_data or s.metadata.get("route") or "")
         return " ".join(trace.tags)
 
     def _check_routing_failure(
         self, trace: TraceRecord, q_lower: str, routing_info: str
     ) -> Tuple[bool, float, str, List[str], str]:
-        """Checks for intent/level/faculty routing mismatch."""
+        """Checks for category/level/domain routing mismatch."""
         route_lower = routing_info.lower()
 
         # Check domain mismatch between query and route
@@ -153,7 +153,7 @@ class TraceDiagnosticAnalyzer:
                 0.90,
                 "Candidate Routing Mismatch: Specialized inquiry misrouted to entry-level flow.",
                 [f"Query terms: '{q_lower[:60]}...'", f"Assigned Route: '{routing_info}'"],
-                "Retrain routing classifier with explicit domain intent discriminators.",
+                "Retrain routing classifier with explicit domain route discriminators.",
             )
 
         is_billing_query = any(k in q_lower for k in ("invoice", "payment", "refund", "billing", "receipt"))
@@ -165,7 +165,7 @@ class TraceDiagnosticAnalyzer:
                 0.90,
                 "Candidate Routing Mismatch: Billing inquiry misrouted to technical workflow.",
                 [f"Query terms: '{q_lower[:60]}...'", f"Assigned Route: '{routing_info}'"],
-                "Retrain routing classifier with explicit domain intent discriminators.",
+                "Retrain routing classifier with explicit domain route discriminators.",
             )
 
         is_tech_query = any(k in q_lower for k in ("api", "sdk", "bug", "exception", "crash", "stack trace"))

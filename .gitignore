@@ -63,6 +63,8 @@ experiments/
 node_modules/
 web/node_modules/
 web/dist/
+package-lock.json
+web/package-lock.json
 
 # Progress and local scratch docs
 docs/PROGRESS.md

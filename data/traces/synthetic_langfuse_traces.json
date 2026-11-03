@@ -15,7 +15,7 @@
     "observations": [
       {
         "id": "obs-001-route",
-        "name": "intent_classifier",
+        "name": "route_classifier",
         "type": "span",
         "latency": 0.12,
         "output": "undergraduate_diploma_router"

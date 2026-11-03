@@ -64,3 +64,4 @@ class BrierScoreScorer(BaseScorer):
             )
         except (ValueError, TypeError):
             return ScoreResult(metric_name=self.name, score=None, details={"reason": "Invalid probability format"})
+

@@ -38,3 +38,4 @@ class BaseScorer(ABC):
     ) -> ScoreResult:
         """Evaluate a predicted output against ground truth expectations."""
         pass
+

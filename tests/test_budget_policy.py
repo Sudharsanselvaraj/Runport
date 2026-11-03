@@ -89,20 +89,20 @@ def test_cli_refuses_without_an_interactive_terminal(tmp_path):
 def test_audit_reconciles_ledger_with_stored_results_and_separates_guard_from_ledger(tmp_path):
     from runport.classification.records import PredictionStore
     from runport.observability import budget_audit as ba
-    from obs_helpers import intent_pred
+    from obs_helpers import class_pred
     db = DatabaseManager(db_path=tmp_path / "a.db")
     svc = BudgetService(db=db, policy=BASE)
     reports = tmp_path / "reports"
-    store = PredictionStore(reports / "classification" / "bench-0123456789ab__m__INTENT.jsonl")
+    store = PredictionStore(reports / "classification" / "bench-0123456789ab__m__CLASSIFICATION.jsonl")
     for i, (cost, native) in enumerate([("0.001000", "0.001500"), ("0.002000", None)]):
-        rec = intent_pred(f"C{i}", "QUERY", run="bench-0123456789ab-m-INTENT", recorded_cost_usd=Decimal(cost), native_cost=Decimal(native) if native else None, cost_basis="ESTIMATED_FROM_CATALOG")
+        rec = class_pred(f"C{i}", "QUERY", run="bench-0123456789ab-m-CLASSIFICATION", recorded_cost_usd=Decimal(cost), native_cost=Decimal(native) if native else None, cost_basis="ESTIMATED_FROM_CATALOG")
         store.append(rec)
         svc.record_spend(f"tx{i}", "m", "openrouter", Decimal(cost), "x", run_id=rec.run_id, cost_basis="ESTIMATED_FROM_CATALOG")
-    store.append(intent_pred("E1", "QUERY", run="bench-0123456789ab-m-INTENT", status="ERROR"))
+    store.append(class_pred("E1", "QUERY", run="bench-0123456789ab-m-CLASSIFICATION", status="ERROR"))
     a = ba.audit(db.db_path, BASE, reports, tmp_path / "benchmarks")
     g = a["groups"][0]
     assert a["reconciled"] and a["ledger_total_counted_usd"] == "0.003" and g["ledger_equals_records"]
     assert g["records_native_credits"] == "0.0015" and g["guard_from_records_usd"] == "0.0035"        # guard = max(booked, native) per request: a different meaning from the ledger
     assert g["records_error_no_cost"] == 1 and a["remaining_usd"]["total"] == "17.997"
-    svc.record_spend("tx-extra", "m", "openrouter", Decimal("0.5"), "x", run_id="bench-0123456789ab-m-INTENT", cost_basis="ESTIMATED_FROM_CATALOG")
+    svc.record_spend("tx-extra", "m", "openrouter", Decimal("0.5"), "x", run_id="bench-0123456789ab-m-CLASSIFICATION", cost_basis="ESTIMATED_FROM_CATALOG")
     assert not ba.audit(db.db_path, BASE, reports, tmp_path / "benchmarks")["reconciled"]           # a ledger row with no stored result is a discrepancy

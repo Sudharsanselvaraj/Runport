@@ -32,7 +32,7 @@ def test_valid_single_turn_and_multiline_record(tmp_kb_dir: Path):
         "# \\# General Information about Novatech Institute\n\n"
         "## \\#\\# Legitimacy\n\n"
         "\\*\\*Question:\\*\\* Is this Novatech Institute’s official portal?\n\n"
-        "\\*\\*Answer:\\*\\* Yes, this is the official admissions portal.\n\n"
+        "\\*\\*Answer:\\*\\* Yes, this is the official portal.\n\n"
         "## \\#\\# Semester Breakdown\n\n"
         "\\*\\*Question:\\*\\* How long is each semester?\n\n"
         "\\*\\*Answer:\\*\\* Instruction: 14 weeks.\n"
@@ -60,7 +60,7 @@ def test_valid_single_turn_and_multiline_record(tmp_kb_dir: Path):
 def test_missing_answer_detection(tmp_kb_dir: Path):
     """Verify deterministic detection of questions with missing answers."""
     content = (
-        "# \\# Admissions\n\n"
+        "# \\# Documentation\n\n"
         "\\*\\*Question:\\*\\* What is the Affin Education Financing-I?\n\n"
         "\\*\\*Question:\\*\\* What is PTPTN?\n\n"
         "\\*\\*Answer:\\*\\* PTPTN is the National Higher Education Fund.\n"

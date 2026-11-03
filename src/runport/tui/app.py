@@ -754,7 +754,7 @@ class WorkbenchTUI:
         elif key == "d":
             ex.kind = self._cycle(choices["kinds"], ex.kind)
         elif key == "t":
-            ex.task = self._cycle(("INTENT", "LEAD"), ex.task)
+            ex.task = self._cycle(("CLASSIFICATION", "BINARY"), ex.task)
         elif key == "u":
             ex.run = self._cycle(choices["runs"], ex.run)
         elif key == "s":
@@ -888,7 +888,7 @@ class WorkbenchTUI:
         "quality": "quality", "classification": "quality", "q1": "quality",
         "calibration": "calibration", "confidence": "calibration", "cal": "calibration",
         "agreement": "agreement", "agree": "agreement",
-        "lead": "lead", "leads": "lead",
+        "binary": "binary",
         "latency": "latency", "cost": "latency", "reliability": "latency", "live": "latency",
         "robustness": "robustness", "readiness": "robustness",
         "dataset": "dataset", "labels": "dataset", "d": "dataset",

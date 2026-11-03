@@ -61,3 +61,4 @@ def test_modal_approver_verification():
     decision = approver_ok.request_approval(fp)
     assert decision.approved is True
     assert decision.approver_kind == "MODAL"
+

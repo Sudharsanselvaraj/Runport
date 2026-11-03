@@ -28,7 +28,7 @@ def test_importer_valid_json():
     assert t1.latency_ms == 1420.0  # normalized from 1.42s
     assert t1.total_tokens == 173
     assert len(t1.spans) == 2
-    assert t1.spans[0].name == "intent_classifier"
+    assert t1.spans[0].name == "route_classifier"
 
 
 def test_importer_valid_csv():

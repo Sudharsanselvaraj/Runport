@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set
 from runport.schemas.evaluation import DatasetSplit
 
 DEFAULT_FORBIDDEN_FIELDS: Set[str] = {
-    "user4",
+    "forbidden_id",
     "phone",
     "email",
     "ssn",
@@ -29,11 +29,6 @@ def assert_no_forbidden_fields(record_keys: Iterable[str], forbidden: Optional[I
     bad = targets.intersection(k.lower() for k in record_keys)
     if bad:
         raise SplitError(f"Forbidden sensitive column(s) present: {sorted(bad)}")
-
-
-def assert_no_user4(record_keys: Iterable[str]) -> None:
-    """Backward-compatible sentinel rejection for phone-prefix column."""
-    assert_no_forbidden_fields(record_keys)
 
 
 def _rank(group: str, seed: str) -> str:

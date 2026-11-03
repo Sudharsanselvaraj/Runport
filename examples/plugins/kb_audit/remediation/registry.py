@@ -89,7 +89,7 @@ def get_default_remediation_findings(source_file: str) -> List[RemediationFindin
             issue_title="Contradictory Tuition Fee: RM62,500 vs RM63,500 in Single Answer",
             issue_description="The answer text states the fee is RM 62,500, but the following sentence instructs dividing RM63,500 by the duration.",
             original_text="The fees for Doctor of Philosophy (Applied  \nScience) is RM 62,500. Since the course duration is 2-6 years, you can equally divide RM63,500",
-            proposed_text=None,  # Intentionally None: must NOT arbitrarily choose without official bursary confirmation!
+            proposed_text=None,  # Deliberately None: must NOT arbitrarily choose without official bursary confirmation!
             evidence_and_rationale="Internal numerical contradiction in the exact same record. Must not guess which figure is correct.",
             authority_source="Requires official Bursary / Faculty Fee Schedule Verification",
             requires_official_verification=True,
@@ -125,7 +125,7 @@ def get_default_remediation_findings(source_file: str) -> List[RemediationFindin
             original_text="When is the next intake for this course? / Year references: 2024, 2025",
             proposed_text=None,
             evidence_and_rationale="Intake dates change annually and must be verified against the current academic calendar.",
-            authority_source="Requires official Admissions Calendar Verification",
+            authority_source="Requires official Academic Calendar Verification",
             requires_official_verification=True,
             requires_kb_owner_approval=False,
             resolution_notes="Flagged for academic year alignment; no automatic modification.",

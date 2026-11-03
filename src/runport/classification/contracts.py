@@ -11,7 +11,7 @@ CONTRACT_VERSION = "v2"
 PARITY_STATUS = "PRODUCTION_PARITY_NOT_ESTABLISHED"
 
 DEFAULT_FORBIDDEN_FIELDS = {
-    "user4",
+    "forbidden_id",
     "phone",
     "email",
     "ssn",
@@ -41,22 +41,11 @@ class ClassificationSpec(BaseModel):
 
 class Task(str, Enum):
     """Evaluation task identifier (superseded by workload specifications)."""
-    INTENT = "INTENT"
-    LEAD = "LEAD"
     CLASSIFICATION = "classification"
     BINARY = "binary"
+    TASK_A = "TASK_A"
+    TASK_B = "TASK_B"
     RAG = "rag"
-
-
-class IntentLabel(str, Enum):
-    """Reference classification labels (superseded by ClassificationSpec)."""
-    GREETING = "GREETING"
-    OUT_OF_SCOPE = "OUT_OF_SCOPE"
-    UPLOAD_STATUS_CHECK = "UPLOAD_STATUS_CHECK"
-    HUMAN_HANDOFF_REQUEST = "HUMAN_HANDOFF_REQUEST"
-    QUERY = "QUERY"
-    CLOSING = "CLOSING"
-    OTHER = "OTHER"
 
 
 class Role(str, Enum):

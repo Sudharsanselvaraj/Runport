@@ -69,10 +69,10 @@ def _setup_test_models():
         uptime_1d=100.0,
     )
     rec_gemini = ModelRecord(
-        key="baseline-intent-gemini-3.5-flash-lite",
+        key="baseline-classification-gemini-3.5-flash-lite",
         display_name="Gemini 3.5 Flash Lite",
         roles=["PRODUCTION_BASELINE"],
-        tasks=["INTENT"],
+        tasks=["CLASSIFICATION"],
         requested_model_id=fact(MODEL, FactStatus.VERIFIED_PRIMARY, urls, d),
         endpoint=fact("POST https://openrouter.ai/api/v1/chat/completions", FactStatus.VERIFIED_PRIMARY, urls, d),
         request_fields=fact(["model", "messages"], FactStatus.VERIFIED_PRIMARY, urls, d),
@@ -111,7 +111,7 @@ def _setup_test_models():
         key="gpt-4.1-nano",
         display_name="GPT-4.1 Nano",
         roles=["CANDIDATE"],
-        tasks=["INTENT", "LEAD"],
+        tasks=["CLASSIFICATION", "BINARY"],
         requested_model_id=fact("openai/gpt-4.1-nano", FactStatus.VERIFIED_PRIMARY, urls, d),
         endpoint=fact("POST https://openrouter.ai/api/v1/chat/completions", FactStatus.VERIFIED_PRIMARY, urls, d),
         request_fields=fact(["model", "messages"], FactStatus.VERIFIED_PRIMARY, urls, d),
@@ -137,11 +137,11 @@ def _setup_test_models():
     register_model(rec_nano)
 
     from runport.models.registry import Protocol
-    rec_jev = ModelRecord(
+    rec_custom = ModelRecord(
         key="custom-protocol-model",
         display_name="Custom Protocol Model",
         roles=["CANDIDATE"],
-        tasks=["INTENT"],
+        tasks=["CLASSIFICATION"],
         protocol=Protocol.DECISIONS_API,
         requested_model_id=fact("typesafe/custom-protocol-model", FactStatus.VERIFIED_PRIMARY, urls, d),
         endpoint=fact("POST https://api.example.com/custom-protocol", FactStatus.VERIFIED_PRIMARY, urls, d),
@@ -163,7 +163,7 @@ def _setup_test_models():
             route_output_price_per_1m_usd=fact("0.40", FactStatus.VERIFIED_PRIMARY, urls, d),
         ),
     )
-    register_model(rec_jev)
+    register_model(rec_custom)
     yield
     clear_registry()
 

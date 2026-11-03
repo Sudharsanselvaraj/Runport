@@ -23,9 +23,9 @@ class DatasetInfo:
     prep_dir: Optional[Path] = None
     version: Optional[str] = None
     parity: str = "PRODUCTION_PARITY_NOT_ESTABLISHED"
-    intent_rows: Optional[int] = None
-    lead_sessions: Optional[Dict[str, int]] = None
-    session_policy: str = "NOT SELECTED (30 min and 2 h both provisional)"
+    classification_rows: Optional[int] = None
+    binary_sessions: Optional[Dict[str, int]] = None
+    session_policy: str = "NOT SELECTED"
     views_note: str = "challenge pool is a heuristic candidate set, not validated as a rare-class benchmark"
     labels_dir_present: bool = False
 
@@ -41,8 +41,8 @@ def discover_dataset(base: Path) -> DatasetInfo:
         info.prep_dir = p.parent
         info.version = m.get("prep_version")
         info.parity = m.get("parity_status", info.parity)
-        info.intent_rows = m["candidates"]["intent_2h"]["cases"]
-        info.lead_sessions = dict(m["session_comparison"]["sessions"])
+        info.classification_rows = m.get("candidates", {}).get("classification_2h", {}).get("cases")
+        info.binary_sessions = dict(m.get("session_comparison", {}).get("sessions", {}))
     except Exception:
         info.prep_dir = p.parent
     info.labels_dir_present = (p.parent / "annotations").exists()
@@ -61,11 +61,11 @@ class Analysis:
     meta: Dict[str, A.CaseMeta] = field(default_factory=dict)
     runs: Dict[Tuple[str, str], List[PredictionRecord]] = field(default_factory=dict)
     quality: List[A.ClassificationQuality] = field(default_factory=list)
-    intent_quality: List[A.ClassificationQuality] = field(default_factory=list)
+    classification_quality: List[A.ClassificationQuality] = field(default_factory=list)
     calibration: List[A.CalibrationReport] = field(default_factory=list)
-    lead: List[A.LeadModelReport] = field(default_factory=list)
-    agreement_intent: Optional[A.AgreementReport] = None
-    agreement_lead: Optional[A.AgreementReport] = None
+    binary: List[A.BinaryModelReport] = field(default_factory=list)
+    agreement_classification: Optional[A.AgreementReport] = None
+    agreement_binary: Optional[A.AgreementReport] = None
     repeat: List[A.Repeatability] = field(default_factory=list)
     history: List[Tuple[str, str, int, Optional[float]]] = field(default_factory=list)
 
@@ -117,12 +117,12 @@ class LiveMonitor:
             a.meta = A.load_case_meta(self.dataset.prep_dir)
         a.runs = A.latest_runs(a.predictions)
         a.quality = A.classification_quality(a.runs, a.labels)
-        a.intent_quality = a.quality
+        a.classification_quality = a.quality
         a.calibration = A.calibration_reports(a.runs, a.labels)
-        a.lead = A.lead_reports(a.runs, a.labels, a.meta)
-        frozen = {r.model_key: r.frozen for r in a.lead if r.frozen is not None}
-        a.agreement_intent = A.agreement_report(a.runs, "classification", a.labels)
-        a.agreement_lead = A.agreement_report(a.runs, "binary", a.labels, frozen)
+        a.binary = A.binary_reports(a.runs, a.labels, a.meta)
+        frozen = {r.model_key: r.frozen for r in a.binary if r.frozen is not None}
+        a.agreement_classification = A.agreement_report(a.runs, "classification", a.labels)
+        a.agreement_binary = A.agreement_report(a.runs, "binary", a.labels, frozen)
         a.repeat = A.repeatability(a.predictions)
         a.history = A.history_slices(a.runs, a.labels, a.meta)
         self.analysis = a
@@ -140,10 +140,10 @@ class LiveMonitor:
     def trace_inputs(self):
         """(predictions, events, approved labels, frozen thresholds by model) for the Trace Explorer. Read-only views of the loaded sources."""
         a = self.analysis
-        return a.predictions, list(self.events), a.labels, {r.model_key: r.frozen for r in a.lead if r.frozen is not None}
+        return a.predictions, list(self.events), a.labels, {r.model_key: r.frozen for r in a.binary if r.frozen is not None}
 
-    def lead_review(self) -> Tuple[Optional[int], List[str]]:
-        """(count, first ids) of prepared lead sessions the summary builder flagged for ambiguity or unresolved rules. Metadata only."""
+    def binary_review(self) -> Tuple[Optional[int], List[str]]:
+        """(count, first ids) of prepared binary sessions the summary builder flagged for ambiguity or unresolved rules. Metadata only."""
         if self.dataset.prep_dir is None:
             return None, []
         meta = A.load_case_meta(self.dataset.prep_dir)

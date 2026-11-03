@@ -1,7 +1,7 @@
 # Classifier prompt decision log (maintainer document, NOT a prompt)
-This file holds the decision tracking that previously sat in HTML comments at the top of the two prompt files. The prompt files `main_intent_classifier.md` and `lead_qualification_prompt.md` are the only authoritative prompts and now contain only classifier instructions. Nothing here is sent to a model. Production parity is not established; no accuracy claim is made for either prompt.
+This file holds historical decision tracking. Production parity is not established; no accuracy claim is made.
 
-## Main Intent Classifier (`main_intent_classifier.md`)
+## Multiclass Classifier (`classification_prompt_v1.md`)
 
 ```text
 STATUS: business decisions D1 and R1-R5 CONFIRMED by the project owner. Only non-blocking point O1 remains open. Not evaluated; no accuracy claim is made.
@@ -27,10 +27,10 @@ INPUT FORMAT
 The Input section describes the logical inputs only. It does not claim to match the production Dify serialization, which is unverified (production parity not established).
 
 EXAMPLES
-All examples below are hand-written SYNTHETIC examples, not real student messages.
+All examples below are hand-written SYNTHETIC examples, not real user messages.
 ```
 
-## Lead Qualifier (`lead_qualification_prompt.md`)
+## Binary Decision Classifier (`binary_prompt_v1.md`)
 
 ```text
 STATUS: DRAFT — NOT FINALIZED. L1, L2, L3 and L9 are CONFIRMED by the project owner. L4-L8 remain open. Not evaluated; no accuracy claim is made.
@@ -51,8 +51,8 @@ L9. [CONFIRMED] A clearly stated Tier A action is true; genuinely unclear signal
 Note: "credit transfer" appears twice in Tier A (transfer signals and ownership signals). Both are Tier A, so the duplicate has no effect on the result.
 
 INPUT FORMAT
-The Input section describes the logical input only. It does not claim to match the production summary builder or the production Dify flow, both unverified (production parity not established). This prompt does not guarantee that student actions were extracted correctly into the summary.
+The Input section describes the logical input only. It does not claim to match the production summary builder or the production Dify flow, both unverified (production parity not established). This prompt does not guarantee that user actions were extracted correctly into the summary.
 
 EXAMPLES
-All examples are hand-written SYNTHETIC examples, not real student data.
+All examples are hand-written SYNTHETIC examples, not real user data.
 ```

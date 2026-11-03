@@ -191,3 +191,4 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
             console.print(tx_table)
         else:
             console.print("[dim]No paid transactions recorded yet. Spend ledger is at baseline ($0.0000).[/dim]")
+

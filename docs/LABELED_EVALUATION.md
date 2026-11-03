@@ -17,7 +17,7 @@ uv run runport annotate queue --prep-dir data/evaluation/ --annotator-id rater-1
 uv run runport annotate adjudicate --prep-dir data/evaluation/
 
 # Approve adjudicated ground-truth labels with named human authorization
-uv run runport annotate approve --prep-dir data/evaluation/ --approver-name "Lead Evaluator"
+uv run runport annotate approve --prep-dir data/evaluation/ --approver-name "Principal Evaluator"
 
 # Cryptographically freeze approved ground truth for benchmark reporting
 uv run runport annotate freeze --prep-dir data/evaluation/

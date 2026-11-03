@@ -35,7 +35,7 @@ The pilot ($2.00), total ($10.00), per-run ($0.50) and per-case ($0.02) ceilings
 - a block runs **every** participant on the **same** cases, so models stay comparable;
 - a block is dispatched only while recorded guard cost + that block's pessimistic bound fits the hard cap and the ledger ceilings; unresolved spend halts the run;
 - progress is checkpointed after every (block, participant, task) unit; re-running the same command resumes without repeating a completed request (the prediction store refuses duplicates);
-- a run that stops early is reported as **PARTIAL** with its exact coverage (for example "40 of 2,208 INTENT cases"), never as a full benchmark.
+- a run that stops early is reported as **PARTIAL** with its exact coverage (for example "40 of 2,208 CLASSIFICATION cases"), never as a full benchmark.
 
 ## Authorization
 
@@ -54,10 +54,10 @@ Each participant has the existing circuit breaker (3 consecutive errors or a sys
 ## Ground truth workflow
 
 ```bash
-uv run runport annotate queue  --prep-dir ... --session-policy 2h --task INTENT        # redacted review queue (local)
-uv run runport annotate submit --prep-dir ... --session-policy 2h --task INTENT --reviewer alice --file alice.jsonl
+uv run runport annotate queue  --prep-dir ... --session-policy 2h --task CLASSIFICATION        # redacted review queue (local)
+uv run runport annotate submit --prep-dir ... --session-policy 2h --task CLASSIFICATION --reviewer alice --file alice.jsonl
 uv run runport annotate status --prep-dir ... --session-policy 2h
-uv run runport annotate adjudicate --prep-dir ... --task INTENT --case I-2h-R0001 --label QUERY --adjudicator dave
+uv run runport annotate adjudicate --prep-dir ... --task CLASSIFICATION --case I-2h-R0001 --label QUERY --adjudicator dave
 uv run runport annotate approve --prep-dir ... --approver carol --all-ready            # typed phrase required
 uv run runport annotate freeze  --prep-dir ... --by carol
 ```
@@ -69,7 +69,7 @@ Two distinct reviewers label independently; agreement makes a case ready, disagr
 
 - `origin` marks each row `NEW_THIS_PLAN` or `CARRIED_OVER_FROM:<bench>`; carried-over participants are never listed as unattempted.
 - **Cost columns:** an empty cell means not measured, never zero. `requests_without_cost_evidence`, `errors_no_response` (an error returned nothing to meter; that is not proof it cost nothing) and `unknown_cost_after_response` are separate; unresolved ledger entries are counted separately in the manifest.
-- **Jev LEAD** results are probabilities until a threshold is frozen from DEV: `binary_decision_available` is False and `probability_only` True, and they are excluded from YES/NO agreement.
+- **Custom protocol BINARY** results are probabilities until a threshold is frozen from DEV: `binary_decision_available` is False and `probability_only` True, and they are excluded from YES/NO agreement.
 - **Privacy block:** `privacy.export` describes the files (no raw customer text, this bundle was not sent anywhere); `privacy.inference_payloads` records that redacted evaluation inputs WERE sent to the listed recipients under the operator's authorization (provider policies UNKNOWN).
 - `finish_reason` and `reasoning_tokens` are stored for new requests (null for records made before they were captured).
 - `real-benchmark verify <bundle> --prep-dir ... --session-policy ...` re-checks hashes, row counts, retained predictions, cost provenance, unattempted scope and that the narrative report agrees with the CSV files.

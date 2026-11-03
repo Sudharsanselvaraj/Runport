@@ -45,7 +45,7 @@ class LiveContext:
     roster: List[Dict[str, Any]]
     window_label: str = "5 min"
     events_malformed: int = 0
-    review_ids: List[str] = field(default_factory=list)       # builder-flagged lead cases (opaque ids)
+    review_ids: List[str] = field(default_factory=list)       # builder-flagged binary cases (opaque ids)
     review_count: Optional[int] = None
 
 
@@ -116,12 +116,12 @@ def view_overview(ctx: LiveContext) -> ViewModel:
     summary = [
         _line("Live inference", NO_LIVE if not a.has_live_inference else f"{a.n_started} requests started, {a.n_terminal} finished, {a.active} active"),
         _line("Roster readiness", f"{ready} ready / {smoke} smoke-ready / {blocked} blocked of {len(ctx.roster)}"),
-        _line("Dataset", f"{ds.version or 'NOT PREPARED'}  ({ds.intent_rows if ds.intent_rows is not None else UNAVAILABLE} intent candidates)"),
+        _line("Dataset", f"{ds.version or 'NOT PREPARED'}  ({ds.classification_rows if ds.classification_rows is not None else UNAVAILABLE} candidates)"),
         _line("Ground truth", lab.status, COLOR_WARNING if not lab.available else COLOR_SUCCESS),
         _line("Parity", PARITY, COLOR_WARNING),
         _line("Session policy", ds.session_policy, COLOR_WARNING),
     ]
-    q_state = lab.status if ctx.analysis.intent_quality else "NO PREDICTIONS RECORDED"
+    q_state = lab.status if ctx.analysis.classification_quality else "NO PREDICTIONS RECORDED"
     cal = ctx.analysis.calibration
     rows = [
         Row(["1", "Classification quality", q_state], [
@@ -130,10 +130,10 @@ def view_overview(ctx: LiveContext) -> ViewModel:
             f"Predictions on disk: {len(ctx.analysis.predictions)}.  Approved labels: {lab.n_approved}."]),
         Row(["2", "Confidence and calibration", "UNAVAILABLE until a native distribution and approved labels exist" if not cal else lab.status if not lab.available else "SCORED"], [
             "Only native probability distributions are calibratable; textual or self-reported confidence is never used."]),
-        Row(["3", "Model agreement", f"{len(ctx.analysis.agreement_intent.models) if ctx.analysis.agreement_intent else 0} models with intent predictions"], [
+        Row(["3", "Model agreement", f"{len(ctx.analysis.agreement_classification.models) if ctx.analysis.agreement_classification else 0} models with predictions"], [
             "Agreement is not correctness; it only shows how often models give the same answer."]),
-        Row(["4", "Lead Qualifier", PENDING if not lab.lead else "SCORED"], [
-            "YES precision/recall need approved lead labels. The Jev threshold is chosen on DEV only, then frozen."]),
+        Row(["4", "Binary Classifier", PENDING if not lab.binary else "SCORED"], [
+            "YES precision/recall need approved binary labels. The threshold is chosen on DEV only, then frozen."]),
         Row(["5", "Latency, reliability, cost", NO_LIVE if not a.has_live_inference else f"{a.n_terminal} recorded requests"], [
             "Measured from the request event log only."]),
         Row(["6", "Robustness and readiness", f"{blocked} roster entries blocked; student data blocked by unverified data policy"], [
@@ -153,11 +153,11 @@ def _valid_rate(recs) -> Tuple[int, int]:
 def view_quality(ctx: LiveContext) -> ViewModel:
     an = ctx.analysis
     rows: List[Row] = []
-    for q in an.intent_quality:
-        recs = an.runs.get((q.model_key, "INTENT")) or an.runs.get((q.model_key, "classification")) or next((rs for (mk, _), rs in an.runs.items() if mk == q.model_key), [])
+    for q in an.classification_quality:
+        recs = an.runs.get((q.model_key, "CLASSIFICATION")) or an.runs.get((q.model_key, "classification")) or next((rs for (mk, _), rs in an.runs.items() if mk == q.model_key), [])
         ok, scored = _valid_rate(recs)
         m = q.metrics
-        detail = [f"Main Intent | model {_model_name(ctx, q.model_key)} | run {q.run_id} | {q.n_predictions} predictions, {q.n_request_errors} request errors",
+        detail = [f"Classification | model {_model_name(ctx, q.model_key)} | run {q.run_id} | {q.n_predictions} predictions, {q.n_request_errors} request errors",
                   f"Schema/label validity (measured, no labels needed): {ok}/{scored}",
                   f"Invalid-label rate: {_pct(m.invalid_rate) if m else UNAVAILABLE + ' (' + PENDING + ')'}"]
         if m:
@@ -171,13 +171,13 @@ def view_quality(ctx: LiveContext) -> ViewModel:
         else:
             detail.append(f"Accuracy, macro-F1, per-class and confusion matrix: {PENDING}. Predictions are never used as labels.")
         detail += q.flags
-        rows.append(Row(["INTENT", _model_name(ctx, q.model_key), str(q.n_predictions), _pct(ok / scored) if scored else UNAVAILABLE,
+        rows.append(Row(["CLASSIFICATION", _model_name(ctx, q.model_key), str(q.n_predictions), _pct(ok / scored) if scored else UNAVAILABLE,
                          _pct(m.accuracy) if m else PENDING, _pct(m.macro_f1) if m else PENDING, "; ".join(q.flags[:1])], detail))
-    for lr in an.lead:
-        recs = an.runs[(lr.model_key, "LEAD")]
+    for lr in an.binary:
+        recs = an.runs[(lr.model_key, "BINARY")]
         ok, scored = _valid_rate(recs)
         m = lr.metrics
-        detail = [f"Lead Qualifier | model {_model_name(ctx, lr.model_key)} | run {lr.run_id} | {lr.n_predictions} predictions",
+        detail = [f"Binary Decisions | model {_model_name(ctx, lr.model_key)} | run {lr.run_id} | {lr.n_predictions} predictions",
                   f"JSON/schema validity (measured): {ok}/{scored}",
                   f"YES {lr.n_yes}  NO {lr.n_no}  undecided {lr.n_undecided}"]
         if m:
@@ -186,10 +186,10 @@ def view_quality(ctx: LiveContext) -> ViewModel:
         else:
             detail.append(f"Accuracy and YES precision/recall/F1: {PENDING}")
         detail += lr.flags
-        rows.append(Row(["LEAD", _model_name(ctx, lr.model_key), str(lr.n_predictions), _pct(ok / scored) if scored else UNAVAILABLE,
+        rows.append(Row(["BINARY", _model_name(ctx, lr.model_key), str(lr.n_predictions), _pct(ok / scored) if scored else UNAVAILABLE,
                          _pct(m.accuracy) if m else PENDING, _pct(m.yes_f1) if m else PENDING, "; ".join(lr.flags[:1])], detail))
     summary = [_line("Ground truth", an.labels.status, COLOR_WARNING if not an.labels.available else COLOR_SUCCESS),
-               _line("Approved labels", f"intent {len(an.labels.intent)}  lead {len(an.labels.lead)}  (rows not approved: {an.labels.n_not_approved})")]
+               _line("Approved labels", f"multiclass {len(an.labels.multiclass)}  binary {len(an.labels.binary)}  (rows not approved: {an.labels.n_not_approved})")]
     if not an.labels.available:
         summary.append(Text("Supervised metrics are withheld: historical chatbot answers and model predictions are never used as labels.", style=COLOR_WARNING))
     return ViewModel("CLASSIFICATION QUALITY", "stored prediction records; approved labels", summary,
@@ -202,7 +202,7 @@ def view_calibration(ctx: LiveContext) -> ViewModel:
     rows = []
     an = ctx.analysis
     for c in an.calibration:
-        rec = an.runs[(c.model_key, "INTENT")]
+        rec = an.runs.get((c.model_key, "CLASSIFICATION")) or next((rs for (mk, _), rs in an.runs.items() if mk == c.model_key), [])
         label_means: Dict[str, List[float]] = {}
         for r in rec:
             for k, v in (r.label_probs or {}).items():
@@ -229,7 +229,7 @@ def view_calibration(ctx: LiveContext) -> ViewModel:
                _line("Ground truth", an.labels.status, COLOR_WARNING if not an.labels.available else COLOR_SUCCESS)]
     return ViewModel("CONFIDENCE AND CALIBRATION", "stored predictions; approved labels", summary,
                      ["Model", "N dist.", "Selected P (mean)", "Native conf. (mean)", "ECE", "Brier"], rows,
-                     empty="NO INTENT PREDICTIONS RECORDED: confidence data does not exist yet")
+                     empty="NO CLASSIFICATION PREDICTIONS RECORDED: confidence data does not exist yet")
 
 
 # ------------------------------------------------------------------ 3 agreement
@@ -239,7 +239,7 @@ def view_agreement(ctx: LiveContext) -> ViewModel:
     summary: List[Text] = []
     have = {k[0] for k in an.runs}
     missing = [r["display_name"] or r["key"] for r in ctx.roster if r["key"] not in have]
-    for rep in (an.agreement_intent, an.agreement_lead):
+    for rep in (an.agreement_classification, an.agreement_binary):
         if rep is None:
             continue
         summary.append(_line(f"{rep.task} contributors", ", ".join(f"{_model_name(ctx, m)}" for m in rep.models) or "none"))
@@ -265,10 +265,10 @@ def view_agreement(ctx: LiveContext) -> ViewModel:
                      empty="NO MODEL PAIRS TO COMPARE: at least two models need predictions on shared cases")
 
 
-def view_lead(ctx: LiveContext) -> ViewModel:
+def view_binary(ctx: LiveContext) -> ViewModel:
     an = ctx.analysis
     rows = []
-    for lr in an.lead:
+    for lr in an.binary:
         m = lr.metrics
         detail = [f"{_model_name(ctx, lr.model_key)} | run {lr.run_id}", f"Distribution: YES {lr.n_yes}  NO {lr.n_no}  undecided {lr.n_undecided}  (native P(yes) on {lr.n_with_prob} cases)"]
         if lr.n_with_prob and lr.frozen is None:
@@ -288,13 +288,13 @@ def view_lead(ctx: LiveContext) -> ViewModel:
                          _pct(m.yes_precision) if m else PENDING, _pct(m.yes_recall) if m else PENDING, _pct(m.yes_f1) if m else PENDING,
                          f"{lr.frozen.threshold:.3f}" if lr.frozen else "NOT FROZEN"], detail))
     summary = [_line("Threshold rule", "chosen on DEV only (max F1), frozen, then applied unchanged to TEST; 0.5 shown as reference"),
-               _line("Binary / Lead ground truth", f"{len(an.labels.lead)} approved" if an.labels.lead else PENDING, COLOR_WARNING if not an.labels.lead else COLOR_SUCCESS),
+               _line("Binary ground truth", f"{len(an.labels.binary)} approved" if an.labels.binary else PENDING, COLOR_WARNING if not an.labels.binary else COLOR_SUCCESS),
                _line("Needs human review", f"{ctx.review_count} sessions with builder ambiguity or unresolved rules" if ctx.review_count is not None else UNAVAILABLE + " (no preparation)")]
     if ctx.review_ids:
         summary.append(_line("  first ids", ", ".join(ctx.review_ids[:6])))
-    return ViewModel("BINARY / LEAD QUALIFIER", "stored predictions; approved labels; builder metadata (no text)", summary,
+    return ViewModel("BINARY DECISIONS", "stored predictions; approved labels; builder metadata (no text)", summary,
                      ["Model", "YES/NO/undecided", "YES precision", "YES recall", "YES F1", "Threshold"], rows,
-                     empty="NO BINARY / LEAD PREDICTIONS RECORDED YET")
+                     empty="NO BINARY PREDICTIONS RECORDED YET")
 
 
 # ------------------------------------------------------------------ 5 latency, reliability, cost
@@ -380,11 +380,11 @@ def view_dataset(ctx: LiveContext) -> ViewModel:
     ann = ds.prep_dir / "annotations" if ds.prep_dir else None
     rows = [
         Row(["Selected dataset", f"{ds.version or 'NOT PREPARED'}"], [f"Folder: {ds.prep_dir or 'none'}", "Derived locally, redacted, git-ignored. Raw student text is never shown on the dashboard."]),
-        Row(["Intent candidates", str(ds.intent_rows) if ds.intent_rows is not None else UNAVAILABLE], ["One per student message; every expected label is empty until a human approves it."]),
-        Row(["Lead sessions", (f"{ds.lead_sessions.get('2h')} (2 h) / {ds.lead_sessions.get('30m')} (30 min)" if ds.lead_sessions else UNAVAILABLE)],
+        Row(["Classification candidates", str(ds.classification_rows) if ds.classification_rows is not None else UNAVAILABLE], ["Every expected label is empty until a human approves it."]),
+        Row(["Binary sessions", (f"{ds.binary_sessions.get('2h')} (2 h) / {ds.binary_sessions.get('30m')} (30 min)" if ds.binary_sessions else UNAVAILABLE)],
             ["Two provisional policies; neither is selected. Choosing one is a human decision this screen cannot make."]),
         Row(["Session policy", ds.session_policy], ["Not selected. The dashboard never chooses a boundary."]),
-        Row(["Approved labels", f"intent {len(lab.intent)} / lead {len(lab.lead)}"], [lab.status, f"Source: {lab.source or 'no annotations file'}", f"Rows present {lab.n_rows}, not approved {lab.n_not_approved}, malformed {lab.n_malformed}", "Approval needs a named reviewer; predictions and suggested labels never count."]),
+        Row(["Approved labels", f"multiclass {len(lab.multiclass)} / binary {len(lab.binary)}"], [lab.status, f"Source: {lab.source or 'no annotations file'}", f"Rows present {lab.n_rows}, not approved {lab.n_not_approved}, malformed {lab.n_malformed}", "Approval needs a named reviewer; predictions and suggested labels never count."]),
         Row(["Annotations folder", "PRESENT (protected)" if ds.labels_dir_present else "none yet"], [f"{ann or 'n/a'}", "Read-only here. prepare-classification-data refuses to run over an existing annotations folder; refresh never writes."]),
         Row(["Challenge view", "heuristic, unvalidated"], [ds.views_note]),
         Row(["Production parity", PARITY], ["The Dify workflow export is missing; reconstructed inputs are not claimed to match production."]),
@@ -571,7 +571,7 @@ def view_explorer(ctx: LiveContext, ex: ExplorerState, ts, coverage: List[Dict[s
 VIEWS = {
     "overview": view_overview,
     "quality": view_quality,
-    "lead": view_lead,
+    "binary": view_binary,
     "calibration": view_calibration,
     "agreement": view_agreement,
     "latency": view_latency,

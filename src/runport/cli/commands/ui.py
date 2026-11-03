@@ -25,7 +25,7 @@ def register_ui_commands(app: typer.Typer) -> None:
         table.add_column("Result")
         table.add_row("OPENROUTER_API_KEY is set and non-empty", "[green]yes[/green]" if present else "[bold red]no[/bold red]")
         if present:
-            table.add_row("Key has leading/trailing whitespace", "[yellow]yes (fix it)[/yellow]" if odd_whitespace else "no")
+            table.add_row("Key has extraneous whitespace", "[yellow]yes (fix it)[/yellow]" if odd_whitespace else "no")
         table.add_row("Interactive terminal (needed for live approval)", "yes" if (sys.stdin.isatty() and sys.stdout.isatty()) else "[yellow]no: live runs would be refused[/yellow]")
         table.add_row("Source of the key", get_api_key_source())
         table.add_row("Network used by this command", "none")
@@ -74,3 +74,4 @@ def register_ui_commands(app: typer.Typer) -> None:
         """Alias to launch the interactive terminal UI."""
         from runport.tui.app import run_tui
         run_tui()
+

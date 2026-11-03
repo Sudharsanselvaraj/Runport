@@ -2,7 +2,7 @@
 
 Sources, all read-only: stored prediction records (the prediction store), the request-event log (timestamps, retries, real-time
 failures) and approved labels. No parallel trace store is created. Nothing is invented: a participant that never ran appears only in
-the manifest's participant coverage, never as a trace row. Exports are redacted by default, contain no secrets and no `user4`, and
+the manifest's participant coverage, never as a trace row. Exports are redacted by default, contain no secrets and no restricted fields, and
 are reproducible: the same selection, sources, schema version and `exported_at` give byte-identical files.
 """
 
@@ -19,18 +19,18 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from runport.classification.contracts import CONTRACT_VERSION, PARITY_STATUS, IntentLabel
+from runport.classification.contracts import CONTRACT_VERSION, PARITY_STATUS
 from runport.datasets.redaction import redact
 from runport.classification.records import PredictionRecord
-from runport.observability.analysis import lead_pred
+from runport.observability.analysis import binary_pred
 from runport.observability.events import RequestEvent
 from runport.observability.labels import ApprovedLabels
 from runport.providers.base import scrub_secrets
 
 SCHEMA_VERSION = "trace-export-v1"
-LABELS = [l.value for l in IntentLabel]
+LABELS = ["QUERY", "GREETING", "CLOSING", "OTHER"]
 SMOKE_PREFIX = "smoke-synthetic"
-_DROP_KEY = re.compile(r"(authorization|cookie|api[_-]?key|secret|password|bearer|user4)", re.I)
+_DROP_KEY = re.compile(r"(authorization|cookie|api[_-]?key|secret|password|bearer|restricted_user_id)", re.I)
 FORMATS = ("jsonl", "csv", "zip")
 
 
@@ -154,13 +154,13 @@ def _unavailable(rec: PredictionRecord, ev: Optional[RequestEvent]) -> List[str]
 
 def _truth(rec: PredictionRecord, labels: ApprovedLabels, decision: Optional[bool]) -> Dict[str, Any]:
     task_str = rec.task.value if hasattr(rec.task, "value") else str(rec.task)
-    if task_str.lower() in ("intent", "classification"):
-        lab = labels.intent.get(rec.case_id)
+    if task_str.lower() in ("classification", "task_a"):
+        lab = labels.multiclass.get(rec.case_id)
         got = lab if isinstance(lab, str) else getattr(lab, "value", str(lab) if lab is not None else None)
         pred_label = rec.predicted_label if isinstance(rec.predicted_label, str) else getattr(rec.predicted_label, "value", str(rec.predicted_label) if rec.predicted_label is not None else None)
         correct = (pred_label == got) if (lab is not None and pred_label is not None) else None
     else:
-        lab = labels.lead.get(rec.case_id)
+        lab = labels.binary.get(rec.case_id)
         got = lab
         correct = (decision is lab) if (lab is not None and decision is not None) else (False if lab is not None else None)
     status = "APPROVED" if got is not None else ("NOT_LABELLED" if labels.available else "PENDING")
@@ -170,11 +170,11 @@ def _truth(rec: PredictionRecord, labels: ApprovedLabels, decision: Optional[boo
 def row_from_record(rec: PredictionRecord, started: Optional[RequestEvent], retries: List[str], labels: ApprovedLabels,
                     frozen_by_model: Dict[str, Any], authorization: Optional[RawTextAuthorization]) -> Dict[str, Any]:
     task_str = rec.task.value if hasattr(rec.task, "value") else str(rec.task)
-    is_lead = task_str.lower() in ("lead", "binary")
+    is_binary = task_str.lower() in ("binary", "task_b")
     request_id = f"{rec.run_id}:{rec.case_id}:{task_str}:{rec.model_key}"
     frozen = frozen_by_model.get(rec.model_key)
-    decision = lead_pred(rec, frozen) if is_lead else None
-    if is_lead:
+    decision = binary_pred(rec, frozen) if is_binary else None
+    if is_binary:
         source = "FROZEN_DEV_THRESHOLD" if (frozen is not None and rec.yes_prob is not None) else (
             "THRESHOLD_NOT_FROZEN" if rec.yes_prob is not None else ("MODEL_OUTPUT" if rec.predicted_label else None)
         )
@@ -214,7 +214,7 @@ def row_from_record(rec: PredictionRecord, started: Optional[RequestEvent], retr
                    "raw_output": rec.raw_output if (authorization and authorization.valid()) else None, "raw_output_present_in_store": rec.raw_output is not None},
         "confidence": {"confidence_source": rec.confidence_source, "label_probabilities": rec.label_probs, "selected_label_probability": sel,
                        "native_confidence": rec.native_confidence, "yes_probability": rec.yes_prob,
-                       "frozen_threshold": frozen.threshold if (frozen is not None and is_lead) else None},
+                       "frozen_threshold": frozen.threshold if (frozen is not None and is_binary) else None},
         "usage": {"prompt_tokens": rec.prompt_tokens, "completion_tokens": rec.completion_tokens, "usage_source": rec.usage_source, "reasoning_tokens": reasoning_toks},
         "cost": {"actual_cost_usd": _s(rec.actual_cost_usd), "estimated_cost_usd": _s(rec.estimated_cost_usd), "native_cost": _s(nat_cost),
                  "native_cost_unit": nat_cost_unit, "recorded_cost_usd": _s(cost_usd_val), "cost_basis": rec.cost_basis,
@@ -223,8 +223,8 @@ def row_from_record(rec: PredictionRecord, started: Optional[RequestEvent], retr
         "markers": {"provenance": "LIVE", "simulated": False, "failed_call": rec.status == "ERROR", "invalid_output": rec.status == "INVALID_OUTPUT",
                     "synthetic_fixture": (rec.dataset_version or "").startswith(SMOKE_PREFIX), "data_kind": data_kind(rec.dataset_version, rec.run_id),
                     "source": "PREDICTION_RECORD", "origin": None,
-                    "binary_decision_available": (decision is not None) if is_lead else None,
-                    "probability_only": (is_lead and decision is None and rec.yes_prob is not None),
+                    "binary_decision_available": (decision is not None) if is_binary else None,
+                    "probability_only": (is_binary and decision is None and rec.yes_prob is not None),
                     "unavailable_telemetry": _unavailable(rec, started)},
     }
 
@@ -258,7 +258,7 @@ _FREE_TEXT_KEYS = frozenset({"error_message", "validation_issues", "warnings", "
 
 
 def _clean(obj: Any, counts: Counter, free_text: bool = False) -> Any:
-    """Drop secret/user4 keys and scrub secret-looking strings everywhere; redact personal identifiers in free-text fields.
+    """Drop secret/restricted keys and scrub secret-looking strings everywhere; redact personal identifiers in free-text fields.
 
     Identifier fields (run ids, case ids, timestamps, fingerprints) are opaque and are not pattern-redacted, because a digit run in
     them is not personal data and redacting it would corrupt the join keys.
@@ -530,7 +530,7 @@ def _manifest(ts: TraceSet, sel: ExportSelection, roster, labels: ApprovedLabels
                    "redaction_events": dict(sorted(ts.redactions.items())), "records_missing_telemetry": missing,
                    "failed_calls": sum(r["markers"]["failed_call"] for r in rows), "invalid_outputs": sum(r["markers"]["invalid_output"] for r in rows)},
         "ground_truth": {"status": labels.status, "approved_labels": labels.n_approved},
-        "privacy": {"redaction": "pattern-based (email, ID, phone, introduced names); no named-entity recognition", "secrets_scrubbed": True, "user4_excluded": True,
+        "privacy": {"redaction": "pattern-based (email, ID, phone, introduced names); no named-entity recognition", "secrets_scrubbed": True, "restricted_fields_excluded": True,
                     "raw_text_included": bool(authorization and authorization.valid()),
                     "raw_text_authorization": ({"owner": authorization.owner, "scope": authorization.scope, "authorized_on": authorization.authorized_on}
                                                if authorization and authorization.valid() else None),

@@ -156,3 +156,4 @@ class ModalApprover(BaseApprover):
             approver_kind="MODAL",
             operator=self.operator,
         )
+

@@ -68,7 +68,7 @@ runport/
 │   │   ├── contracts.py        # Case schemas and data contracts
 │   │   ├── runner.py           # Execution engine with guard order
 │   │   ├── validators.py       # Strict output format validators
-│   │   ├── lead_summary.py     # Deterministic lead action rule builder
+│   │   ├── metrics.py          # Supervised classification and binary metrics
 │   │   ├── realdata.py         # Operator authorization and atomic run records
 │   │   └── smoke.py            # Synthetic offline smoke test runner
 │   ├── core/                   # Configuration and spend protection

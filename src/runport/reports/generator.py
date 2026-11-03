@@ -200,3 +200,4 @@ class ReportGenerator:
         json_path.write_text(json.dumps(json_data, indent=2), encoding="utf-8")
 
         return md_path
+

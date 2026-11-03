@@ -88,3 +88,4 @@ class TokenOverlapScorer(BaseScorer):
             passed=(f1 >= 0.8),
             details={"precision": p, "recall": r, "f1": f1},
         )
+

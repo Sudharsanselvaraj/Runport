@@ -13,7 +13,7 @@ from runport.observability.monitor import LiveMonitor
 from runport.tui.app import WorkbenchTUI
 from runport.tui.live_views import build_execution_header
 from runport.tui.screens import NAV_KEYS
-from obs_helpers import finished, intent_pred, label_row, make_prep, started, write_labels, write_preds
+from obs_helpers import finished, class_pred, label_row, make_prep, started, write_labels, write_preds
 
 
 @pytest.fixture
@@ -138,21 +138,21 @@ def test_close_releases_the_subscription(workdir):
 
 def test_quality_view_needs_approved_labels_and_never_substitutes_predictions(workdir):
     prep = make_prep(workdir / "data" / "classification_prep")
-    write_preds(preds_dir(), "run1", [intent_pred("C1", "QUERY", top=0.9), intent_pred("C2", "GREETING", top=0.9)])
+    write_preds(preds_dir(), "run1", [class_pred("C1", "QUERY", top=0.9), class_pred("C2", "GREETING", top=0.9)])
     tui, buf = make_tui()
     tui.goto("quality")
     out = render(tui, buf)
     assert "GROUND TRUTH PENDING" in out and "Accuracy" in out
     vm = tui.get_view()
     assert vm.rows[0].cells[4] == "GROUND TRUTH PENDING"
-    write_labels(prep, [label_row("C1", "INTENT", "QUERY"), label_row("C2", "INTENT", "QUERY")])
+    write_labels(prep, [label_row("C1", "CLASSIFICATION", "QUERY"), label_row("C2", "CLASSIFICATION", "QUERY")])
     tui.refresh_live()
     assert tui.get_view().rows[0].cells[4] == "50.0%"
 
 
 def test_agreement_view_labels_agreement_as_not_correctness(workdir):
-    write_preds(preds_dir(), "a", [intent_pred(f"C{i}", "QUERY", model="m-a", run="ra") for i in range(3)])
-    write_preds(preds_dir(), "b", [intent_pred(f"C{i}", "QUERY", model="m-b", run="rb") for i in range(3)])
+    write_preds(preds_dir(), "a", [class_pred(f"C{i}", "QUERY", model="m-a", run="ra") for i in range(3)])
+    write_preds(preds_dir(), "b", [class_pred(f"C{i}", "QUERY", model="m-b", run="rb") for i in range(3)])
     tui, buf = make_tui()
     tui.goto("agreement")
     out = render(tui, buf)
@@ -196,7 +196,7 @@ def test_keyboard_reaches_all_twelve_primary_sections_and_back(workdir):
 
 def test_row_cursor_moves_inside_views_and_stays_in_range(workdir):
     prep = make_prep(workdir / "data" / "classification_prep")
-    write_preds(preds_dir(), "r", [intent_pred("C1", "QUERY", model=m, run=f"r-{m}") for m in ("m1", "m2", "m3")])
+    write_preds(preds_dir(), "r", [class_pred("C1", "QUERY", model=m, run=f"r-{m}") for m in ("m1", "m2", "m3")])
     tui, _ = make_tui()
     tui.goto("quality")
     for _ in range(10):
@@ -207,12 +207,12 @@ def test_row_cursor_moves_inside_views_and_stays_in_range(workdir):
     tui.handle_key("END")
     assert tui.content_cursor == 2
     tui.handle_key("ENTER")
-    assert tui.feedback_message.startswith("Main Intent")
+    assert tui.feedback_message.startswith("Classification")
 
 
 def test_commands_open_the_new_and_the_preserved_workflows(workdir):
     tui, _ = make_tui()
-    for cmd, sec in ((":latency", "latency"), (":calibration", "calibration"), (":agreement", "agreement"), (":lead", "lead"), (":labels", "dataset"),
+    for cmd, sec in ((":latency", "latency"), (":calibration", "calibration"), (":agreement", "agreement"), (":binary", "binary"), (":labels", "dataset"),
                      (":eval", "evaluations"), (":health", "health"), (":validate", "validation"), (":traces", "traces"), (":budget", "budget"),
                      (":settings", "settings"), (":roster", "roster"), (":overview", "overview")):
         tui.execute_command(cmd)
@@ -234,7 +234,7 @@ def test_simulated_spend_never_appears_as_actual_in_the_header(workdir):
 
 def test_dataset_view_reports_statuses_and_refresh_never_touches_annotations(workdir):
     prep = make_prep(workdir / "data" / "classification_prep")
-    write_labels(prep, [label_row("C1", "INTENT", "QUERY", status="PENDING_REVIEW")])
+    write_labels(prep, [label_row("C1", "CLASSIFICATION", "QUERY", status="PENDING_REVIEW")])
     before = {p: p.read_bytes() for p in prep.rglob("*") if p.is_file()}
     tui, buf = make_tui()
     tui.goto("dataset")

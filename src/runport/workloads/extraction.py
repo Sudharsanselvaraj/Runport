@@ -45,3 +45,4 @@ class ExtractionWorkload(BaseWorkload):
 
     def get_scorers(self) -> List[BaseScorer]:
         return [JSONSchemaScorer(required_keys=self.schema_fields), FieldMatchScorer()]
+

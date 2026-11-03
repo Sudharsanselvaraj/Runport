@@ -227,7 +227,7 @@ def test_unresolved_abstention_exclusion_from_retrieval_denominator(tmp_path: Pa
     case_unresolved = EvaluationCase(
         id="c-unres",
         query="Unknown query not in KB",
-        expected_answer="KB does not contain details. Consult admissions.",
+        expected_answer="KB does not contain details. Consult support team.",
         relevant_record_ids=[],
         source_status="UNRESOLVED",
         classification=DataClassification.SYNTHETIC,
@@ -243,7 +243,7 @@ def test_unresolved_abstention_exclusion_from_retrieval_denominator(tmp_path: Pa
             )
 
     runner_engine = RAGBenchmarkRunner(db_mgr=db_mgr, retriever=SingleHitRetriever(), top_k=2,
-                                     provider=LiveFakeProvider({"c-ver": "Known answer", "c-unres": "KB does not contain details. Consult admissions."}))
+                                     provider=LiveFakeProvider({"c-ver": "Known answer", "c-unres": "KB does not contain details. Consult support team."}))
     dataset_file = tmp_path / "test_abstain_cases.jsonl"
     with open(dataset_file, "w") as f:
         f.write(case_verified.model_dump_json() + "\n")
