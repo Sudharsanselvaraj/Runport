@@ -6,7 +6,7 @@ The owner's cost table (50 cases at 700 in / 100 out) reconciles exactly with th
 
 ## What changes in the flow
 
-Only the planner node ("Search AI Planner", currently `openai/gpt-6-luna` through the OpenAI plugin) is replaced. The counsellor (`google/gemini-3.5-flash-lite` through OpenRouter) and the clarification guard stay fixed, so differences come from the planner.
+Only the planner node ("Search AI Planner", currently `openai/gpt-6-luna` through the OpenAI plugin) is replaced. The responder node (`google/gemini-3.5-flash-lite` through OpenRouter) and the clarification guard stay fixed, so differences come from the planner.
 
 | Variant | OpenRouter slug | Standard in / out | Notes from the endpoints data |
 |---|---|---|---|
@@ -45,7 +45,7 @@ Caveats that matter for the run:
 
 ## Cost estimate for the planned run (ESTIMATE, not a quote)
 
-Assumptions, stated so they can be challenged: planner system prompt about 6,600 tokens plus about 1,900 tokens of user template and retrieved text per call, 3 planner calls per case at most, about 350 output tokens per call; counsellor about 6,700 input and 250 output tokens, fixed at Gemini 3.5 Flash Lite 0.30 / 2.50. Real token counts come from the pilot.
+Assumptions, stated so they can be challenged: planner system prompt about 6,600 tokens plus about 1,900 tokens of user template and retrieved text per call, 3 planner calls per case at most, about 350 output tokens per call; responder about 6,700 input and 250 output tokens, fixed at Gemini 3.5 Flash Lite 0.30 / 2.50. Real token counts come from the pilot.
 
 | Planner | Per case | 50 cases |
 |---|---|---|
@@ -55,4 +55,4 @@ Assumptions, stated so they can be challenged: planner system prompt about 6,600
 | DeepSeek V4.1 Flash (0.30 / 1.20) | about $0.0115 | about $0.58 |
 | Gemini 3.5 Flash Lite (0.30 / 2.50) | about $0.0129 | about $0.65 |
 
-Each figure includes about $0.0026 per case for the fixed counsellor. Baseline plus five candidates, one pass over 50 cases: roughly $2.45 (the five candidates alone are about $2.17). Reasoning tokens or retries would add to this. Gemini at about $0.0129 per case is closer to the old $0.02 per-case ceiling than the others, so a reasoning-heavy planner could trip it; the pilot's measured tokens decide.
+Each figure includes about $0.0026 per case for the fixed responder. Baseline plus five candidates, one pass over 50 cases: roughly $2.45 (the five candidates alone are about $2.17). Reasoning tokens or retries would add to this. Gemini at about $0.0129 per case is closer to the old $0.02 per-case ceiling than the others, so a reasoning-heavy planner could trip it; the pilot's measured tokens decide.

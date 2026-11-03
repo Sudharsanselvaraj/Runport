@@ -13,14 +13,14 @@ D1. Follow-up on a prior handoff with no new explicit request ("any update?", "d
     Benchmark note: the earlier plan to exclude such cases from scored metrics pending this decision no longer needs to apply to the rule itself; any change to dataset exclusions must be made separately.
 
 CONTRADICTIONS RESOLVED FROM THE ORIGINAL TEXT (confirmed by the project owner; each follows the majority of the original explicit rules)
-R1. Accepting a counsellor-connect offer: the original definition and the closing note said a reply to an offer "is NEVER by itself enough", but Step 2.2, Step 4, the category definition's opening sentence and two examples all said a clear affirmative to a specific counsellor-connect offer IS a handoff. The draft keeps the latter and removes the contradicting sentences.
+R1. Accepting a human-support offer: the original definition and the closing note said a reply to an offer "is NEVER by itself enough", but Step 2.2, Step 4, the category definition's opening sentence and two examples all said a clear affirmative to a specific human-support offer IS a handoff. The draft keeps the latter and removes the contradicting sentences.
 R2. Declining an offer: the GREETING definition listed "no thanks / not now" as GREETING, while Step 4 sent "any type of reply" to an offer to QUERY. The draft treats an explicit decline with no new question as GREETING, and every other reply to a question or offer as QUERY.
 R3. Fallback: the original Step 7 said GREETING while the QUERY definition said "when in doubt -> QUERY". The draft uses QUERY.
-R4. Step 2.2 and Step 4 duplicated the counsellor-offer rule. It now lives only in Step 2.
+R4. Step 2.2 and Step 4 duplicated the human-support offer rule. It now lives only in Step 2.
 R5. "hello"/"hi" were GREETING in an example but absent from the Step 5 token list. They are now in the list.
 
 NON-BLOCKING OPEN POINTS
-O1. A bare "no" or "thanks" replying to a non-counsellor offer is QUERY by Step 4 (unchanged original wording). Only explicit decline phrases are GREETING. Confirm if you want a bare "no" to count as a decline.
+O1. A bare "no" or "thanks" replying to a non-support offer is QUERY by Step 4 (unchanged original wording). Only explicit decline phrases are GREETING. Confirm if you want a bare "no" to count as a decline.
 O2. Step 3 treats "application status" questions as QUERY, not UPLOAD_STATUS_CHECK (unchanged original behaviour, now stated explicitly).
 
 INPUT FORMAT

@@ -1,6 +1,6 @@
 # Authorized real-data benchmark
 
-For the operator-authorized benchmark of all ten participants on the prepared admissions dataset. Nothing here sends a request until **two typed approvals** are given in an interactive terminal.
+For the operator-authorized benchmark of all candidate models on the prepared evaluation dataset. Nothing here sends a request until **two typed approvals** are given in an interactive terminal.
 
 ## Flow
 
@@ -39,9 +39,9 @@ The pilot ($2.00), total ($10.00), per-run ($0.50) and per-case ($0.02) ceilings
 
 ## Authorization
 
-`real-benchmark run --live` needs (1) the existing `RUN LIVE <models> PLAN <fingerprint>` phrase and (2) `AUTHORIZE REAL DATA <dataset version> PLAN <fingerprint>` after the recipients, routes, provider-policy status and data categories are shown. The resulting authorization is bound to dataset version, session policy, model set and routes, task scope, plan fingerprint, cost ceiling and the fact that the records are real admissions-derived data. It is created only by the typed confirmation in the current process (a hand-built or loaded object is refused) and is written to the versioned run manifest `data/benchmarks/<bench id>/manifest.json`, which also records prompt hashes, caps, code fingerprint and every resume session. **It does not verify any provider's retention, training or processing policy**, and the policy status stays as the registry has it.
+`real-benchmark run --live` needs (1) the existing `RUN LIVE <models> PLAN <fingerprint>` phrase and (2) `AUTHORIZE REAL DATA <dataset version> PLAN <fingerprint>` after the recipients, routes, provider-policy status and data categories are shown. The resulting authorization is bound to dataset version, session policy, model set and routes, task scope, plan fingerprint, cost ceiling and the fact that the records are sensitive operational evaluation data. It is created only by the typed confirmation in the current process (a hand-built or loaded object is refused) and is written to the versioned run manifest `data/benchmarks/<bench id>/manifest.json`, which also records prompt hashes, caps, code fingerprint and every resume session. **It does not verify any provider's retention, training or processing policy**, and the policy status stays as the registry has it.
 
-Never sent: pseudonymous group or trace ids, timestamps, `user4`, excluded records, API keys, anything outside the reviewed dataset and task scope. Sent: redacted student messages (INTENT: current message and prior turns of the same session, plus prior assistant replies as exported) and the authoritative prompt; for LEAD, the rule-built action summary and prompt. Redaction is pattern-based without named-entity recognition and pseudonymization is not anonymization.
+Never sent: pseudonymous group or trace ids, timestamps, forbidden phone prefixes, excluded records, API keys, anything outside the reviewed dataset and task scope. Sent: redacted user messages and the authoritative prompt. Redaction is pattern-based without named-entity recognition and pseudonymization is not anonymization.
 
 ## Failure handling
 
@@ -70,6 +70,6 @@ Two distinct reviewers label independently; agreement makes a case ready, disagr
 - `origin` marks each row `NEW_THIS_PLAN` or `CARRIED_OVER_FROM:<bench>`; carried-over participants are never listed as unattempted.
 - **Cost columns:** an empty cell means not measured, never zero. `requests_without_cost_evidence`, `errors_no_response` (an error returned nothing to meter; that is not proof it cost nothing) and `unknown_cost_after_response` are separate; unresolved ledger entries are counted separately in the manifest.
 - **Jev LEAD** results are probabilities until a threshold is frozen from DEV: `binary_decision_available` is False and `probability_only` True, and they are excluded from YES/NO agreement.
-- **Privacy block:** `privacy.export` describes the files (no raw student text, this bundle was not sent anywhere); `privacy.inference_payloads` records that redacted admissions-derived inputs WERE sent to the listed recipients under the operator's authorization (provider policies UNKNOWN).
+- **Privacy block:** `privacy.export` describes the files (no raw customer text, this bundle was not sent anywhere); `privacy.inference_payloads` records that redacted evaluation inputs WERE sent to the listed recipients under the operator's authorization (provider policies UNKNOWN).
 - `finish_reason` and `reasoning_tokens` are stored for new requests (null for records made before they were captured).
 - `real-benchmark verify <bundle> --prep-dir ... --session-policy ...` re-checks hashes, row counts, retained predictions, cost provenance, unattempted scope and that the narrative report agrees with the CSV files.
