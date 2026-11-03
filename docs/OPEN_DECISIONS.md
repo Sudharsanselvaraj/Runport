@@ -10,12 +10,12 @@ This document records all confirmed decisions made by the project owner for tran
 |---|---|---|---|
 | **1** | **Project Identity & Naming** | **OWNER-CONFIRMED** | Name: **Runport** (`runport`). CLI: `runport`. "Inferia" brand kept separate. Prior candidates replaced. |
 | **2** | **Execution Approval Model** | **OWNER-CONFIRMED** | Interactive CLI/TUI: typed phrase. Web UI: modal approval. CI: `--approve <plan_fingerprint>`. Plan always recomputed before check; no stale approvals. |
-| **3** | **Budget & Pricing Defaults** | **OWNER-CONFIRMED** | Ceilings: Total $5.00, Run $1.00, Case $0.05. `require_priced: true` by default. Unpriced models fail preflight unless overridden. Strict separation of Actual / Estimated / Unavailable. |
-| **4** | **Replay Mode** | **OWNER-CONFIRMED** | Fixture-based replay supported. Provenance strictly labeled `REPLAYED`. Never mixed with live benchmark results or actual spend. |
-| **5** | **Web Interface Architecture** | **OWNER-CONFIRMED** | FastAPI backend + React/TS/Vite frontend. Single-user localhost deployment. No accounts or auth in initial release. Charting library chosen for maintainability. |
-| **6** | **License & IP Clearance** | **CONDITIONALLY APPROVED** | Target license: Apache 2.0. Clean-slate Git repo approved in principle. Mandatory audit of all data/prompts for confidential legacy text before publishing. Private downstream fork preserved separately. |
-| **7** | **Subsystem Migration Scope** | **OWNER-CONFIRMED** | Dify chat + SSE streaming preserved in core (`src/runport/connectors/dify.py`). Custom Decisions API moved to `examples/plugins/`. KB audit moved to `examples/plugins/kb_audit/`. Legacy prototype assumptions stripped from core. |
-| **8** | **Telemetry Policy** | **OWNER-CONFIRMED** | Zero external telemetry. No phoning home. Operational records strictly local. Documented in `SECURITY.md`. |
+| **3** | **Budget & Pricing Defaults** | **OWNER-CONFIRMED** | Ceilings: Total $5.00, Run $1.00, Case $0.05, all configurable; `require_priced=false`. Strict separation of Actual / Estimated / Unresolved / Unavailable. |
+| **4** | **Replay Mode & Demo Connectors** | **OWNER-CONFIRMED** | REPLAYED demo target and Ollama allowed. Replay output always labeled `REPLAYED` and never counted as a live result or spend. |
+| **5** | **Web Interface Architecture** | **OWNER-CONFIRMED** | Single-user localhost web UI (FastAPI + React/TS/Vite). Apache-2.0. No telemetry. |
+| **6** | **License & IP Clearance** | **OWNER-CONFIRMED** | Target license: Apache 2.0. Clean-slate Git repo. Mandatory exclusion of confidential legacy text before publishing. |
+| **7** | **Subsystem Migration Scope & Connectors** | **OWNER-CONFIRMED** | v0.1 stable-candidate connectors: `openai_compat`, `openrouter`, `dify`, `http_workflow`, `python_target`, `ollama`. Flowise/Langflow/n8n/LangGraph stay experimental until contract suite passes. |
+| **8** | **Telemetry Policy & Token Approver** | **OWNER-CONFIRMED** | Zero external telemetry. Token approver allowed, off by default, valid only if fingerprint matches freshly recomputed plan. |
 
 ---
 

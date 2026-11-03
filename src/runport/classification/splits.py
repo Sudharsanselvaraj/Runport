@@ -1,22 +1,39 @@
-"""Deterministic, group-level (leakage-safe) split assignment. `user4` is never accepted as a key."""
+"""Deterministic, group-level (leakage-safe) split assignment with configurable PII guards."""
 
 import hashlib
-from typing import Dict, Iterable, List, Mapping, Sequence, Set
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
 from runport.schemas.evaluation import DatasetSplit
 
-FORBIDDEN_KEYS = {"user4"}
+DEFAULT_FORBIDDEN_FIELDS: Set[str] = {
+    "user4",
+    "phone",
+    "email",
+    "ssn",
+    "national_id",
+    "password",
+    "secret",
+    "token",
+    "api_key",
+}
+FORBIDDEN_KEYS = DEFAULT_FORBIDDEN_FIELDS
 
 
 class SplitError(ValueError):
     pass
 
 
-def assert_no_user4(record_keys: Iterable[str]) -> None:
-    """Reject any structure carrying the phone-prefix column."""
-    bad = FORBIDDEN_KEYS.intersection(k.lower() for k in record_keys)
+def assert_no_forbidden_fields(record_keys: Iterable[str], forbidden: Optional[Iterable[str]] = None) -> None:
+    """Reject any structure carrying sensitive or unredacted PII columns."""
+    targets = {f.lower() for f in forbidden} if forbidden is not None else DEFAULT_FORBIDDEN_FIELDS
+    bad = targets.intersection(k.lower() for k in record_keys)
     if bad:
         raise SplitError(f"Forbidden sensitive column(s) present: {sorted(bad)}")
+
+
+def assert_no_user4(record_keys: Iterable[str]) -> None:
+    """Backward-compatible sentinel rejection for phone-prefix column."""
+    assert_no_forbidden_fields(record_keys)
 
 
 def _rank(group: str, seed: str) -> str:

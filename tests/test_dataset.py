@@ -153,3 +153,12 @@ def test_immutable_source_hashing_verifies_before_and_after(tmp_path: Path):
     with pytest.raises(ValueError, match="Source dataset mutated during evaluation"):
         DatasetManager.verify_source_integrity(test_file, pre_hash)
 
+
+def test_cli_annotate_command():
+    """CLI annotate command displays cases and ground-truth verification status."""
+    result = runner.invoke(app, ["annotate", "data/evaluation/synthetic_seed_eval.jsonl", "--reviewer", "Test Reviewer"])
+    assert result.exit_code == 0
+    assert "Runport Ground-Truth Annotation & Adjudication" in result.stdout
+    assert "Annotation Status:" in result.stdout
+
+

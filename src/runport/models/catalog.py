@@ -24,87 +24,15 @@ class ModelCandidate(BaseModel):
     experimental_purpose: str = Field(default="", description="Role and rationale for inclusion in research workbench")
 
 
-DEFAULT_PORTFOLIO: List[ModelCandidate] = [
-    ModelCandidate(
-        model_id="google/gemini-3.5-flash-lite",
-        display_name="Gemini 3.5 Flash Lite",
-        provider="google",
-        deployment_mode="HOSTED_DIRECT",
-        license="Proprietary Commercial API",
-        context_length=1000000,
-        input_price_per_1m_usd=Decimal("0.0750"),
-        output_price_per_1m_usd=Decimal("0.3000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="High-throughput multimodal baseline for evaluation triage.",
-    ),
-    ModelCandidate(
-        model_id="anthropic/claude-haiku-5.5",
-        display_name="Claude Haiku 5.5",
-        provider="anthropic",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=200000,
-        input_price_per_1m_usd=Decimal("0.8000"),
-        output_price_per_1m_usd=Decimal("4.0000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Fast candidate for evaluation comparison.",
-    ),
-    ModelCandidate(
-        model_id="openai/gpt-4o-mini",
-        display_name="GPT-4o Mini",
-        provider="openai",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=128000,
-        input_price_per_1m_usd=Decimal("0.1500"),
-        output_price_per_1m_usd=Decimal("0.6000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Compact commercial frontier candidate.",
-    ),
-    ModelCandidate(
-        model_id="openai/gpt-4.1-nano",
-        display_name="GPT-4.1 Nano",
-        provider="openai",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=128000,
-        input_price_per_1m_usd=Decimal("0.1000"),
-        output_price_per_1m_usd=Decimal("0.4000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Lightweight low-cost reference model.",
-    ),
-    ModelCandidate(
-        model_id="qwen/qwen3-8b",
-        display_name="Qwen3-8B",
-        provider="qwen",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Open-Weight",
-        context_length=32768,
-        input_price_per_1m_usd=Decimal("0.2000"),
-        output_price_per_1m_usd=Decimal("0.2000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Primary open-weight candidate for self-hosted serving.",
-    ),
-    ModelCandidate(
-        model_id="deepseek/deepseek-v4.1-flash",
-        display_name="DeepSeek V4.1 Flash",
-        provider="deepseek",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=1048576,
-        input_price_per_1m_usd=Decimal("0.0490"),
-        output_price_per_1m_usd=Decimal("0.3750"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="High-throughput open weight flash candidate.",
-    ),
-]
+DEFAULT_PORTFOLIO: List[ModelCandidate] = []
 
 
-def seed_default_portfolio(db: Optional[DatabaseManager] = None) -> None:
-    """Seeds default initial model portfolio into SQLite registry idempotently."""
+def seed_default_portfolio(db: Optional[DatabaseManager] = None, candidates: Optional[List[ModelCandidate]] = None) -> None:
+    """Seeds model portfolio into SQLite registry idempotently."""
     db_mgr = db or DatabaseManager()
     db_mgr.init_db()
-    for candidate in DEFAULT_PORTFOLIO:
+    items = candidates if candidates is not None else DEFAULT_PORTFOLIO
+    for candidate in items:
         db_mgr.upsert_model(
             model_id=candidate.model_id,
             display_name=candidate.display_name,
@@ -124,10 +52,6 @@ def get_portfolio(db: Optional[DatabaseManager] = None) -> List[ModelCandidate]:
     db_mgr = db or DatabaseManager()
     db_mgr.init_db()
     rows = db_mgr.get_all_models()
-    if not rows:
-        seed_default_portfolio(db_mgr)
-        rows = db_mgr.get_all_models()
-
     candidates = []
     for r in rows:
         candidates.append(

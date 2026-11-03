@@ -10,9 +10,46 @@ from runport.schemas.evaluation import DataClassification, DatasetSplit
 CONTRACT_VERSION = "v2"
 PARITY_STATUS = "PRODUCTION_PARITY_NOT_ESTABLISHED"
 
+DEFAULT_FORBIDDEN_FIELDS = {
+    "user4",
+    "phone",
+    "email",
+    "ssn",
+    "national_id",
+    "password",
+    "secret",
+    "token",
+    "api_key",
+}
+
+
+class ClassificationSpec(BaseModel):
+    """Config-driven specification for a classification task."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = "classification"
+    allowed_labels: List[str]
+    description: Optional[str] = None
+    allow_unseen_labels: bool = False
+    forbidden_fields: List[str] = Field(default_factory=lambda: sorted(DEFAULT_FORBIDDEN_FIELDS))
+
+    def validate_label(self, label: Optional[str]) -> bool:
+        if label is None:
+            return False
+        return self.allow_unseen_labels or (label in self.allowed_labels)
+
+
+class Task(str, Enum):
+    """Evaluation task identifier (superseded by workload specifications)."""
+    INTENT = "INTENT"
+    LEAD = "LEAD"
+    CLASSIFICATION = "classification"
+    BINARY = "binary"
+    RAG = "rag"
+
 
 class IntentLabel(str, Enum):
-    """Supported intent classification labels."""
+    """Reference classification labels (superseded by ClassificationSpec)."""
     GREETING = "GREETING"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     UPLOAD_STATUS_CHECK = "UPLOAD_STATUS_CHECK"
@@ -66,6 +103,7 @@ class ClassificationCase(BaseModel):
     @model_validator(mode="after")
     def _validate_privacy_and_identity(self):
         # Enforce invariant: phone prefixes or forbidden keys must never be accepted
-        if "user4" in self.metadata:
-            raise ValueError("Forbidden key 'user4' is rejected in case metadata")
+        bad = DEFAULT_FORBIDDEN_FIELDS.intersection(k.lower() for k in self.metadata)
+        if bad:
+            raise ValueError(f"Forbidden sensitive key(s) {sorted(bad)} rejected in case metadata")
         return self

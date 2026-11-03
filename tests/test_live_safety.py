@@ -138,13 +138,13 @@ def _setup_test_models():
 
     from runport.models.registry import Protocol
     rec_jev = ModelRecord(
-        key="jev-1.14",
-        display_name="JEV 1.14",
+        key="custom-protocol-model",
+        display_name="Custom Protocol Model",
         roles=["CANDIDATE"],
         tasks=["INTENT"],
         protocol=Protocol.DECISIONS_API,
-        requested_model_id=fact("typesafe/jev-1.14", FactStatus.VERIFIED_PRIMARY, urls, d),
-        endpoint=fact("POST https://api.example.com/jev", FactStatus.VERIFIED_PRIMARY, urls, d),
+        requested_model_id=fact("typesafe/custom-protocol-model", FactStatus.VERIFIED_PRIMARY, urls, d),
+        endpoint=fact("POST https://api.example.com/custom-protocol", FactStatus.VERIFIED_PRIMARY, urls, d),
         request_fields=fact(["model"], FactStatus.VERIFIED_PRIMARY, urls, d),
         response_shape=fact("decisions.api", FactStatus.VERIFIED_PRIMARY, urls, d),
         output_type=fact("text", FactStatus.VERIFIED_PRIMARY, urls, d),
@@ -712,10 +712,10 @@ def test_retry_after_non_numeric_is_ignored_for_backoff(monkeypatch):
 def test_registry_blocks_live_for_unverified_route_before_any_http(monkeypatch):
     from registry_helpers import block_route
     block_route(monkeypatch, "gpt-4.1-nano")
-    block_route(monkeypatch, "jev-1.14")
+    block_route(monkeypatch, "custom-protocol-model")
     monkeypatch.setattr(or_mod.urllib.request, "urlopen", lambda *a, **k: pytest.fail("urlopen called"))
     adapter = OpenRouterAdapter(api_key=FAKE_KEY)
-    for model in ("openai/gpt-4.1-nano", "typesafe/jev-1.14"):  # both routes blocked
+    for model in ("openai/gpt-4.1-nano", "typesafe/custom-protocol-model"):  # both routes blocked
         with pytest.raises(ProviderError, match="registry blockers"):
             adapter.generate(live_request(model_id=model))
 

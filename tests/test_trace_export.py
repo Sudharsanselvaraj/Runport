@@ -57,7 +57,7 @@ def _make_rec(k: str, mid: str):
 @pytest.fixture(autouse=True)
 def setup_test_roster():
     clear_registry()
-    for k, mid in [("jev-1.14", "jev-1.14"), ("gpt-4.1-nano", "openai/gpt-4.1-nano"), ("gpt-4o-mini", "openai/gpt-4o-mini")]:
+    for k, mid in [("custom-protocol-model", "custom-protocol-model"), ("gpt-4.1-nano", "openai/gpt-4.1-nano"), ("gpt-4o-mini", "openai/gpt-4o-mini")]:
         register_model(_make_rec(k, mid))
     yield
     clear_registry()
@@ -68,7 +68,7 @@ STAMP = "2026-10-15T12:30:00+00:00"
 EMAIL, PHONE, KEY = "student.test@example.invalid", "0123456789012", "sk-or-v1-mock-dummy-export-key-12345"
 
 
-def error_rec(case, run="run1", model="jev-1.14", retry=("TIMEOUT", "TIMEOUT", "TIMEOUT"), msg=None, task="INTENT"):
+def error_rec(case, run="run1", model="custom-protocol-model", retry=("TIMEOUT", "TIMEOUT", "TIMEOUT"), msg=None, task="INTENT"):
     return PredictionRecord(
         record_id=f"{run}:{case}:{task}:{model}", run_id=run, case_id=case, task=task, model_key=model, protocol=Protocol.DECISIONS_API,
         requested_model_id=model, prompt_version="sha256:test", dataset_version="test-ds", status="ERROR", attempts=len(retry), retry_errors=list(retry),
@@ -76,12 +76,12 @@ def error_rec(case, run="run1", model="jev-1.14", retry=("TIMEOUT", "TIMEOUT", "
 
 
 def sample_preds():
-    ok = [intent_pred(f"C{i}", "QUERY", model="jev-1.14", task="INTENT", top=0.9, latency_ms=100.0 + i, prompt_tokens=50, completion_tokens=3, usage_source="PROVIDER_REPORTED",
+    ok = [intent_pred(f"C{i}", "QUERY", model="custom-protocol-model", task="INTENT", top=0.9, latency_ms=100.0 + i, prompt_tokens=50, completion_tokens=3, usage_source="PROVIDER_REPORTED",
                       actual_cost_usd=Decimal("0.00010"), cost_basis="PROVIDER_REPORTED", native_cost=Decimal("0.0001"), native_cost_unit="credits(unverified)")
           for i in range(3)]
     other = [intent_pred(f"C{i}", "GREETING", model="gpt-4.1-nano", run="run2", task="INTENT") for i in range(2)]
-    bad = [intent_pred("C9", "QUERY", model="jev-1.14", task="INTENT", status="INVALID_OUTPUT"), error_rec("C8")]
-    lead = [lead_pred("L1", model="jev-1.14", task="LEAD", yes_prob=0.8), lead_pred("L2", task="LEAD", need_cta=False, model="gpt-4.1-nano", run="lrun2")]
+    bad = [intent_pred("C9", "QUERY", model="custom-protocol-model", task="INTENT", status="INVALID_OUTPUT"), error_rec("C8")]
+    lead = [lead_pred("L1", model="custom-protocol-model", task="LEAD", yes_prob=0.8), lead_pred("L2", task="LEAD", need_cta=False, model="gpt-4.1-nano", run="lrun2")]
     return ok + other + bad + lead
 
 
@@ -107,7 +107,7 @@ def test_scopes_and_filters():
 
 # ------------------------------------------------------------------ completeness, nulls, provenance fields
 def test_every_trace_field_is_present_and_nulls_are_preserved():
-    row = next(r for r in build().rows if r["identity"]["case_id"] == "C0" and r["identity"]["model_key"] == "jev-1.14" and r["identity"]["task"] == "INTENT")
+    row = next(r for r in build().rows if r["identity"]["case_id"] == "C0" and r["identity"]["model_key"] == "custom-protocol-model" and r["identity"]["task"] == "INTENT")
     assert row["schema_version"] == X.SCHEMA_VERSION
     assert row["versions"] == {"dataset_version": "test-ds", "prompt_fingerprint": "sha256:test", "input_contract_version": CONTRACT_VERSION,
                                "parity_status": "PRODUCTION_PARITY_NOT_ESTABLISHED"}
@@ -121,7 +121,7 @@ def test_every_trace_field_is_present_and_nulls_are_preserved():
 
 
 def test_failed_and_invalid_requests_are_exported_with_their_markers():
-    rows = {(r["identity"]["case_id"]): r for r in build().rows if r["identity"]["task"] == "INTENT" and r["identity"]["model_key"] == "jev-1.14"}
+    rows = {(r["identity"]["case_id"]): r for r in build().rows if r["identity"]["task"] == "INTENT" and r["identity"]["model_key"] == "custom-protocol-model"}
     err, inv = rows["C8"], rows["C9"]
     assert err["markers"]["failed_call"] and err["request"]["error_category"] == "TIMEOUT" and err["request"]["attempts"] == 3
     assert err["request"]["retry_causes"] == ["TIMEOUT"] * 3 and err["output"]["predicted_label"] is None and err["usage"]["prompt_tokens"] is None
@@ -129,12 +129,12 @@ def test_failed_and_invalid_requests_are_exported_with_their_markers():
 
 
 def test_events_add_timestamps_retries_and_event_only_failures():
-    evs = [started("run1:C0:INTENT:jev-1.14", 5), finished("run1:C0:INTENT:jev-1.14", 6),
+    evs = [started("run1:C0:INTENT:custom-protocol-model", 5), finished("run1:C0:INTENT:custom-protocol-model", 6),
            started("run3:Z1:INTENT:gpt-4o-mini", 7, model="gpt-4o-mini", run="run3", case="Z1"),
            finished("run3:Z1:INTENT:gpt-4o-mini", 8, model="gpt-4o-mini", run="run3", case="Z1", status="ERROR", http_status=429, task="INTENT", actual=None, basis=None),
-           RequestEvent(kind="REQUEST_RETRY", request_id="run1:C0:INTENT:jev-1.14", run_id="run1", case_id="C0", model_key="jev-1.14", ts=ts(5.5), retry_cause="HTTP_503")]
+           RequestEvent(kind="REQUEST_RETRY", request_id="run1:C0:INTENT:custom-protocol-model", run_id="run1", case_id="C0", model_key="custom-protocol-model", ts=ts(5.5), retry_cause="HTTP_503")]
     ts_ = build(events=evs)
-    c0 = next(r for r in ts_.rows if r["request"]["request_id"] == "run1:C0:INTENT:jev-1.14")
+    c0 = next(r for r in ts_.rows if r["request"]["request_id"] == "run1:C0:INTENT:custom-protocol-model")
     assert c0["request"]["request_started_at"] == ts(5) and "HTTP_503" in c0["request"]["retry_causes"]
     only = next(r for r in ts_.rows if r["identity"]["run_id"] == "run3")
     assert only["markers"]["source"] == "EVENT_ONLY_NO_PREDICTION_RECORD" and only["markers"]["failed_call"] and only["request"]["error_category"] == "RATE_LIMIT"
@@ -142,12 +142,12 @@ def test_events_add_timestamps_retries_and_event_only_failures():
 
 
 def test_lead_rows_carry_the_frozen_threshold_and_decision_source():
-    frozen = {"jev-1.14": SimpleNamespace(threshold=0.55)}
+    frozen = {"custom-protocol-model": SimpleNamespace(threshold=0.55)}
     lead = [r for r in build(frozen=frozen).rows if r["identity"]["task"] == "LEAD"]
-    jev = next(r for r in lead if r["identity"]["model_key"] == "jev-1.14")
+    jev = next(r for r in lead if r["identity"]["model_key"] == "custom-protocol-model")
     assert jev["confidence"]["yes_probability"] == 0.8 and jev["confidence"]["frozen_threshold"] == 0.55
     assert jev["output"]["decision"] is True and jev["output"]["decision_source"] == "FROZEN_DEV_THRESHOLD"
-    jev0 = next(r for r in build().rows if r["identity"]["task"] == "LEAD" and r["identity"]["model_key"] == "jev-1.14")
+    jev0 = next(r for r in build().rows if r["identity"]["task"] == "LEAD" and r["identity"]["model_key"] == "custom-protocol-model")
     assert jev0["output"]["decision"] is None and jev0["output"]["decision_source"] == "THRESHOLD_NOT_FROZEN"
     chat = next(r for r in lead if r["identity"]["model_key"] == "gpt-4.1-nano")
     assert chat["output"]["decision"] is False and chat["output"]["decision_source"] == "MODEL_OUTPUT"
@@ -157,7 +157,7 @@ def test_ground_truth_and_correctness_only_after_approval(tmp_path):
     prep = make_prep(tmp_path / "p")
     write_labels(prep, [label_row("C0", "INTENT", "QUERY"), label_row("C1", "INTENT", "GREETING"), label_row("C2", "INTENT", "QUERY", status="PENDING_REVIEW")])
     labels = load_approved_labels(prep)
-    rows = {r["identity"]["case_id"]: r for r in build(labels=labels).rows if r["identity"]["model_key"] == "jev-1.14" and r["identity"]["task"] == "INTENT"}
+    rows = {r["identity"]["case_id"]: r for r in build(labels=labels).rows if r["identity"]["model_key"] == "custom-protocol-model" and r["identity"]["task"] == "INTENT"}
     assert rows["C0"]["ground_truth"] == {"status": "APPROVED", "label": "QUERY", "correct": True}
     assert rows["C1"]["ground_truth"] == {"status": "APPROVED", "label": "GREETING", "correct": False}
     assert rows["C2"]["ground_truth"] == {"status": "NOT_LABELLED", "label": None, "correct": None}
@@ -213,7 +213,7 @@ def test_jsonl_and_csv_match_the_rows_and_preserve_empty_values(tmp_path):
     assert len(recs) == len(ts_.rows) and list(recs[0].keys()) == X.CSV_COLUMNS
     err = next(r for r in recs if r["case_id"] == "C8")
     assert err["prompt_tokens"] == "" and err["actual_cost_usd"] == "" and err["failed_call"] == "True" and err["simulated"] == "False"
-    ok = next(r for r in recs if r["case_id"] == "C0" and r["model_key"] == "jev-1.14")
+    ok = next(r for r in recs if r["case_id"] == "C0" and r["model_key"] == "custom-protocol-model")
     assert float(ok["p_QUERY"]) == pytest.approx(0.9) and ok["ground_truth_status"] == "PENDING" and ok["correct"] == ""
 
 
@@ -223,13 +223,13 @@ def test_zip_contents_manifest_and_participant_coverage(tmp_path):
     zf = zipfile.ZipFile(res.path)
     names = set(zf.namelist())
     assert {"manifest.json", "all_records.jsonl", "all_records.csv", "consolidated_comparison.csv", "participants.csv",
-            "models/jev-1.14.jsonl", "models/jev-1.14.csv", "models/gpt-4.1-nano.jsonl", "models/gpt-4.1-nano.csv"} <= names
+            "models/custom-protocol-model.jsonl", "models/custom-protocol-model.csv", "models/gpt-4.1-nano.jsonl", "models/gpt-4.1-nano.csv"} <= names
     man = json.loads(zf.read("manifest.json"))
     assert man["schema_version"] == X.SCHEMA_VERSION and man["exported_at"] == STAMP and man["format"] == "zip"
-    assert man["run_ids"] == ["lrun", "lrun2", "run1", "run2"] and man["model_ids"] == ["gpt-4.1-nano", "jev-1.14"] and man["tasks"] == ["INTENT", "LEAD"]
+    assert man["run_ids"] == ["lrun", "lrun2", "run1", "run2"] and man["model_ids"] == ["custom-protocol-model", "gpt-4.1-nano"] and man["tasks"] == ["INTENT", "LEAD"]
     assert man["dataset_versions"] == ["test-ds"] and man["prompt_versions"] == ["sha256:test"] and man["input_contract_versions"] == [CONTRACT_VERSION]
     assert man["parity_status"] == "PRODUCTION_PARITY_NOT_ESTABLISHED" and man["telemetry_provenance"]["live_only"] and not man["telemetry_provenance"]["simulated_records_included"]
-    assert "models" not in man["provider_routes"] and set(man["provider_routes"]) == {"gpt-4.1-nano", "jev-1.14"}
+    assert "models" not in man["provider_routes"] and set(man["provider_routes"]) == {"gpt-4.1-nano", "custom-protocol-model"}
     assert any("GROUND TRUTH PENDING" in w for w in man["warnings"]) and any("PRODUCTION_PARITY_NOT_ESTABLISHED" in w for w in man["warnings"])
     for name, digest in man["files"].items():
         assert hashlib.sha256(zf.read(name)).hexdigest() == digest
@@ -238,11 +238,11 @@ def test_zip_contents_manifest_and_participant_coverage(tmp_path):
     parts = {p["key"]: p for p in man["participants"]}
     assert len([p for p in man["participants"] if p["readiness"] != "NOT_ON_ROSTER"]) == len(roster_status())
     assert parts["gpt-4o-mini"]["execution_state"] == "NOT_EXECUTED" and parts["gpt-4o-mini"]["n_trace_records"] == 0
-    assert parts["gpt-4.1-nano"]["execution_state"] in ("EXECUTED", "EXECUTED_WITH_FAILURES") and parts["jev-1.14"]["execution_state"] == "EXECUTED_WITH_FAILURES"
+    assert parts["gpt-4.1-nano"]["execution_state"] in ("EXECUTED", "EXECUTED_WITH_FAILURES") and parts["custom-protocol-model"]["execution_state"] == "EXECUTED_WITH_FAILURES"
     assert all(r["identity"]["model_key"] != "gpt-4o-mini" for r in ts_.rows)
     comp = list(csv.DictReader(io.StringIO(zf.read("consolidated_comparison.csv").decode())))
     row = next(r for r in comp if r["case_id"] == "C0" and r["task"] == "INTENT")
-    assert row["pred::jev-1.14"] == "QUERY" and row["pred::gpt-4.1-nano"] == "GREETING" and row["models_agree"] == "False"
+    assert row["pred::custom-protocol-model"] == "QUERY" and row["pred::gpt-4.1-nano"] == "GREETING" and row["models_agree"] == "False"
 
 
 def test_empty_export_is_valid_and_creates_no_placeholder_rows(tmp_path):
@@ -262,9 +262,9 @@ def test_exports_are_reproducible_never_overwrite_and_leave_sources_untouched(tm
     preds_dir = tmp_path / "preds"
     write_preds(preds_dir, "r", sample_preds())
     events = EventStore(tmp_path / "ev.jsonl")
-    events.append(started("run1:C0:INTENT:jev-1.14", 1))
+    events.append(started("run1:C0:INTENT:custom-protocol-model", 1))
     before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.rglob("*") if p.is_file()}
-    sel = X.ExportSelection(models=("jev-1.14",))
+    sel = X.ExportSelection(models=("custom-protocol-model",))
     a = X.export_traces(build(sel=sel, events=events.read_all()), sel, roster_status(), NOLABELS, "zip", tmp_path / "out", exported_at=STAMP)
     b = X.export_traces(build(sel=sel, events=events.read_all()), sel, roster_status(), NOLABELS, "zip", tmp_path / "out", exported_at=STAMP)
     assert a.path != b.path and b.path.name.endswith("-r2.zip") and a.path.read_bytes() == b.path.read_bytes()
@@ -298,7 +298,7 @@ def test_explorer_screen_filters_preview_and_export(monkeypatch):
     tui.handle_key("t")
     assert tui.ex.task == "INTENT" and all(r.cells[3] == "INTENT" for r in tui.get_view().rows)
     tui.handle_key("m")
-    assert tui.ex.model in ("gpt-4.1-nano", "jev-1.14")
+    assert tui.ex.model in ("gpt-4.1-nano", "custom-protocol-model")
     tui.handle_key("c")
     assert (tui.ex.model, tui.ex.task, tui.ex.run, tui.ex.status) == (None, None, None, None)
     tui.handle_key("s")
@@ -353,7 +353,7 @@ def test_simulated_event_in_the_log_is_excluded_from_the_explorer_export():
 def test_export_traces_cli_writes_a_zip_under_reports_exports():
     from runport.cli import app
     write_preds(settings.reports_dir / "classification", "r", sample_preds())
-    res = CliRunner().invoke(app, ["export-traces", "--format", "zip", "--task", "INTENT", "--model", "jev-1.14"])
+    res = CliRunner().invoke(app, ["export-traces", "--format", "zip", "--task", "INTENT", "--model", "custom-protocol-model"])
     assert res.exit_code == 0, res.output
     assert "records exported 5" in res.output and "GROUND TRUTH PENDING" in res.output and str(settings.reports_dir) in res.output.replace("\n", "")
     zips = list((settings.reports_dir / "exports").glob("*.zip"))
@@ -388,8 +388,8 @@ def test_machine_readable_records_keep_nulls_and_reasons_even_when_the_viewer_hi
 
 
 def test_synthetic_fixture_traces_are_labelled_and_never_look_like_real_data():
-    smoke = intent_pred("S1", "QUERY", run="smoke_abc-jev-1.14-INTENT", dataset_version="smoke-synthetic-v1")
-    real = intent_pred("R1", "QUERY", run="bench-0123-jev-1.14-INTENT", dataset_version="prep-v2")
+    smoke = intent_pred("S1", "QUERY", run="smoke_abc-custom-protocol-model-INTENT", dataset_version="smoke-synthetic-v1")
+    real = intent_pred("R1", "QUERY", run="bench-0123-custom-protocol-model-INTENT", dataset_version="prep-v2")
     other = intent_pred("O1", "QUERY", run="adhoc", dataset_version="x")
     kinds = {r["identity"]["case_id"]: r["markers"]["data_kind"] for r in build(preds=[smoke, real, other]).rows}
     assert kinds == {"S1": "SYNTHETIC_FIXTURE", "R1": "REAL_DATA_BENCHMARK", "O1": "UNCLASSIFIED"}
@@ -407,10 +407,10 @@ def test_synthetic_fixture_traces_are_labelled_and_never_look_like_real_data():
 def test_error_class_filter_and_per_run_summary_with_planned_attempted_failed_invalid_and_unattempted():
     ts_ = build(sel=X.ExportSelection(error_categories=("TIMEOUT",)))
     assert [r["identity"]["case_id"] for r in ts_.rows] == ["C8"]
-    plans = {"bench-abc": {"participants": [{"key": "jev-1.14", "per_task": {"INTENT": {"requests_full": 10}}}]}}
-    recs = [intent_pred(f"C{i}", "QUERY", model="jev-1.14", task="INTENT", run="bench-abc-jev-1.14-INTENT") for i in range(3)] + [intent_pred("C9", "QUERY", model="jev-1.14", task="INTENT", run="bench-abc-jev-1.14-INTENT", status="INVALID_OUTPUT")]
+    plans = {"bench-abc": {"participants": [{"key": "custom-protocol-model", "per_task": {"INTENT": {"requests_full": 10}}}]}}
+    recs = [intent_pred(f"C{i}", "QUERY", model="custom-protocol-model", task="INTENT", run="bench-abc-custom-protocol-model-INTENT") for i in range(3)] + [intent_pred("C9", "QUERY", model="custom-protocol-model", task="INTENT", run="bench-abc-custom-protocol-model-INTENT", status="INVALID_OUTPUT")]
     summ = X.run_summaries(build(preds=recs).rows, plans)
-    assert summ == [{"run_id": "bench-abc-jev-1.14-INTENT", "model_key": "jev-1.14", "task": "INTENT", "data_kind": "REAL_DATA_BENCHMARK", "attempted": 4, "succeeded": 3,
+    assert summ == [{"run_id": "bench-abc-custom-protocol-model-INTENT", "model_key": "custom-protocol-model", "task": "INTENT", "data_kind": "REAL_DATA_BENCHMARK", "attempted": 4, "succeeded": 3,
                      "failed": 0, "invalid": 1, "planned_full_dataset": 10, "unattempted": 6}]
     none = X.run_summaries(build().rows, {})
     assert all(s["planned_full_dataset"] is None and s["unattempted"] is None for s in none)       # unknown stays unknown

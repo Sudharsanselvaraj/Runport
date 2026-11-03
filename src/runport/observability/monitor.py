@@ -60,7 +60,8 @@ class Analysis:
     labels: ApprovedLabels = field(default_factory=ApprovedLabels)
     meta: Dict[str, A.CaseMeta] = field(default_factory=dict)
     runs: Dict[Tuple[str, str], List[PredictionRecord]] = field(default_factory=dict)
-    intent_quality: List[A.IntentQuality] = field(default_factory=list)
+    quality: List[A.ClassificationQuality] = field(default_factory=list)
+    intent_quality: List[A.ClassificationQuality] = field(default_factory=list)
     calibration: List[A.CalibrationReport] = field(default_factory=list)
     lead: List[A.LeadModelReport] = field(default_factory=list)
     agreement_intent: Optional[A.AgreementReport] = None
@@ -115,7 +116,8 @@ class LiveMonitor:
         if a.predictions and self.dataset.prep_dir is not None:
             a.meta = A.load_case_meta(self.dataset.prep_dir)
         a.runs = A.latest_runs(a.predictions)
-        a.intent_quality = A.intent_quality(a.runs, a.labels)
+        a.quality = A.classification_quality(a.runs, a.labels)
+        a.intent_quality = a.quality
         a.calibration = A.calibration_reports(a.runs, a.labels)
         a.lead = A.lead_reports(a.runs, a.labels, a.meta)
         frozen = {r.model_key: r.frozen for r in a.lead if r.frozen is not None}

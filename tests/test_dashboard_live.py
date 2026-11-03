@@ -40,7 +40,7 @@ def render(tui, buf) -> str:
     return buf.getvalue()
 
 
-def now_events(store, n=3, model="jev-1.14"):
+def now_events(store, n=3, model="custom-protocol-model"):
     import time
     from datetime import datetime, timezone
     from runport.observability.events import RequestEvent

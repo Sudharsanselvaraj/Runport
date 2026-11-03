@@ -64,6 +64,10 @@ node_modules/
 web/node_modules/
 web/dist/
 
+# Progress and local scratch docs
+docs/PROGRESS.md
+docs/SCAN_NOTES.md
+
 # Local evaluation datasets, private fixtures, and raw documents (NEVER COMMIT)
 september_to_october.csv
 main_intent_classifier.md

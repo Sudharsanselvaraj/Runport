@@ -126,7 +126,7 @@ def cohen_kappa(a: Sequence[str], b: Sequence[str]) -> Optional[float]:
 
 # ---------------------------------------------------------------- quality
 @dataclass
-class IntentQuality:
+class ClassificationQuality:
     model_key: str
     run_id: str
     n_predictions: int
@@ -137,13 +137,17 @@ class IntentQuality:
     flags: List[str] = field(default_factory=list)
 
 
-def intent_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: ApprovedLabels) -> List[IntentQuality]:
+IntentQuality = ClassificationQuality
+
+
+def classification_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: ApprovedLabels) -> List[ClassificationQuality]:
+    """Universal supervised classification quality evaluator."""
     out = []
     for (mk, task), recs in sorted(runs.items()):
         task_str = task.value if hasattr(task, "value") else str(task)
         if task_str.lower() not in ("intent", "classification"):
             continue
-        q = IntentQuality(mk, recs[0].run_id, len(recs), sum(r.status == "ERROR" for r in recs), PENDING)
+        q = ClassificationQuality(mk, recs[0].run_id, len(recs), sum(r.status == "ERROR" for r in recs), PENDING)
         scorable = [r for r in recs if r.case_id in labels.intent]
         if labels.intent and scorable:
             items = [M.IntentItem(expected=labels.intent[r.case_id], predicted=intent_pred(r)) for r in scorable]
@@ -159,6 +163,11 @@ def intent_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: 
                 q.flags.append("RARE CLASSES BELOW SUPPORT %d: %s" % (MIN_CLASS_SUPPORT, ", ".join(f"{c}({q.metrics.per_class[c].support})" for c in thin)))
         out.append(q)
     return out
+
+
+def intent_quality(runs: Dict[Tuple[str, str], List[PredictionRecord]], labels: ApprovedLabels) -> List[ClassificationQuality]:
+    """Deprecated alias for classification_quality."""
+    return classification_quality(runs, labels)
 
 
 def lead_pred(r: PredictionRecord, frozen: Optional[T.FrozenThreshold]) -> Optional[bool]:
