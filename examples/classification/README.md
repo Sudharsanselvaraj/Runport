@@ -1,6 +1,6 @@
 # Offline Classification Benchmark Example
 
-This example demonstrates single-label intent/ticket classification using synthetic data and Runport's `GenericRunner`.
+This example demonstrates single-label support ticket classification using synthetic data and Runport's `GenericRunner`.
 
 ---
 

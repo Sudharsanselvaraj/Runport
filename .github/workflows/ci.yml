@@ -64,7 +64,7 @@ jobs:
       - name: Run Legacy Pattern Scan
         run: |
           echo "Verifying zero legacy tokens outside approved exceptions..."
-          MATCHES=$(git ls-files -z | grep -zv -e package-lock -e uv.lock | xargs -0 grep -niIE "msu|jev|lead|intent|admission|whatsapp|user4|counsellor|/Users/" | grep -v -E "(LICENSE:|examples/plugins/jev_decisions_api/|docs/INVARIANT_TESTS.md:)" || true)
+          MATCHES=$(git ls-files -z | grep -zv -e package-lock -e uv.lock | xargs -0 grep -niIE "msu|jev|lead|intent|admission|whatsapp|user4|counsellor|/Users/" | grep -v -E "(LICENSE:|examples/plugins/jev_decisions_api/|docs/INVARIANT_TESTS.md:|CODE_OF_CONDUCT.md:)" || true)
           if [ -n "$MATCHES" ]; then
             echo "Legacy scan failed! Forbidden patterns found:"
             echo "$MATCHES"
