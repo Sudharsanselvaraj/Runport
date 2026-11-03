@@ -46,6 +46,9 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/*.sqlite*
+data/*.json
+!data/evaluation/
+!data/traces/
 data/classification_prep/
 data/telemetry/
 data/db/
