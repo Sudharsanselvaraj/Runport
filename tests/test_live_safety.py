@@ -47,6 +47,127 @@ def _block_network(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _deny)
 
 
+@pytest.fixture(autouse=True)
+def _setup_test_models():
+    from datetime import date
+    from runport.models.registry import (
+        FactStatus, ModelRecord, RouteOption, RouteRecord, RouteStatus,
+        clear_registry, fact, register_model, unknown,
+    )
+    clear_registry()
+    d = date(2026, 1, 1)
+    urls = ["https://openrouter.ai/models"]
+
+    opt_gemini = RouteOption(
+        provider="Google",
+        tag="google-vertex/global",
+        input_per_m="0.30",
+        output_per_m="2.50",
+        context=1048576,
+        max_completion=65536,
+        params=["temperature", "max_tokens"],
+        uptime_1d=100.0,
+    )
+    rec_gemini = ModelRecord(
+        key="baseline-intent-gemini-3.5-flash-lite",
+        display_name="Gemini 3.5 Flash Lite",
+        roles=["PRODUCTION_BASELINE"],
+        tasks=["INTENT"],
+        requested_model_id=fact(MODEL, FactStatus.VERIFIED_PRIMARY, urls, d),
+        endpoint=fact("POST https://openrouter.ai/api/v1/chat/completions", FactStatus.VERIFIED_PRIMARY, urls, d),
+        request_fields=fact(["model", "messages"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        response_shape=fact("chat.completion", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_type=fact("text", FactStatus.VERIFIED_PRIMARY, urls, d),
+        resolved_version_reporting=fact("exact", FactStatus.VERIFIED_PRIMARY, urls, d),
+        usage_fields=fact(["prompt_tokens", "completion_tokens"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        input_price_per_1m_usd=fact("0.30", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_price_per_1m_usd=fact("2.50", FactStatus.VERIFIED_PRIMARY, urls, d),
+        context_limit_tokens=fact(1048576, FactStatus.VERIFIED_PRIMARY, urls, d),
+        provider_route=fact("google-vertex/global", FactStatus.VERIFIED_PRIMARY, urls, d),
+        structured_output_support=fact(True, FactStatus.VERIFIED_PRIMARY, urls, d),
+        data_policy=fact("Zero-Data-Retention", FactStatus.VERIFIED_PRIMARY, urls, d),
+        error_codes=fact([400, 401, 429], FactStatus.VERIFIED_PRIMARY, urls, d),
+        route=RouteRecord(
+            status=RouteStatus.READY,
+            route_input_price_per_1m_usd=fact("0.30", FactStatus.VERIFIED_PRIMARY, urls, d),
+            route_output_price_per_1m_usd=fact("2.50", FactStatus.VERIFIED_PRIMARY, urls, d),
+        ),
+        candidate_routes=[opt_gemini],
+        pinned_tag="google-vertex/global",
+    )
+    register_model(rec_gemini)
+
+    opt_nano = RouteOption(
+        provider="Azure",
+        tag="azure",
+        input_per_m="0.10",
+        output_per_m="0.40",
+        context=128000,
+        max_completion=16384,
+        params=["temperature", "max_tokens"],
+        uptime_1d=100.0,
+    )
+    rec_nano = ModelRecord(
+        key="gpt-4.1-nano",
+        display_name="GPT-4.1 Nano",
+        roles=["CANDIDATE"],
+        tasks=["INTENT", "LEAD"],
+        requested_model_id=fact("openai/gpt-4.1-nano", FactStatus.VERIFIED_PRIMARY, urls, d),
+        endpoint=fact("POST https://openrouter.ai/api/v1/chat/completions", FactStatus.VERIFIED_PRIMARY, urls, d),
+        request_fields=fact(["model", "messages"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        response_shape=fact("chat.completion", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_type=fact("text", FactStatus.VERIFIED_PRIMARY, urls, d),
+        resolved_version_reporting=fact("exact", FactStatus.VERIFIED_PRIMARY, urls, d),
+        usage_fields=fact(["prompt_tokens", "completion_tokens"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        input_price_per_1m_usd=fact("0.10", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_price_per_1m_usd=fact("0.40", FactStatus.VERIFIED_PRIMARY, urls, d),
+        context_limit_tokens=fact(128000, FactStatus.VERIFIED_PRIMARY, urls, d),
+        provider_route=fact("azure", FactStatus.VERIFIED_PRIMARY, urls, d),
+        structured_output_support=fact(True, FactStatus.VERIFIED_PRIMARY, urls, d),
+        data_policy=fact("Zero-Data-Retention", FactStatus.VERIFIED_PRIMARY, urls, d),
+        error_codes=fact([400, 401, 429], FactStatus.VERIFIED_PRIMARY, urls, d),
+        route=RouteRecord(
+            status=RouteStatus.READY,
+            route_input_price_per_1m_usd=fact("0.10", FactStatus.VERIFIED_PRIMARY, urls, d),
+            route_output_price_per_1m_usd=fact("0.40", FactStatus.VERIFIED_PRIMARY, urls, d),
+        ),
+        candidate_routes=[opt_nano],
+        pinned_tag="azure",
+    )
+    register_model(rec_nano)
+
+    from runport.models.registry import Protocol
+    rec_jev = ModelRecord(
+        key="jev-1.14",
+        display_name="JEV 1.14",
+        roles=["CANDIDATE"],
+        tasks=["INTENT"],
+        protocol=Protocol.DECISIONS_API,
+        requested_model_id=fact("typesafe/jev-1.14", FactStatus.VERIFIED_PRIMARY, urls, d),
+        endpoint=fact("POST https://api.example.com/jev", FactStatus.VERIFIED_PRIMARY, urls, d),
+        request_fields=fact(["model"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        response_shape=fact("decisions.api", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_type=fact("text", FactStatus.VERIFIED_PRIMARY, urls, d),
+        resolved_version_reporting=fact("exact", FactStatus.VERIFIED_PRIMARY, urls, d),
+        usage_fields=fact(["prompt_tokens", "completion_tokens"], FactStatus.VERIFIED_PRIMARY, urls, d),
+        input_price_per_1m_usd=fact("0.10", FactStatus.VERIFIED_PRIMARY, urls, d),
+        output_price_per_1m_usd=fact("0.40", FactStatus.VERIFIED_PRIMARY, urls, d),
+        context_limit_tokens=fact(128000, FactStatus.VERIFIED_PRIMARY, urls, d),
+        provider_route=fact("custom", FactStatus.VERIFIED_PRIMARY, urls, d),
+        structured_output_support=fact(False, FactStatus.VERIFIED_PRIMARY, urls, d),
+        data_policy=fact("Zero-Data-Retention", FactStatus.VERIFIED_PRIMARY, urls, d),
+        error_codes=fact([400, 401, 429], FactStatus.VERIFIED_PRIMARY, urls, d),
+        route=RouteRecord(
+            status=RouteStatus.READY,
+            route_input_price_per_1m_usd=fact("0.10", FactStatus.VERIFIED_PRIMARY, urls, d),
+            route_output_price_per_1m_usd=fact("0.40", FactStatus.VERIFIED_PRIMARY, urls, d),
+        ),
+    )
+    register_model(rec_jev)
+    yield
+    clear_registry()
+
+
 # ------------------------------------------------------------------ helpers
 class FakeHTTPResponse:
     def __init__(self, payload):

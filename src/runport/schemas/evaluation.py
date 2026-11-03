@@ -61,11 +61,11 @@ class VerificationRecord(BaseModel):
     status: VerificationStatus = Field(default=VerificationStatus.UNVERIFIED)
     reference_source: Optional[str] = Field(
         default=None,
-        description="Authoritative citation (e.g. Official Academic Guide 2026, Dean's Office bulletin)."
+        description="Authoritative citation (e.g. Official Policy 2026, Technical Reference Documentation)."
     )
     verifier: Optional[str] = Field(
         default=None,
-        description="Identity of the academic reviewer or domain expert."
+        description="Identity of the human reviewer or domain expert."
     )
     verified_at: Optional[datetime] = Field(default=None)
     notes: Optional[str] = Field(default=None)

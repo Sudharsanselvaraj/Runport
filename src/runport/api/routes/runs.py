@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from runport.core.budget import BudgetService
 from runport.core.config import settings
 from runport.core.live_guard import confirm_live_run
-from runport.models.catalog import DEFAULT_PORTFOLIO
+from runport.models.catalog import get_portfolio
 from runport.runs.replay import ReplayRunner
 from runport.storage.db import DatabaseManager
 
@@ -105,7 +105,7 @@ def execute_run(req: RunExecutionRequest) -> Dict[str, Any]:
 
     # Recompute plan fingerprint to prevent tampering
     # Pessimistic pricing calculation
-    portfolio_map = {m.model_id: m for m in DEFAULT_PORTFOLIO}
+    portfolio_map = {m.model_id: m for m in get_portfolio()}
     total_projected_usd = Decimal("0.0000")
     for tid in req.target_ids:
         m = portfolio_map.get(tid)

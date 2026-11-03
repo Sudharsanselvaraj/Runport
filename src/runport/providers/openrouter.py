@@ -8,7 +8,7 @@ import urllib.request  # noqa: F401
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from runport.models.catalog import DEFAULT_PORTFOLIO, ModelCandidate
+from runport.models.catalog import get_portfolio, ModelCandidate
 from runport.models import registry
 from runport.providers.base import (
     BaseProvider,
@@ -89,7 +89,7 @@ class OpenRouterAdapter(BaseProvider):
         sourced = registry.model_level_prices(model_id)  # the sourced registry is authoritative and is consulted first
         if sourced is not None:
             return sourced
-        for candidate in DEFAULT_PORTFOLIO:
+        for candidate in get_portfolio():
             if candidate.model_id == model_id:
                 return candidate.input_price_per_1m_usd, candidate.output_price_per_1m_usd
         raise ProviderError(

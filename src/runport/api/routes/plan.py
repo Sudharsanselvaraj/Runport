@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from runport.core.budget import BudgetService
 from runport.core.config import settings
-from runport.models.catalog import DEFAULT_PORTFOLIO
+from runport.models.catalog import get_portfolio
 from runport.storage.db import DatabaseManager
 
 router = APIRouter(prefix="/plan", tags=["plan"])
@@ -41,7 +41,7 @@ def create_plan(req: PlanRequest) -> Dict[str, Any]:
     if actual_cases == 0:
         raise HTTPException(status_code=400, detail="Dataset has 0 valid evaluation cases")
 
-    portfolio_map = {m.model_id: m for m in DEFAULT_PORTFOLIO}
+    portfolio_map = {m.model_id: m for m in get_portfolio()}
     per_target = []
     total_projected_usd = Decimal("0.0000")
     blockers = []

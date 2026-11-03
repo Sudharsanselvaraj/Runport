@@ -21,7 +21,7 @@ class ModelCandidate(BaseModel):
         default="UNVERIFIED_CATALOG_ENTRY",
         description="Verification state against live provider API catalog",
     )
-    experimental_purpose: str = Field(description="Role and rationale for inclusion in research workbench")
+    experimental_purpose: str = Field(default="", description="Role and rationale for inclusion in research workbench")
 
 
 DEFAULT_PORTFOLIO: List[ModelCandidate] = [
@@ -35,11 +35,11 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         input_price_per_1m_usd=Decimal("0.0750"),
         output_price_per_1m_usd=Decimal("0.3000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="High-throughput multimodal baseline for student counsellor triage.",
+        experimental_purpose="High-throughput multimodal baseline for evaluation tasks.",
     ),
     ModelCandidate(
         model_id="anthropic/claude-haiku-5.5",
-        display_name="Claude Haiku 5.5 (Proposed)",
+        display_name="Claude Haiku 5.5",
         provider="anthropic",
         deployment_mode="HOSTED_OPENROUTER",
         license="Proprietary Commercial API",
@@ -47,11 +47,11 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         input_price_per_1m_usd=Decimal("0.8000"),
         output_price_per_1m_usd=Decimal("4.0000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Hosted fast candidate (requires validation against live OpenRouter ID).",
+        experimental_purpose="Fast hosted candidate for benchmarking.",
     ),
     ModelCandidate(
-        model_id="openai/gpt-6-luna",
-        display_name="GPT-6 Luna (Proposed)",
+        model_id="openai/gpt-4o-mini",
+        display_name="GPT-4o Mini",
         provider="openai",
         deployment_mode="HOSTED_OPENROUTER",
         license="Proprietary Commercial API",
@@ -59,31 +59,31 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         input_price_per_1m_usd=Decimal("0.1500"),
         output_price_per_1m_usd=Decimal("0.6000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Hosted quality ceiling reference (requires validation against live OpenRouter ID).",
+        experimental_purpose="Low-cost reference candidate.",
+    ),
+    ModelCandidate(
+        model_id="openai/gpt-4.1-nano",
+        display_name="GPT-4.1 Nano",
+        provider="openai",
+        deployment_mode="HOSTED_OPENROUTER",
+        license="Proprietary Commercial API",
+        context_length=128000,
+        input_price_per_1m_usd=Decimal("0.1000"),
+        output_price_per_1m_usd=Decimal("0.4000"),
+        verification_status="UNVERIFIED_CATALOG_ENTRY",
+        experimental_purpose="Ultra-compact candidate for fast evaluations.",
     ),
     ModelCandidate(
         model_id="qwen/qwen3-8b",
-        display_name="Qwen3-8B (Proposed)",
+        display_name="Qwen3-8B",
         provider="qwen",
         deployment_mode="HOSTED_OPENROUTER",
-        license="Open-Weight (License TBD)",
+        license="Open-Weight",
         context_length=32768,
         input_price_per_1m_usd=Decimal("0.2000"),
         output_price_per_1m_usd=Decimal("0.2000"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Primary open-weight candidate for eventual self-hosted vLLM serving.",
-    ),
-    ModelCandidate(
-        model_id="qwen/qwen3-14b",
-        display_name="Qwen3-14B (Proposed)",
-        provider="qwen",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Open-Weight (License TBD)",
-        context_length=32768,
-        input_price_per_1m_usd=Decimal("0.3500"),
-        output_price_per_1m_usd=Decimal("0.4000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Secondary larger open-weight candidate for capacity comparison.",
+        experimental_purpose="Primary open-weight candidate for self-hosted serving.",
     ),
     ModelCandidate(
         model_id="deepseek/deepseek-v4.1-flash",
@@ -96,54 +96,6 @@ DEFAULT_PORTFOLIO: List[ModelCandidate] = [
         output_price_per_1m_usd=Decimal("0.3750"),
         verification_status="UNVERIFIED_CATALOG_ENTRY",
         experimental_purpose="High-throughput open weight flash candidate.",
-    ),
-    ModelCandidate(
-        model_id="z-ai/glm-5.3-flash",
-        display_name="GLM 5.3 Flash",
-        provider="z-ai",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=1048576,
-        input_price_per_1m_usd=Decimal("0.0412"),
-        output_price_per_1m_usd=Decimal("0.1200"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Ultra-low cost flash model.",
-    ),
-    ModelCandidate(
-        model_id="minimax/minimax-m3.1-flash:free",
-        display_name="MiniMax M3.1 Flash (Free)",
-        provider="minimax",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=1000000,
-        input_price_per_1m_usd=Decimal("0.0000"),
-        output_price_per_1m_usd=Decimal("0.0000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Free tier flash model.",
-    ),
-    ModelCandidate(
-        model_id="minimax/minimax-m3.1-flash",
-        display_name="MiniMax M3.1 Flash",
-        provider="minimax",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=1000000,
-        input_price_per_1m_usd=Decimal("0.1000"),
-        output_price_per_1m_usd=Decimal("0.1000"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Flash candidate for fast responses.",
-    ),
-    ModelCandidate(
-        model_id="qwen/qwen3.8-omni-flash",
-        display_name="Qwen 3.8 Omni Flash",
-        provider="qwen",
-        deployment_mode="HOSTED_OPENROUTER",
-        license="Proprietary Commercial API",
-        context_length=1000000,
-        input_price_per_1m_usd=Decimal("0.1500"),
-        output_price_per_1m_usd=Decimal("0.4700"),
-        verification_status="UNVERIFIED_CATALOG_ENTRY",
-        experimental_purpose="Multimodal omni flash candidate.",
     ),
 ]
 
@@ -175,13 +127,6 @@ def get_portfolio(db: Optional[DatabaseManager] = None) -> List[ModelCandidate]:
     if not rows:
         seed_default_portfolio(db_mgr)
         rows = db_mgr.get_all_models()
-    else:
-        existing_ids = [r["model_id"] for r in rows]
-        if "google/gemini-flash-1.5" in existing_ids and "google/gemini-3.5-flash-lite" not in existing_ids:
-            with db_mgr.get_connection() as conn:
-                conn.execute("DELETE FROM model_portfolio WHERE model_id = 'google/gemini-flash-1.5'")
-            seed_default_portfolio(db_mgr)
-            rows = db_mgr.get_all_models()
 
     candidates = []
     for r in rows:
@@ -196,7 +141,7 @@ def get_portfolio(db: Optional[DatabaseManager] = None) -> List[ModelCandidate]:
                 input_price_per_1m_usd=Decimal(r["input_price_per_1m_usd"]),
                 output_price_per_1m_usd=Decimal(r["output_price_per_1m_usd"]),
                 verification_status=r["verification_status"],
-                experimental_purpose=r["experimental_purpose"],
+                experimental_purpose=r.get("experimental_purpose", ""),
             )
         )
     return candidates

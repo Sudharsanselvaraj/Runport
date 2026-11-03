@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from runport.models.catalog import DEFAULT_PORTFOLIO, ModelCandidate
+from runport.models.catalog import get_portfolio, ModelCandidate
 from runport.connectors import (
     FlowiseConnector,
     HttpWorkflowConnector,
@@ -48,7 +48,7 @@ class TestTargetRequest(BaseModel):
 def list_targets() -> List[Dict[str, Any]]:
     """Returns available targets across catalog models and connectors."""
     targets = []
-    for m in DEFAULT_PORTFOLIO:
+    for m in get_portfolio():
         targets.append({
             "target_id": m.model_id,
             "name": m.display_name,
