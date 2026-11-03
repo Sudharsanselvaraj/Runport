@@ -28,7 +28,7 @@ graph TD
 - Established clean Git baseline with 1 commit per file.
 
 ### Phase 1: Repository-Wide De-Branding & Public-Release Cleanup (Complete)
-- Scrubbed all residual domain-specific terminology, hardcoded user paths, and admissions queries.
+- Scrubbed all residual domain-specific terminology, hardcoded user paths, and legacy queries.
 - Cleaned SVG assets and documentation.
 - Ensured offline test pass rate is 100%.
 

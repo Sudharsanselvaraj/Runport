@@ -188,8 +188,8 @@ class GenericRunner:
 
                 # --- Guard 7: Spend Booking ---
                 if plan.is_live and not res.is_replay:
+                    basis = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
                     if res.cost_usd is not None:
-                        basis = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
                         self.budget_service.record_spend(
                             transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
                             model_id=target_id,
@@ -201,8 +201,20 @@ class GenericRunner:
                             cost_basis=basis,
                         )
                         run_res.total_spend_usd += res.cost_usd
+                    elif basis == CostBasis.UNAVAILABLE.value:
+                        # Zero-cost unpriced / local execution: booked as $0.00 with UNAVAILABLE basis
+                        self.budget_service.record_spend(
+                            transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
+                            model_id=target_id,
+                            provider=getattr(target, "provider_name", "local"),
+                            amount_usd=Decimal("0.000000"),
+                            description=f"Run {run_id} Case {case_id} (Local/Unavailable)",
+                            run_id=run_id,
+                            is_pilot=True,
+                            cost_basis=CostBasis.UNAVAILABLE.value,
+                        )
                     else:
-                        # Booked as UNRESOLVED if cost is unavailable
+                        # Billed request with unknown cost -> booked as UNRESOLVED
                         self.budget_service.record_unresolved_spend(
                             transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
                             model_id=target_id,

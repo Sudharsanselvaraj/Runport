@@ -4,7 +4,7 @@ Runport originated from an internal domain-specific evaluation tool and was gene
 
 ### What Was Removed & Decoupled
 1. **Confidential & Domain-Specific Data**:
-   - All internal conversational exports, candidate logs, and domain-specific admissions queries were permanently excluded from tracking.
+   - All internal conversational exports, candidate logs, and domain-specific legacy queries were permanently excluded from tracking.
    - Evaluative benchmarks were replaced with synthetic, reproducible benchmarks (`synthetic_seed_eval.jsonl` and synthetic RAG benchmarks).
 
 2. **Specialized Protocols & Custom Integrations**:
