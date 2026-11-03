@@ -62,7 +62,7 @@ uv run runport
 ```
 
 <p align="center">
-  <img src="assets/readme/terminal-welcome.png" alt="Runport CLI Welcome Screen" width="900" />
+  <img src="assets/readme/terminal-welcome.png" alt="Runport CLI Welcome Screen" width="600" />
 </p>
 
 The interactive launcher provides unified access to every workbench capability:
@@ -126,7 +126,7 @@ uv run runport benchmark --dataset data/evaluation/synthetic_seed_eval.jsonl --t
 ```
 
 <p align="center">
-  <img src="assets/readme/terminal-dashboard.png" alt="Runport TUI Dashboard showing an offline replay evaluation" width="900" />
+  <img src="assets/readme/terminal-dashboard.png" alt="Runport TUI Dashboard showing an offline replay evaluation" width="600" />
 </p>
 
 ### Launch the Local Web Dashboard
