@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/Runport%20Hexagonal%20Logo.png">
-    <img alt="Runport — Universal LLM, Prompt, and Workflow Benchmarking" src="assets/Runport%20Hexagonal%20Logo.png" width="620">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/runport-logo-white.png">
+    <img alt="Runport — Universal LLM, Prompt, and Workflow Benchmarking" src="assets/runport-logo-black.png" width="620">
   </picture>
 </p>
 
