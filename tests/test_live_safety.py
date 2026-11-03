@@ -123,9 +123,9 @@ def test_credentials_are_redacted():
 
 
 def test_credentials_in_strings_are_redacted():
-    text = "Authorization: Bearer abcdefgh12345678 and sk-or-v1-abcdefghijklmnop1234 and sk-abcdefghijklmnop1234"
+    text = "Authorization: Bearer mock-bearer-secret-12345 and sk-or-v1-mock-dummy-key-12345678 and sk-mock-dummy-key-12345678"
     out = scrub_secrets(text)
-    assert "abcdefgh12345678" not in out and "abcdefghijklmnop1234" not in out
+    assert "mock-bearer-secret-12345" not in out and "mock-dummy-key-12345678" not in out
 
 
 def test_usage_fields_survive_scrubbing():

@@ -34,19 +34,19 @@ def test_scrub_secrets():
     """Confidentiality scrubber redacts API keys and sensitive tokens from nested structures."""
     payload = {
         "headers": {
-            "Authorization": "Bearer sk-or-v1-abcdef1234567890abcdef1234567890",
+            "Authorization": "Bearer sk-or-v1-mock-dummy-abcdef1234567890abcdef1234567890",
             "Content-Type": "application/json",
         },
-        "params": ["sk-test-secret-key-12345", "open-public-query"],
+        "params": ["sk-mock-dummy-secret-key-12345", "open-public-query"],
         "nested": {
-            "token": "sk-or-v1-secret9999",
+            "token": "sk-or-v1-mock-secret9999",
             "number": 42,
         },
     }
 
     scrubbed = scrub_secrets(payload)
     assert scrubbed["headers"]["Authorization"] == "[REDACTED_SECRET]"
-    assert "sk-or-v1-abcdef" not in str(scrubbed)
+    assert "sk-or-v1-mock-dummy-abcdef" not in str(scrubbed)
     assert "[REDACTED_API_KEY]" in scrubbed["params"][0]
     assert scrubbed["params"][1] == "open-public-query"
     assert scrubbed["nested"]["token"] == "[REDACTED_SECRET]"

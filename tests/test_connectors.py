@@ -116,7 +116,7 @@ def test_http_workflow_connector_secret_scrubbing(monkeypatch):
             code=400,
             msg="Bad Request",
             hdrs={},
-            fp=io.BytesIO(b'{"error": "invalid token sk-live-secret-key-1234567890"}'),
+            fp=io.BytesIO(b'{"error": "invalid token sk-dummy-mock-secret-key-1234567890"}'),
         )
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
@@ -130,7 +130,7 @@ def test_http_workflow_connector_secret_scrubbing(monkeypatch):
 
     assert result.status == TargetStatus.FAILED
     assert result.error_code == "400"
-    assert "sk-live-secret-key-1234567890" not in str(result.error_message)
+    assert "sk-dummy-mock-secret-key-1234567890" not in str(result.error_message)
     assert "[REDACTED_API_KEY]" in str(result.error_message)
 
 

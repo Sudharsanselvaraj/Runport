@@ -296,12 +296,12 @@ def test_classify_resolved_version_kinds():
 
 # ------------------------------------------------------------------ api-preflight never reveals the key or touches the network
 def test_api_preflight_reports_presence_without_revealing_the_key(monkeypatch):
-    sentinel = "sk-or-v1-SYNTHETICSENTINEL1234567890"
+    sentinel = "mock-fake-preflight-sentinel-12345"
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("network touched"))
     monkeypatch.setenv("OPENROUTER_API_KEY", sentinel)
     r = CliRunner(env={"COLUMNS": "200"}).invoke(app, ["api-preflight"])
     assert r.exit_code == 0 and "yes" in r.output and "no request is sent" in r.output
-    assert sentinel not in r.output and "SENTINEL" not in r.output and "sk-or" not in r.output
+    assert sentinel not in r.output and "mock-fake" not in r.output
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     missing = CliRunner(env={"COLUMNS": "200"}).invoke(app, ["api-preflight"])
     assert missing.exit_code == 1 and "export OPENROUTER_API_KEY" in missing.output

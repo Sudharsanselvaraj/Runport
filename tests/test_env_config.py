@@ -17,7 +17,7 @@ from runport.core.config import (
 
 def test_load_project_env_from_file(tmp_path: Path, monkeypatch):
     """A key can be loaded from a designated .env file."""
-    fake_key = "sk-or-v1-TESTKEYFROMDOTENV1234567890"  # gitleaks:allow
+    fake_key = "mock-fake-test-key-from-dotenv-12345"
     env_file = tmp_path / ".env"
     env_file.write_text(f"OPENROUTER_API_KEY={fake_key}\n")
     
@@ -32,8 +32,8 @@ def test_load_project_env_from_file(tmp_path: Path, monkeypatch):
 
 def test_shell_env_precedence_over_dotenv(tmp_path: Path, monkeypatch):
     """An explicitly exported environment variable takes precedence over the .env value."""
-    shell_key = "sk-or-v1-SHELLKEYPRECEDENCE9999999"
-    dotenv_key = "sk-or-v1-DOTENVKEYSHOULDNOTOVERWRITE"
+    shell_key = "mock-fake-shell-key-precedence-99999"
+    dotenv_key = "mock-fake-dotenv-key-no-overwrite"
     env_file = tmp_path / ".env"
     env_file.write_text(f"OPENROUTER_API_KEY={dotenv_key}\n")
     
@@ -71,7 +71,7 @@ def test_ensure_secure_dotenv_permissions(tmp_path: Path):
 
 def test_api_preflight_loads_dotenv_and_never_leaks_secret(tmp_path: Path, monkeypatch):
     """API preflight detects key from .env without printing or leaking the secret."""
-    sentinel_secret = "sk-or-v1-SECRETTESTVALUE9876543210"
+    sentinel_secret = "mock-fake-secret-sentinel-value-98765"
     env_file = tmp_path / ".env"
     env_file.write_text(f"OPENROUTER_API_KEY={sentinel_secret}\n")
     

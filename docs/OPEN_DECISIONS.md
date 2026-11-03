@@ -137,7 +137,7 @@ This section resolves the six critical readiness requirements identified prior t
 * **Verification Protocol:**
   ```bash
   # 1. Recursive copy preserving metadata and symlinks
-  rsync -aP "/Users/sudharsan/Downloads/LLM Workbench lab/" "/Volumes/<Drive>/MSU_LLM_Workbench_Master_Backup_20261102/"
+  rsync -aP "/path/to/source-repo/" "/Volumes/<Drive>/Master_Backup_20261102/"
 
   # 2. Generate SHA-256 manifest of source and backup
   find . -type f -not -path "./.git/*" -exec shasum -a 256 {} + | sort -k2 > /tmp/src_manifest.sha256

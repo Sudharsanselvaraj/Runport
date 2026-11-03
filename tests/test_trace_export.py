@@ -25,7 +25,7 @@ from obs_helpers import finished, intent_pred, label_row, lead_pred, make_prep, 
 
 NOLABELS = ApprovedLabels()
 STAMP = "2026-10-15T12:30:00+00:00"
-EMAIL, PHONE, KEY = "student.test@example.invalid", "0123456789012", "sk-or-v1-abcdefghijklmnopqrstuvwxyz0123"
+EMAIL, PHONE, KEY = "student.test@example.invalid", "0123456789012", "sk-or-v1-mock-dummy-export-key-12345"
 
 
 def error_rec(case, run="run1", model="jev-1.14", retry=("TIMEOUT", "TIMEOUT", "TIMEOUT"), msg=None):

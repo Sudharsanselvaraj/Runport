@@ -395,14 +395,14 @@ def test_deterministic_pipeline_repeatability(tmp_kb_dir: Path):
 
 def test_redact_sensitive_credentials_and_pii():
     """Verify redaction utility cleans personal email, phone numbers, and secrets."""
-    raw = "Contact admin at counsellor.test@example.com or call +60123456789. Key: api_key=sk-live-12345"  # gitleaks:allow
+    raw = "Contact admin at counsellor.test@example.com or call +60123456789. Key: api_key=mock-fake-key-99999"
     sanitized = redact_sensitive(raw)
 
     assert "counsellor.test@example.com" not in sanitized
     assert "[REDACTED_EMAIL]" in sanitized
     assert "+60123456789" not in sanitized
     assert "[REDACTED_PHONE]" in sanitized
-    assert "sk-live-12345" not in sanitized
+    assert "mock-fake-key-99999" not in sanitized
     assert "[REDACTED_SECRET]" in sanitized
 
 
