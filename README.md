@@ -14,7 +14,7 @@
   <a href="https://github.com/Sudharsanselvaraj/runport/actions/workflows/ci.yml"><img src="https://github.com/Sudharsanselvaraj/runport/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/Sudharsanselvaraj/runport"><img src="https://img.shields.io/badge/status-public%20alpha-orange.svg" alt="Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg" alt="Python"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg" alt="Python"></a>
   <a href="https://github.com/Sudharsanselvaraj/runport/stargazers"><img src="https://img.shields.io/github/stars/Sudharsanselvaraj/runport?style=flat" alt="GitHub Stars"></a>
 </p>
 
@@ -45,7 +45,7 @@ Runport is a developer-first platform for evaluating and comparing large languag
 ## Step 1: Install and start Runport
 
 ### Requirements
-- **Python**: 3.11 or 3.12
+- **Python**: 3.11, 3.12, or 3.13
 - **Package Manager**: [`uv`](https://docs.astral.sh/uv/) (recommended) or standard `pip`
 
 ```bash
