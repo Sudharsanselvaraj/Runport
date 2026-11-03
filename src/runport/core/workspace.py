@@ -4,7 +4,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class BudgetConfig(BaseModel):
@@ -16,6 +16,14 @@ class BudgetConfig(BaseModel):
     pilot_usd: Decimal = Field(default=Decimal("1.00"), description="Ceiling for initial pilot evaluation in USD")
     require_priced: bool = Field(default=False, description="Fail preflight if model pricing is unknown or unverified")
     retry_buffer_pct: Decimal = Field(default=Decimal("0.05"), description="Buffer allocation for network/rate-limit retries (5%)")
+
+    @model_validator(mode="after")
+    def _quantize_currencies(self) -> "BudgetConfig":
+        self.total_usd = self.total_usd.quantize(Decimal("0.01"))
+        self.per_run_usd = self.per_run_usd.quantize(Decimal("0.01"))
+        self.per_case_usd = self.per_case_usd.quantize(Decimal("0.01"))
+        self.pilot_usd = self.pilot_usd.quantize(Decimal("0.01"))
+        return self
 
     def to_budget_policy(self):
         from runport.core.config import BudgetPolicy

@@ -83,7 +83,7 @@ def register_budget_commands(budget_app: typer.Typer) -> None:
 
         eff = bp.effective_policy(settings.budget, settings.data_dir)
         console.print(
-            f"effective: total ${eff.total_budget_usd}  pilot ${eff.pilot_budget_usd}  per run ${eff.per_run_ceiling_usd}  per case ${eff.per_case_ceiling_usd}   (defaults: pilot ${settings.budget.pilot_budget_usd})",
+            f"effective: total ${eff.total_budget_usd:.2f}  pilot ${eff.pilot_budget_usd:.2f}  per run ${eff.per_run_ceiling_usd:.2f}  per case ${eff.per_case_ceiling_usd:.2f}   (defaults: pilot ${settings.budget.pilot_budget_usd:.2f})",
             markup=False,
         )
         for h in bp.history(settings.data_dir):
