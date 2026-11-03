@@ -98,7 +98,7 @@ class RAGBenchmarkRunner:
             system_prompt = (
                 "You are an AI assistant and knowledge retrieval counsellor. "
                 "Answer the student's question accurately, grounded strictly in the provided Context. "
-                "Never invent fees or admission criteria. If the context does not contain sufficient details, state that clearly."
+                "Never invent fees or qualification criteria. If the context does not contain sufficient details, state that clearly."
             )
             user_content = f"Context:\n{context_block}\n\nStudent Query: {case.query}"
 

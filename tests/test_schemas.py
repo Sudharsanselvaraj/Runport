@@ -20,7 +20,7 @@ def test_evaluation_case_defaults_to_fail_closed_unclassified():
     """Unclassified cases must default to UNCLASSIFIED and block external dispatch."""
     case = EvaluationCase(
         id="case-001",
-        query="What is the tuition fee for MBBS at Apex University?",
+        query="What is the tuition fee for the Cloud Engineering Diploma at Novatech Institute?",
     )
     assert case.classification == DataClassification.UNCLASSIFIED
     assert case.split == DatasetSplit.UNASSIGNED

@@ -1,7 +1,8 @@
 """Unit tests for statistical helpers in runport.scorers.stats."""
 
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy")
 
 from runport.scorers.stats import (
     boot_ci,

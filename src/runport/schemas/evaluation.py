@@ -81,16 +81,16 @@ class VerificationRecord(BaseModel):
 
 
 class EvaluationCase(BaseModel):
-    """Standard evaluation test case for student admissions queries."""
+    """Standard evaluation test case for benchmark queries."""
     id: str = Field(description="Unique case identifier (e.g. eval-case-001)")
-    query: str = Field(description="Student query prompt")
+    query: str = Field(description="Query prompt")
     expected_answer: Optional[str] = Field(
         default=None,
         description="Authoritative ground truth answer"
     )
     programme_category: str = Field(
         default="General",
-        description="Faculty or programme category (e.g. Accounting, Broadcasting, Medicine)"
+        description="Category or domain (e.g. Technical, Billing, General)"
     )
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
     classification: DataClassification = Field(
