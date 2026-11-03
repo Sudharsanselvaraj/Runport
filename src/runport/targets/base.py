@@ -35,7 +35,8 @@ class TargetStatus(str, Enum):
 class CostBasis(str, Enum):
     ACTUAL = "ACTUAL"            # Exact provider-reported cost
     ESTIMATED = "ESTIMATED"      # Catalog price * reported tokens
-    UNAVAILABLE = "UNAVAILABLE"  # Provider did not report usage and no catalog price
+    UNRESOLVED = "UNRESOLVED"    # Billed request with unknown cost
+    UNAVAILABLE = "UNAVAILABLE"  # Zero-cost unpriced / local execution
 
 
 @dataclass(frozen=True)

@@ -75,6 +75,13 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     evaluator_notes TEXT,
     FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
 );
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL,
+    description TEXT NOT NULL
+);
+
 """
 
 
@@ -119,6 +126,10 @@ class DatabaseManager:
         conn.execute(
             "UPDATE budget_ledger SET is_simulated = 1 WHERE is_simulated = 0 AND run_id IN "
             "(SELECT run_id FROM evaluation_runs WHERE is_dry_run = 1)"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+            "VALUES (1, datetime('now'), 'Base schema with ledger simulation and unresolved spend columns')"
         )
 
     def record_transaction(

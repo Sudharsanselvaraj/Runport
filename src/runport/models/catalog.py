@@ -1,6 +1,7 @@
 """Model portfolio registry and candidate model metadata."""
 
 from decimal import Decimal
+from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -69,3 +70,43 @@ def get_portfolio(db: Optional[DatabaseManager] = None) -> List[ModelCandidate]:
             )
         )
     return candidates
+
+
+def load_catalog_file(path: Path) -> List[ModelCandidate]:
+    """Load model candidates from a JSON or YAML file."""
+    import json
+    from pathlib import Path
+    p = Path(path)
+    if not p.is_file():
+        return []
+    content = p.read_text(encoding="utf-8")
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        try:
+            import yaml  # type: ignore
+            data = yaml.safe_load(content)
+        except ImportError:
+            return []
+    if isinstance(data, dict) and "models" in data:
+        data = data["models"]
+    if not isinstance(data, list):
+        return []
+    return [ModelCandidate.model_validate(item) for item in data]
+
+
+def load_catalog_sources(
+    sources: List[str],
+    db: Optional[DatabaseManager] = None,
+) -> List[ModelCandidate]:
+    """Load and register candidates from multiple catalog sources (files, paths, or entry-points)."""
+    from pathlib import Path
+    loaded: List[ModelCandidate] = []
+    for src in sources:
+        p = Path(src)
+        if p.is_file():
+            loaded.extend(load_catalog_file(p))
+    if loaded and db is not None:
+        seed_default_portfolio(db, loaded)
+    return loaded
+
