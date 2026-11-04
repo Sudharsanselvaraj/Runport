@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:landing": "vite --config vite.landing.config.ts",
+    "build:landing": "tsc && vite build --config vite.landing.config.ts",
+    "preview:landing": "vite preview --config vite.landing.config.ts",
+    "dev:docs": "vite --config vite.docs.config.ts",
+    "build:docs": "tsc && vite build --config vite.docs.config.ts",
+    "preview:docs": "vite preview --config vite.docs.config.ts"
   },
   "dependencies": {
     "framer-motion": "^14.9.0",

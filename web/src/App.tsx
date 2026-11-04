@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react'
-import { LandingPage } from './components/landing/LandingPage'
 import {
   Sliders,
   Cpu,
@@ -25,7 +24,6 @@ import {
   HelpCircle,
   ChevronRight,
   ExternalLink,
-  ArrowLeft,
 } from 'lucide-react'
 
 // --- Types ---
@@ -165,14 +163,6 @@ export default function App() {
     return (localStorage.getItem('runport_theme') as 'dark' | 'light') || 'dark'
   })
 
-  const [currentView, setCurrentView] = useState<'landing' | 'workbench'>(() => {
-    const h = window.location.hash.replace('#', '')
-    if (['setup', 'models', 'targets', 'datasets', 'plan', 'liverun', 'results', 'compare', 'reports', 'budget', 'workbench', 'dashboard'].includes(h)) {
-      return 'workbench'
-    }
-    return 'landing'
-  })
-
   const [activeTab, setActiveTab] = useState<
     'setup' | 'models' | 'targets' | 'datasets' | 'plan' | 'liverun' | 'results' | 'compare' | 'reports' | 'budget'
   >(() => {
@@ -187,12 +177,7 @@ export default function App() {
     const onHashChange = () => {
       const h = window.location.hash.replace('#', '')
       if (['setup', 'models', 'targets', 'datasets', 'plan', 'liverun', 'results', 'compare', 'reports', 'budget'].includes(h)) {
-        setCurrentView('workbench')
         setActiveTab(h as any)
-      } else if (h === 'workbench' || h === 'dashboard') {
-        setCurrentView('workbench')
-      } else if (h === 'landing' || !h) {
-        setCurrentView('landing')
       }
     }
     window.addEventListener('hashchange', onHashChange)
@@ -202,11 +187,6 @@ export default function App() {
   const handleSelectTab = (tab: 'setup' | 'models' | 'targets' | 'datasets' | 'plan' | 'liverun' | 'results' | 'compare' | 'reports' | 'budget') => {
     setActiveTab(tab)
     window.location.hash = tab
-  }
-
-  const handleLaunchWorkbench = () => {
-    setCurrentView('workbench')
-    window.location.hash = activeTab || 'setup'
   }
 
   // Global states
@@ -575,27 +555,11 @@ export default function App() {
     }
   }
 
-  if (currentView === 'landing') {
-    return <LandingPage onLaunchWorkbench={handleLaunchWorkbench} />
-  }
-
   return (
     <div>
       {/* Top Header Bar */}
       <header className="header-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <button
-            onClick={() => {
-              setCurrentView('landing')
-              window.location.hash = 'landing'
-            }}
-            className="btn btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
-            title="Return to Landing Page"
-          >
-            <ArrowLeft size={14} />
-            <span>Landing Page</span>
-          </button>
           <div
             style={{
               width: 34,

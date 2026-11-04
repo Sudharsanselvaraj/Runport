@@ -64,9 +64,14 @@ experiments/
 node_modules/
 web/node_modules/
 web/dist/
+web/dist-landing/
+web/dist-docs/
 
 # Progress and local scratch docs
 docs/PROGRESS.md
 docs/SCAN_NOTES.md
 docs/PROGRESS_LOGO.md
 docs/PROGRESS_FINISH.md
+
+# Landing-page audit screenshots (third-party reference captures; keep local)
+artifacts/
