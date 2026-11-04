@@ -39,24 +39,48 @@ class Palette:
 
 
 DAY = Palette(
-    sky_top=(46, 96, 128), sky_mid=(104, 158, 186), sky_low=(226, 196, 168),
-    cloud_lit=(250, 206, 176), cloud_shadow=(122, 146, 178), cloud_core=(246, 236, 226),
-    haze=(214, 196, 176), ground_far=(150, 146, 84), ground_near=(52, 54, 26),
-    grass_lit=(206, 178, 96), gate_lit=(246, 222, 192), gate_shade=(112, 134, 160),
+    sky_top=(46, 96, 128),
+    sky_mid=(104, 158, 186),
+    sky_low=(226, 196, 168),
+    cloud_lit=(250, 206, 176),
+    cloud_shadow=(122, 146, 178),
+    cloud_core=(246, 236, 226),
+    haze=(214, 196, 176),
+    ground_far=(150, 146, 84),
+    ground_near=(52, 54, 26),
+    grass_lit=(206, 178, 96),
+    gate_lit=(246, 222, 192),
+    gate_shade=(112, 134, 160),
     sun=(255, 214, 168),
 )
 DUSK = Palette(
-    sky_top=(28, 40, 86), sky_mid=(92, 96, 156), sky_low=(236, 160, 136),
-    cloud_lit=(255, 174, 140), cloud_shadow=(82, 84, 132), cloud_core=(250, 214, 196),
-    haze=(206, 150, 140), ground_far=(104, 90, 70), ground_near=(30, 28, 26),
-    grass_lit=(212, 138, 96), gate_lit=(244, 190, 160), gate_shade=(70, 74, 118),
+    sky_top=(28, 40, 86),
+    sky_mid=(92, 96, 156),
+    sky_low=(236, 160, 136),
+    cloud_lit=(255, 174, 140),
+    cloud_shadow=(82, 84, 132),
+    cloud_core=(250, 214, 196),
+    haze=(206, 150, 140),
+    ground_far=(104, 90, 70),
+    ground_near=(30, 28, 26),
+    grass_lit=(212, 138, 96),
+    gate_lit=(244, 190, 160),
+    gate_shade=(70, 74, 118),
     sun=(255, 176, 132),
 )
 DAWN = Palette(
-    sky_top=(40, 70, 92), sky_mid=(110, 150, 158), sky_low=(208, 214, 196),
-    cloud_lit=(236, 226, 206), cloud_shadow=(106, 126, 136), cloud_core=(244, 244, 236),
-    haze=(196, 204, 190), ground_far=(96, 124, 84), ground_near=(26, 40, 26),
-    grass_lit=(150, 176, 104), gate_lit=(222, 224, 210), gate_shade=(90, 112, 122),
+    sky_top=(40, 70, 92),
+    sky_mid=(110, 150, 158),
+    sky_low=(208, 214, 196),
+    cloud_lit=(236, 226, 206),
+    cloud_shadow=(106, 126, 136),
+    cloud_core=(244, 244, 236),
+    haze=(196, 204, 190),
+    ground_far=(96, 124, 84),
+    ground_near=(26, 40, 26),
+    grass_lit=(150, 176, 104),
+    gate_lit=(222, 224, 210),
+    gate_shade=(90, 112, 122),
     sun=(244, 236, 206),
 )
 
@@ -130,7 +154,7 @@ def render(width: int, height: int, pal: Palette, seed: int) -> Image.Image:
     soft = np.asarray(Image.fromarray((dens * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(H * 0.012)), np.float32) / 255
     sy, sx = int(0.02 * H), int(0.03 * W)
     padded = np.pad(soft, ((sy, 0), (0, sx)), mode="edge")
-    toward_sun = padded[: H, sx: sx + W]  # sample up-left of each pixel... shifted
+    toward_sun = padded[:H, sx : sx + W]  # sample up-left of each pixel... shifted
     vgrad = np.gradient(soft, axis=0)  # negative where density grows upward
     light = np.clip(0.58 + (soft - toward_sun) * 3.0 - vgrad * H * 0.010 - (soft - 0.5) * 0.30, 0, 1)
     billow = fbm(rng, H, W, base=W / 14, octaves=4)
@@ -152,14 +176,14 @@ def render(width: int, height: int, pal: Palette, seed: int) -> Image.Image:
     ground = np.broadcast_to(ground, (H, W, 3)).copy()
     grass = fbm(rng, H, W, base=W / 160, octaves=4, stretch=(0.5, 1.6))
     patches = fbm(rng, H, W, base=W / 10, octaves=4, stretch=(0.3, 1.2))
-    rim = np.exp(-((y - horizon) * 22) ** 2) * (1 - np.abs(x - sun[0]) * 0.8)
+    rim = np.exp(-(((y - horizon) * 22) ** 2)) * (1 - np.abs(x - sun[0]) * 0.8)
     ground *= (0.78 + grass * 0.34 + (patches - 0.5) * 0.25)[..., None]
     ground += col(pal.grass_lit) * (np.clip(rim, 0, 1) * 0.5 + np.clip(patches - 0.55, 0, 1) * 0.35 * (1 - g))[..., None]
     gmask = smoothstep(horizon - 0.002, horizon + 0.004, y)[..., None]
     img = img * (1 - gmask) + ground * gmask
 
     # horizon haze
-    haze = np.exp(-((y - horizon) * 16) ** 2)[..., None]
+    haze = np.exp(-(((y - horizon) * 16) ** 2))[..., None]
     img = img * (1 - haze * 0.32) + col(pal.haze) * haze * 0.32
 
     base = Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8))
@@ -176,7 +200,7 @@ def render(width: int, height: int, pal: Palette, seed: int) -> Image.Image:
     gates = []
     for i in range(5):
         k = i / 4.0
-        depth = 1.0 / (1.0 + i * 1.6)               # perspective scale
+        depth = 1.0 / (1.0 + i * 1.6)  # perspective scale
         gx = lerp(0.80 * W, vp[0], 1 - depth)
         gy = lerp(0.95 * H, vp[1], 1 - depth)
         r = 0.235 * H * depth
@@ -187,8 +211,7 @@ def render(width: int, height: int, pal: Palette, seed: int) -> Image.Image:
     sd = ImageDraw.Draw(shadow)
     for gx, gy, r, depth, _ in gates:
         # cast shadow stretches to the right (sun low on the left)
-        sd.polygon([(gx - r * 0.9, gy), (gx + r * 0.9, gy), (gx + r * 3.2, gy + r * 0.10), (gx - r * 0.2, gy + r * 0.12)],
-                   fill=int(150 * depth ** 0.3))
+        sd.polygon([(gx - r * 0.9, gy), (gx + r * 0.9, gy), (gx + r * 3.2, gy + r * 0.10), (gx - r * 0.2, gy + r * 0.12)], fill=int(150 * depth**0.3))
     shadow = shadow.filter(ImageFilter.GaussianBlur(H * 0.006))
     dark = Image.new("RGB", (W, H), tuple(int(c * 0.35) for c in pal.ground_near))
     base = Image.composite(dark, base, shadow)
@@ -225,7 +248,7 @@ def draw_gate(layer: Image.Image, gx, gy, r, depth, pal: Palette, rng):
     cx, cy = (gx - box[0]) * ss, (gy - r * 0.866 - box[1]) * ss
     R = r * ss
     thick = 0.17
-    fog = 1 - depth ** 0.7  # atmospheric perspective toward haze
+    fog = 1 - depth**0.7  # atmospheric perspective toward haze
     lit = tuple(int(lerp(c, h, fog * 0.45)) for c, h in zip(pal.gate_lit, pal.haze))
     shade = tuple(int(lerp(c, h, fog * 0.4)) for c, h in zip(pal.gate_shade, pal.haze))
     deep = tuple(int(c * 0.72) for c in shade)
