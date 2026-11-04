@@ -62,15 +62,12 @@ const Wire: React.FC<{ p: P; a: number; b: number; d: string; className?: string
   )
 }
 
-const Guard: React.FC<{ p: P; at: number; label: string; i: number }> = ({ p, at, label, i }) => {
+const Guard: React.FC<{ p: P; at: number; label: string }> = ({ p, at, label }) => {
   const s = useStage(p, at, at + 0.08)
   const borderColor = useTransform(s, [0, 1], [IDLE_LINE, LIT_LINE])
   const color = useTransform(s, [0, 1], ['rgba(255,255,255,0.4)', 'rgba(255,255,255,1)'])
-  const dot = useTransform(s, [0, 1], ['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.95)'])
   return (
     <motion.li className="rp-sf-guard" style={{ borderColor, color }}>
-      <motion.span className="rp-sf-guard-dot" style={{ backgroundColor: dot }} />
-      <span className="rp-sf-guard-n">{String(i + 1).padStart(2, '0')}</span>
       {label}
     </motion.li>
   )
@@ -213,7 +210,7 @@ export const StackFlow: React.FC = () => {
           />
           <ol className="rp-sf-guards" aria-label="Runner guard order">
             {c.guards.map((g, i) => (
-              <Guard key={g} p={pCore} at={0.38 + i * 0.08} label={g} i={i} />
+              <Guard key={g} p={pCore} at={0.38 + i * 0.08} label={g} />
             ))}
           </ol>
         </div>

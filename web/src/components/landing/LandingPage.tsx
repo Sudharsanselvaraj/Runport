@@ -1,13 +1,14 @@
 import React from 'react'
 import { Navigation } from './Navigation'
 import { HeroSection } from './HeroSection'
-import { StatementBanner } from './StatementBanner'
 import { StackFlow } from './StackFlow'
 import { ProductShowcase } from './ProductShowcase'
-import { FeatureCarousel } from './FeatureCarousel'
+import { FeatureBento } from './FeatureBento'
 import { MetricsSection } from './MetricsSection'
 import { PlatformSection } from './PlatformSection'
 import { WaysToRun } from './WaysToRun'
+import { Pillars } from './Pillars'
+import { RunAnywhere } from './RunAnywhere'
 import { FAQSection } from './FAQSection'
 import { FinalCTA } from './FinalCTA'
 import { Footer } from './Footer'
@@ -21,13 +22,14 @@ export const LandingPage: React.FC = () => (
     <Navigation />
     <main>
       <HeroSection />
-      <StatementBanner />
       <StackFlow />
       <ProductShowcase />
-      <FeatureCarousel />
+      <Pillars />
+      <FeatureBento />
       <MetricsSection />
       <PlatformSection />
       <WaysToRun />
+      <RunAnywhere />
       <FAQSection />
       <FinalCTA />
     </main>

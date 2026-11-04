@@ -52,6 +52,22 @@ export interface WayItem {
   action: { type: 'copy'; text: string } | { type: 'link'; label: string; href: string }
 }
 
+export interface PillarTab {
+  key: 'spend' | 'truth' | 'local'
+  label: string
+  eyebrow: string
+  title: string
+  body: string
+  rows: { icon: 'gauge' | 'fingerprint' | 'ledger' | 'interval' | 'agree' | 'null' | 'shield' | 'eraser' | 'replay'; title: string; body: string }[]
+}
+
+export interface RunTarget {
+  key: 'local' | 'docker' | 'ci'
+  title: string
+  body: string
+  link: { label: string; href: string }
+}
+
 export interface FAQItem {
   id: string
   question: string
@@ -322,6 +338,86 @@ export const LANDING_CONTENT = {
         action: { type: 'link', label: 'View on GitHub', href: REPO },
       },
     ] as WayItem[],
+  },
+
+  // Tabbed pillars (spend, truth, local). Every row maps to shipped behaviour;
+  // mockup numbers are illustrative and labelled "Sample" on the page.
+  pillars: {
+    titleA: 'Benchmarks you',
+    titleB: 'can trust.',
+    subheading: 'From the first request to the final number, Runport keeps spend, scores and data honest.',
+    tabs: [
+      {
+        key: 'spend',
+        label: 'Spend',
+        eyebrow: 'Fail-closed spend',
+        title: 'Every request checked before it’s sent.',
+        body: 'Ceilings are checked before each live request. A billed request with unknown cost is booked UNRESOLVED and blocks the next live run until you reconcile it.',
+        rows: [
+          { icon: 'gauge', title: 'Hard ceilings', body: 'Total, pilot, per-run and per-case limits from runport.yaml.' },
+          { icon: 'fingerprint', title: 'Plan-bound approval', body: 'A typed confirmation tied to the plan’s SHA-256 fingerprint.' },
+          { icon: 'ledger', title: 'Append-only ledger', body: 'Every cost labelled ACTUAL, ESTIMATED, UNRESOLVED or UNAVAILABLE.' },
+        ],
+      },
+      {
+        key: 'truth',
+        label: 'Truth',
+        eyebrow: 'Defensible scores',
+        title: 'Scored against human truth, or not at all.',
+        body: 'Accuracy and F1 come only from human-approved labels, with confidence intervals. What wasn’t measured stays empty, never zero.',
+        rows: [
+          { icon: 'interval', title: 'Wilson intervals', body: '95% intervals on proportions, bootstrap for latency and cost.' },
+          { icon: 'agree', title: 'Agreement isn’t accuracy', body: 'Model-to-model agreement is reported as kappa, never as correctness.' },
+          { icon: 'null', title: 'Null is not 0', body: 'Unlabelled cases stay unscored and are left out of every mean.' },
+        ],
+      },
+      {
+        key: 'local',
+        label: 'Local',
+        eyebrow: 'Local by default',
+        title: 'Nothing leaves your machine.',
+        body: 'No account and no telemetry. Datasets, traces and the ledger live in SQLite on your disk, and secrets are scrubbed before anything is written.',
+        rows: [
+          { icon: 'shield', title: 'Privacy gate', body: 'A forbidden field aborts the whole batch before a socket opens.' },
+          { icon: 'eraser', title: 'Secret scrubbing', body: 'Keys and bearer tokens removed from logs, traces and exports.' },
+          { icon: 'replay', title: 'Offline replay', body: 'Score recorded runs in CI with no key and $0.00 spend.' },
+        ],
+      },
+    ] as PillarTab[],
+  },
+
+  runAnywhere: {
+    titleLead: 'Run it',
+    titleKey: 'anywhere',
+    titleTail: 'you work',
+    product: 'Open source · Apache-2.0',
+    targets: [
+      {
+        key: 'local',
+        title: 'Local',
+        body: 'Clone, sync and run on your laptop. Python 3.11 or newer.',
+        link: { label: 'Read the quickstart', href: `${REPO}#quickstart` },
+      },
+      {
+        key: 'docker',
+        title: 'Docker',
+        body: 'Build the image from the repository’s Dockerfile and serve the dashboard from a container.',
+        link: { label: 'View the Dockerfile', href: `${REPO}/blob/main/Dockerfile` },
+      },
+      {
+        key: 'ci',
+        title: 'CI',
+        body: 'Replay recorded runs on every pull request: offline, no key, $0.00.',
+        link: { label: 'See our CI workflow', href: `${REPO}/blob/main/.github/workflows/ci.yml` },
+      },
+    ] as RunTarget[],
+    callout: {
+      title: 'No cloud required.',
+      body: 'There is no hosted Runport and no account. Your data, traces and ledger stay on your machine.',
+      checks: ['No account', 'No telemetry', 'Apache-2.0'],
+      cta: 'Star on GitHub',
+      href: REPO,
+    },
   },
 
   faq: {
