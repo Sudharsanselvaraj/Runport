@@ -1,122 +1,79 @@
-import React, { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Terminal, ArrowRight } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Menu, X } from 'lucide-react'
 import { LANDING_CONTENT } from '../../data/landingContent'
+import { EASE_OUT } from './motion'
 
-interface NavigationProps {
-  onLaunchWorkbench: () => void
-}
+export const Navigation: React.FC = () => {
+  const [open, setOpen] = useState(false)
+  const c = LANDING_CONTENT.navigation
 
-export const Navigation: React.FC<NavigationProps> = ({ onLaunchWorkbench }) => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const content = LANDING_CONTENT.navigation
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const linkProps = (external?: boolean) => (external ? { target: '_blank', rel: 'noopener noreferrer' } : {})
 
   return (
-    <header className="rp-nav-outer">
-      <nav className="rp-nav-inner">
-        {/* Brand */}
-        <a href="#" className="rp-nav-brand">
-          <img src="/assets/landing/runport-emblem.png" alt="Runport" width="22" height="22" style={{ objectFit: 'contain' }} />
-          <span>{content.brandName}</span>
-        </a>
-
-        {/* Center Links (Desktop) */}
-        <div className="rp-nav-links">
-          {content.links.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              target={link.isExternal ? '_blank' : undefined}
-              rel={link.isExternal ? 'noopener noreferrer' : undefined}
-              className="rp-nav-link"
-            >
-              {link.label}
-            </a>
-          ))}
-        </div>
-
-        {/* Right Actions */}
-        <div className="rp-nav-actions">
-          <a
-            href="https://github.com/Sudharsanselvaraj/runport"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rp-btn-pill rp-btn-glass rp-nav-desktop-action"
-            style={{ height: '36px', padding: '0 16px', fontSize: '13px' }}
-          >
-            {content.ctaSecondary}
+    <>
+      <header className="rp-nav">
+        <nav className="rp-nav-row" aria-label="Primary">
+          <a href="#top" className="rp-brand" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <img src="/assets/landing/runport-emblem.png" alt="" />
+            <span>{c.brandName}</span>
           </a>
-          <button
-            onClick={onLaunchWorkbench}
-            className="rp-btn-pill rp-btn-solid-white rp-nav-desktop-action"
-            style={{ height: '36px', padding: '0 16px', fontSize: '13px' }}
-          >
-            <span>{content.ctaPrimary}</span>
-            <ArrowRight size={13} />
-          </button>
-
-          {/* Mobile Menu Button */}
-          <button
-            className="rp-btn-pill rp-btn-glass rp-nav-mobile-toggle"
-            style={{ height: '36px', width: '36px', padding: 0 }}
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle Navigation Menu"
-          >
-            {mobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
-          </button>
-        </div>
-      </nav>
-
-      {/* Mobile Drawer */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2 }}
-            style={{
-              position: 'fixed',
-              top: '80px',
-              left: '20px',
-              right: '20px',
-              background: '#0d0d12',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: '20px',
-              padding: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              pointerEvents: 'auto',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
-              zIndex: 999,
-            }}
-          >
-            {content.links.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                style={{ color: '#ffffff', textDecoration: 'none', fontSize: '16px', fontWeight: 500 }}
-              >
-                {link.label}
+          <div className="rp-nav-links">
+            {c.links.map((l) => (
+              <a key={l.label} href={l.href} {...linkProps(l.isExternal)}>
+                {l.label}
               </a>
             ))}
-            <hr style={{ borderColor: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
+          </div>
+          <div className="rp-nav-actions">
+            <a href={LANDING_CONTENT.repo} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-sm rp-pill-glass">
+              {c.ctaSecondary}
+            </a>
+            <a href={c.ctaPrimaryHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-sm rp-pill-dark">
+              {c.ctaPrimary}
+            </a>
             <button
-              onClick={() => {
-                setMobileMenuOpen(false)
-                onLaunchWorkbench()
-              }}
-              className="rp-btn-pill rp-btn-solid-white"
-              style={{ width: '100%', height: '42px' }}
+              type="button"
+              className="rp-pill rp-pill-glass rp-nav-toggle"
+              aria-label={open ? 'Close menu' : 'Open menu'}
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
             >
-              <Terminal size={14} />
-              <span>{content.ctaPrimary}</span>
+              {open ? <X size={16} /> : <Menu size={16} />}
             </button>
+          </div>
+        </nav>
+      </header>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            className="rp-nav-sheet"
+            initial={{ opacity: 0, y: -8, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -8, filter: 'blur(6px)' }}
+            transition={{ duration: 0.3, ease: EASE_OUT }}
+          >
+            {c.links.map((l) => (
+              <a key={l.label} href={l.href} onClick={() => setOpen(false)} {...linkProps(l.isExternal)}>
+                {l.label}
+              </a>
+            ))}
+            <a href={LANDING_CONTENT.repo} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>
+              {c.ctaSecondary}
+            </a>
+            <a href={c.ctaPrimaryHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-dark" onClick={() => setOpen(false)}>
+              {c.ctaPrimary}
+            </a>
           </motion.div>
         )}
       </AnimatePresence>
-    </header>
+    </>
   )
 }

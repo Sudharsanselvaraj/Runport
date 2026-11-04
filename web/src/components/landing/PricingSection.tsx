@@ -1,118 +1,89 @@
 import React, { useState } from 'react'
-import { motion } from 'framer-motion'
-import { Check, ArrowRight } from 'lucide-react'
-import { LANDING_CONTENT, PricingPlan } from '../../data/landingContent'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { Terminal, Monitor, Folder, FileText, ShieldCheck, GitBranch, type LucideIcon } from 'lucide-react'
+import { LANDING_CONTENT, type FeatureIcon } from '../../data/landingContent'
+import { EASE_OUT, Reveal } from './motion'
 
-interface PricingSectionProps {
-  onLaunchWorkbench: () => void
+export const FEATURE_ICONS: Record<FeatureIcon, LucideIcon> = {
+  terminal: Terminal, monitor: Monitor, folder: Folder, file: FileText, shield: ShieldCheck, git: GitBranch,
 }
 
-export const PricingSection: React.FC<PricingSectionProps> = ({ onLaunchWorkbench }) => {
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
-  const content = LANDING_CONTENT.pricing
+// Runport is Apache-2.0, so every plan is $0. The toggle switches between
+// replay and live runs and shows what each costs in provider spend.
+export const PricingSection: React.FC = () => {
+  const c = LANDING_CONTENT.pricing
+  const [mode, setMode] = useState<(typeof c.toggle)[number]>('Replay')
+  const reduce = useReducedMotion()
 
   return (
-    <section id="pricing" className="rp-pricing-section">
-      <div className="rp-container">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          style={{ maxWidth: '600px', margin: '0 auto' }}
-        >
-          <h2 className="rp-h2">
-            Simple <span style={{ color: 'rgba(255, 255, 255, 0.65)' }}>pricing.</span>
+    <section id="pricing" className="rp-section">
+      <div className="rp-col">
+        <Reveal className="rp-pricing-head">
+          <h2 className="rp-h2 rp-fade-heading">
+            {c.titleA} {c.titleB}
           </h2>
-          <p className="rp-body-muted" style={{ marginTop: '14px' }}>
-            {content.subheading}
-          </p>
+          <p className="rp-body">{c.subheading}</p>
+        </Reveal>
 
-          {/* Monthly / Yearly Toggle */}
-          <div className="rp-pricing-toggle">
-            <button
-              onClick={() => setBillingCycle('monthly')}
-              className={`rp-toggle-btn ${billingCycle === 'monthly' ? 'active' : ''}`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBillingCycle('yearly')}
-              className={`rp-toggle-btn ${billingCycle === 'yearly' ? 'active' : ''}`}
-            >
-              Yearly <span style={{ fontSize: '11px', opacity: 0.8 }}>(Save 20%)</span>
-            </button>
+        <Reveal style={{ display: 'flex' }} delay={0.05}>
+          <div className="rp-toggle" role="radiogroup" aria-label="Run mode">
+            {c.toggle.map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'is-active' : ''} onClick={() => setMode(m)}>
+                {mode === m && (
+                  <motion.span layoutId="rp-toggle-thumb" className="rp-toggle-thumb" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 36 }} />
+                )}
+                <span style={{ position: 'relative' }}>{m}</span>
+              </button>
+            ))}
           </div>
-        </motion.div>
+        </Reveal>
 
-        {/* 3 Pricing Cards Grid */}
-        <div className="rp-pricing-grid">
-          {content.plans.map((plan: PricingPlan, idx: number) => {
-            const price = billingCycle === 'monthly' ? plan.priceMonthly : plan.priceYearly
-
-            return (
-              <motion.div
-                key={plan.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: idx * 0.1, ease: [0.16, 1, 0.3, 1] }}
-                className={`rp-pricing-card ${plan.isFeatured ? 'featured' : ''}`}
-              >
+        <div className="rp-plans">
+          {c.plans.map((plan, i) => (
+            <Reveal key={plan.id} className="rp-plan rp-glass-card" delay={0.08 * i}>
+              <div className="rp-plan-top">
+                <span className="rp-tag" style={{ alignSelf: 'flex-start' }}>{plan.tag}</span>
                 <div>
-                  {/* Price */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                    <span style={{ fontFamily: 'var(--rp-font-display)', fontSize: '42px', fontWeight: 600, color: '#ffffff' }}>
-                      ${price}
-                    </span>
-                    <span style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.5)' }}>/ month</span>
+                  <div className="rp-price">
+                    <b>{plan.price}</b>
+                    <span className="rp-body">{plan.unit}</span>
                   </div>
-
-                  {/* Plan Name & Description */}
-                  <div style={{ fontSize: '18px', fontWeight: 600, color: '#ffffff', marginTop: '12px' }}>
-                    {plan.name}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <p className="rp-body">{plan.description}</p>
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.p
+                        key={mode}
+                        className="rp-caption"
+                        style={{ color: 'var(--rp-muted)' }}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.25, ease: EASE_OUT }}
+                      >
+                        {c.spendNote[mode]}
+                      </motion.p>
+                    </AnimatePresence>
                   </div>
-                  <p className="rp-body-muted" style={{ fontSize: '13.5px', marginTop: '6px', minHeight: '40px' }}>
-                    {plan.description}
-                  </p>
-
-                  <hr style={{ borderColor: 'rgba(255, 255, 255, 0.08)', margin: '20px 0' }} />
-
-                  {/* Feature Checklist */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {plan.features.map((feature: string) => (
-                      <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}>
-                        <Check size={14} style={{ color: '#10b981', flexShrink: 0 }} />
-                        <span style={{ color: 'rgba(255, 255, 255, 0.85)' }}>{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Visual Thumbnail */}
-                  <img src={plan.imageBg} alt={plan.name} className="rp-plan-thumb" />
                 </div>
-
-                {/* CTA Button */}
-                <div style={{ marginTop: '28px' }}>
-                  <button
-                    onClick={onLaunchWorkbench}
-                    className={`rp-btn-pill ${plan.isFeatured ? 'rp-btn-solid-white' : 'rp-btn-glass'}`}
-                    style={{ width: '100%', height: '42px' }}
-                  >
-                    <span>{plan.ctaText}</span>
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-              </motion.div>
-            )
-          })}
+              </div>
+              <div className="rp-plan-media">
+                <img src={plan.image} alt="" loading="lazy" />
+                <ul>
+                  {plan.features.map((f) => {
+                    const Icon = FEATURE_ICONS[f.icon]
+                    return (
+                      <li key={f.label}>
+                        <Icon size={15} />
+                        {f.label}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            </Reveal>
+          ))}
         </div>
-
-        {/* Guarantee text */}
-        <p className="rp-body-muted" style={{ marginTop: '36px', fontSize: '13px', letterSpacing: '0.02em' }}>
-          {content.guarantee}
-        </p>
+        <p className="rp-caption rp-pricing-note">{c.footnote}</p>
       </div>
     </section>
   )

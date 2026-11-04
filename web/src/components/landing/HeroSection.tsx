@@ -1,89 +1,71 @@
-import React from 'react'
-import { motion } from 'framer-motion'
-import { ArrowRight, Play, Terminal, Shield } from 'lucide-react'
+import React, { useRef } from 'react'
+import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion'
 import { LANDING_CONTENT } from '../../data/landingContent'
+import { DUR, EASE_OUT } from './motion'
 
-interface HeroSectionProps {
-  onLaunchWorkbench: () => void
-}
+// Measured entrance: copy rises 40px from blur(10px) over ~0.8s starting ~0.5s
+// after first paint, sub +0.12s; the painting settles from -45px over ~2.3s and
+// then scrolls at 0.7x (parallax).
+const START = 0.45
 
-export const HeroSection: React.FC<HeroSectionProps> = ({ onLaunchWorkbench }) => {
-  const content = LANDING_CONTENT.hero
+export const HeroSection: React.FC = () => {
+  const c = LANDING_CONTENT.hero
+  const ref = useRef<HTMLElement>(null)
+  const reduce = useReducedMotion()
+  const { scrollY } = useScroll()
+  const parallax = useTransform(scrollY, (v) => (reduce ? 0 : v * 0.3))
+
+  const rise = (delay: number, y = 40, blur = 10) =>
+    reduce
+      ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } }
+      : {
+          initial: { opacity: 0, y, filter: `blur(${blur}px)` },
+          animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+          transition: { duration: DUR.base, delay: START + delay, ease: EASE_OUT },
+        }
 
   return (
-    <section className="rp-hero-section">
-      {/* Cinematic Dreamscape Background */}
-      <div className="rp-hero-bg" />
-      <div className="rp-hero-fade" />
+    <section id="top" ref={ref} className="rp-hero">
+      <motion.div className="rp-hero-art" style={{ y: parallax }}>
+        <motion.img
+          src="/assets/landing/hero-bg.png"
+          alt=""
+          initial={reduce ? false : { y: -45, scale: 1.04 }}
+          animate={{ y: 0, scale: 1 }}
+          transition={{ duration: DUR.settle, ease: EASE_OUT }}
+        />
+      </motion.div>
+      <div className="rp-hero-shade" />
 
-      {/* Main Content */}
-      <div className="rp-container rp-hero-content">
-        {/* Top Badge */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="rp-hero-badge"
-        >
-          <Shield size={13} style={{ color: '#10b981' }} />
-          <span>{content.badge}</span>
-        </motion.div>
-
-        {/* Headline */}
-        <motion.h1
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          className="rp-h1"
-        >
-          {content.title}
-          <br />
-          <span style={{ color: 'rgba(255, 255, 255, 0.9)' }}>{content.titleAccent}</span>
+      <div className="rp-hero-copy">
+        <motion.h1 className="rp-h1" {...rise(0)}>
+          {c.title}
         </motion.h1>
-
-        {/* Subtitle */}
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="rp-body-lead"
-          style={{ maxWidth: '580px', margin: '22px auto 0 auto' }}
-        >
-          {content.description}
+        <motion.p className="rp-body" {...rise(0.12)}>
+          {c.description}
         </motion.p>
-
-        {/* Dual Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-          className="rp-hero-actions"
-        >
-          <button onClick={onLaunchWorkbench} className="rp-btn-pill rp-btn-glass">
-            <Terminal size={15} />
-            <span>{content.ctaPrimary}</span>
-          </button>
-          <a href="#features" className="rp-btn-pill rp-btn-dark">
-            <Play size={14} style={{ fill: 'currentColor' }} />
-            <span>{content.ctaSecondary}</span>
+        <motion.div className="rp-hero-actions" {...rise(0, 40, 0)}>
+          <a href={c.ctaPrimaryHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-glass">
+            {c.ctaPrimary}
+          </a>
+          <a href="#product" className="rp-pill rp-pill-dark">
+            {c.ctaSecondary}
           </a>
         </motion.div>
       </div>
 
-      {/* Trusted By Ecosystem Marquee */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1, delay: 0.5 }}
-        className="rp-trusted-section"
-      >
-        <p className="rp-trusted-label">{content.trustedLabel}</p>
-        <div className="rp-trusted-row">
-          {content.trustedLogos.map((logo) => (
-            <span key={logo} className="rp-trusted-item">
-              {logo}
-            </span>
-          ))}
+      <motion.div className="rp-hero-foot" {...rise(0.4, 20, 0)}>
+        <p className="rp-body">{c.marqueeLabel}</p>
+        <div className="rp-marquee" aria-label={c.marquee.join(', ')}>
+          <div className="rp-marquee-track" aria-hidden="true">
+            {[...c.marquee, ...c.marquee].map((name, i) => (
+              // style keyed to the name's position in the original list so the
+              // duplicated half loops seamlessly
+              <span key={i} className={`rp-wm rp-wm-${(i % c.marquee.length) % 4}`}>
+                {name}
+              </span>
+            ))}
+          </div>
         </div>
       </motion.div>
     </section>

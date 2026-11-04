@@ -10,7 +10,7 @@ const IMAGES = {
 };
 
 async function download() {
-  const dir = 'web/public/assets/landing';
+  const dir = 'web/landing/public/assets/landing';
   fs.mkdirSync(dir, { recursive: true });
 
   for (const [filename, url] of Object.entries(IMAGES)) {
@@ -33,3 +33,4 @@ async function download() {
 }
 
 download();
+
