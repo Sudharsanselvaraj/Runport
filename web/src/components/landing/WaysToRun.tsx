@@ -167,12 +167,15 @@ const CopyChip: React.FC<{ text: string }> = ({ text }) => {
   )
 }
 
+const newTab = (href: string) => (/^https?:/.test(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})
+
 export const WaysToRun: React.FC = () => {
   const c = LANDING_CONTENT.waysToRun
   return (
     <section className="rp-section rp-ways" id="ways" aria-labelledby="rp-ways-title">
       <div className="rp-ways-inner">
         <Reveal className="rp-ways-head">
+          <p className="rp-eyebrow">Interfaces</p>
           <h2 id="rp-ways-title" className="rp-h2 rp-fade-heading">
             {c.titleA} {c.titleB}
           </h2>
@@ -193,7 +196,7 @@ export const WaysToRun: React.FC = () => {
                   {item.action.type === 'copy' ? (
                     <CopyChip text={item.action.text} />
                   ) : (
-                    <a className="rp-way-btn" href={item.action.href} target="_blank" rel="noopener noreferrer">
+                    <a className="rp-way-btn" href={item.action.href} {...newTab(item.action.href)}>
                       {item.action.label}
                       <ArrowUpRight size={18} aria-hidden="true" />
                     </a>

@@ -7,7 +7,8 @@ export default defineConfig({
   root: 'landing',
   publicDir: 'public',
   plugins: [react()],
-  server: { port: 5174 },
+  // /docs/ is the documentation portal: proxied to its dev server here, bundled by `npm run build:site`.
+  server: { port: 5174, proxy: { '/docs': { target: 'http://127.0.0.1:5175', ws: true } } },
   preview: { port: 4174 },
   build: {
     outDir: '../dist-landing',

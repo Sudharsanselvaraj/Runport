@@ -75,6 +75,8 @@ export interface FAQItem {
 }
 
 const REPO = 'https://github.com/Sudharsanselvaraj/runport'
+// The documentation portal is served from the same site (see `npm run build:site`).
+const DOCS = '/docs/'
 
 export const LANDING_CONTENT = {
   repo: REPO,
@@ -85,18 +87,18 @@ export const LANDING_CONTENT = {
       { label: 'Product', href: '#product' },
       { label: 'Features', href: '#features' },
       { label: 'Install', href: '#ways' },
-      { label: 'Docs', href: `${REPO}#readme`, isExternal: true },
+      { label: 'Docs', href: DOCS },
     ] as NavItem[],
     ctaSecondary: 'GitHub',
     ctaPrimary: 'Get started',
-    ctaPrimaryHref: `${REPO}#quickstart`,
+    ctaPrimaryHref: `${DOCS}#/quickstart`,
   },
 
   hero: {
     title: 'Benchmark what’s real.',
     description: 'A local-first workbench for models, prompts, and agent workflows, under hard spend caps.',
     ctaPrimary: 'Get started',
-    ctaPrimaryHref: `${REPO}#quickstart`,
+    ctaPrimaryHref: `${DOCS}#/quickstart`,
     ctaSecondary: 'See how it works',
     marqueeLabel: 'Benchmarks targets across.',
     // Connectors and providers that ship in src/runport/connectors and providers/.
@@ -328,7 +330,7 @@ export const LANDING_CONTENT = {
         title: 'Terminal UI',
         body: 'A full-screen dashboard for spend, ceilings, model readiness and error rates.',
         image: '/assets/landing/pricing-2.png',
-        action: { type: 'link', label: 'Read the quickstart', href: `${REPO}#quickstart` },
+        action: { type: 'link', label: 'Read the quickstart', href: `${DOCS}#/quickstart` },
       },
       {
         kind: 'web',
@@ -396,7 +398,7 @@ export const LANDING_CONTENT = {
         key: 'local',
         title: 'Local',
         body: 'Clone, sync and run on your laptop. Python 3.11 or newer.',
-        link: { label: 'Read the quickstart', href: `${REPO}#quickstart` },
+        link: { label: 'Read the quickstart', href: `${DOCS}#/quickstart` },
       },
       {
         key: 'docker',
@@ -486,7 +488,7 @@ export const LANDING_CONTENT = {
         title: 'Resources',
         icon: 'folder' as FeatureIcon,
         links: [
-          { label: 'Docs', href: `${REPO}#readme` },
+          { label: 'Docs', href: DOCS },
           { label: 'Issues', href: `${REPO}/issues` },
         ],
       },

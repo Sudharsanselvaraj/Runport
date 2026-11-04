@@ -9,12 +9,15 @@ import { BadgeArt, CloudArt, CubeArt, LaptopArt } from './RunIllustrations'
 
 const ART: Record<RunTarget['key'], React.FC> = { local: LaptopArt, docker: CubeArt, ci: BadgeArt }
 
+const newTab = (href: string) => (/^https?:/.test(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})
+
 export const RunAnywhere: React.FC = () => {
   const c = LANDING_CONTENT.runAnywhere
   return (
     <section className="rp-section rp-ra" id="deploy" aria-labelledby="rp-ra-title">
       <div className="rp-ra-inner">
         <Reveal>
+          <p className="rp-eyebrow rp-eyebrow-left">Deploy</p>
           <h2 id="rp-ra-title" className="rp-ra-heading">
             {c.titleLead} <strong>{c.titleKey}</strong> {c.titleTail}
           </h2>
@@ -36,7 +39,7 @@ export const RunAnywhere: React.FC = () => {
                   </div>
                   <h3>{t.title}</h3>
                   <p>{t.body}</p>
-                  <a href={t.link.href} target="_blank" rel="noopener noreferrer">
+                  <a href={t.link.href} {...newTab(t.link.href)}>
                     {t.link.label} <ArrowRight size={14} aria-hidden="true" />
                   </a>
                 </div>

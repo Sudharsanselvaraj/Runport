@@ -16,6 +16,7 @@ landing page tokens.
 | Dev server | `npm run dev:docs` (http://127.0.0.1:5175) |
 | Build | `npm run build:docs` → `web/dist-docs/` (static and relative: `base: './'`) |
 | Routing | Hash routes: `#/slug`, and `#/slug#heading` for a section, so it works on any static host without rewrites |
+| On the website | Served at `/docs/`: `npm run build:site` builds the landing page with the docs inside it (`web/dist-landing/docs/`). The landing page's Docs, Get started and quickstart links point there. In development the landing server proxies `/docs/` to `npm run dev:docs`. |
 | Marketing link | `VITE_SITE_URL` at build time (default `/`) |
 
 The portal never imports the landing page or the Workbench, and it never calls

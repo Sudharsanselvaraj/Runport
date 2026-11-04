@@ -4,6 +4,8 @@ import { Menu, X } from 'lucide-react'
 import { LANDING_CONTENT } from '../../data/landingContent'
 import { EASE_OUT } from './motion'
 
+const newTab = (href: string) => (/^https?:/.test(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})
+
 export const Navigation: React.FC = () => {
   const [open, setOpen] = useState(false)
   const c = LANDING_CONTENT.navigation
@@ -36,7 +38,7 @@ export const Navigation: React.FC = () => {
             <a href={LANDING_CONTENT.repo} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-sm rp-pill-glass">
               {c.ctaSecondary}
             </a>
-            <a href={c.ctaPrimaryHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-sm rp-pill-dark">
+            <a href={c.ctaPrimaryHref} {...newTab(c.ctaPrimaryHref)} className="rp-pill rp-pill-sm rp-pill-dark">
               {c.ctaPrimary}
             </a>
             <button
@@ -68,7 +70,7 @@ export const Navigation: React.FC = () => {
             <a href={LANDING_CONTENT.repo} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>
               {c.ctaSecondary}
             </a>
-            <a href={c.ctaPrimaryHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-dark" onClick={() => setOpen(false)}>
+            <a href={c.ctaPrimaryHref} {...newTab(c.ctaPrimaryHref)} className="rp-pill rp-pill-dark" onClick={() => setOpen(false)}>
               {c.ctaPrimary}
             </a>
           </motion.div>

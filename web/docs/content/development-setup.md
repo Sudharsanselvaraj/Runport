@@ -40,6 +40,8 @@ npm install
 
 For the dashboard, start the API in another terminal with `uv run runport web`.
 
+The public website serves the documentation at `/docs/`. `npm run build:site` builds the landing page and puts the docs inside it at `web/dist-landing/docs/`, so `web/dist-landing/` is the whole site to deploy. In development, run `npm run dev:docs` alongside `npm run dev:landing`; the landing server proxies `/docs/` to it.
+
 ## Editing the documentation
 
 Pages are Markdown files in `web/docs/content/`, one per page, with `title` and `description` front matter. The sidebar order is in `web/docs/app/content.ts`. Link to another page with `/slug` or `/slug#heading`. Callouts use `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]` and `> [!WARNING]`.

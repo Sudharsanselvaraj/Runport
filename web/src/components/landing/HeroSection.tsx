@@ -8,6 +8,8 @@ import { DUR, EASE_OUT } from './motion'
 // then scrolls at 0.7x (parallax).
 const START = 0.45
 
+const newTab = (href: string) => (/^https?:/.test(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})
+
 export const HeroSection: React.FC = () => {
   const c = LANDING_CONTENT.hero
   const ref = useRef<HTMLElement>(null)
@@ -45,7 +47,7 @@ export const HeroSection: React.FC = () => {
           {c.description}
         </motion.p>
         <motion.div className="rp-hero-actions" {...rise(0, 40, 0)}>
-          <a href={c.ctaPrimaryHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-glass">
+          <a href={c.ctaPrimaryHref} {...newTab(c.ctaPrimaryHref)} className="rp-pill rp-pill-glass">
             {c.ctaPrimary}
           </a>
           <a href="#product" className="rp-pill rp-pill-dark">
