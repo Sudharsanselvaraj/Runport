@@ -126,8 +126,8 @@ interface RunSummary {
   completed_cases: number
   failed_cases: number
   total_cost_usd: string
-  mean_latency_ms: number
-  mean_accuracy?: number
+  mean_latency_ms: number | null
+  mean_accuracy?: number | null
   is_dry_run: number
   notes?: string
 }
@@ -1449,7 +1449,7 @@ export default function App() {
                     </div>
                     <div style={{ background: 'var(--bg-input)', padding: '0.75rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
                       <div className="form-label">Mean Latency</div>
-                      <div style={{ fontWeight: 600 }}>{runDetail.run.mean_latency_ms.toFixed(1)} ms</div>
+                      <div style={{ fontWeight: 600 }}>{runDetail.run.mean_latency_ms != null ? `${runDetail.run.mean_latency_ms.toFixed(1)} ms` : '—'}</div>
                     </div>
                     <div style={{ background: 'var(--bg-input)', padding: '0.75rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
                       <div className="form-label">Total Spent</div>

@@ -21,7 +21,7 @@ uv run runport compare-runs RUN_A RUN_B
 | Completed cases | Run A, Run B, delta |
 
 > [!IMPORTANT]
-> Compare like with like. The score columns mean different things depending on how a run was produced (heuristic scores for CLI live runs, completion rates for `GenericRunner`, fixed values for CLI replay). See [Understanding results](/understanding-results). A difference between two runs is only meaningful if both used the same dataset and split; the plan fingerprint in each run's notes tells you whether they did.
+> Compare like with like. A difference between two runs is only meaningful if both used the same dataset and split; the plan fingerprint in each run's notes tells you whether they did. A metric that one run did not measure shows as `—` with no delta; it is never compared as 0. See [Understanding results](/understanding-results).
 
 ## Comparing more carefully
 

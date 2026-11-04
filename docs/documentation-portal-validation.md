@@ -127,9 +127,9 @@ Where the older docs disagreed with the code, the code wins. For example,
 The pages describe these behaviours as they are, without hiding them. They are
 listed here because they may need product work rather than documentation:
 
-1. **CLI replay summary is fixed.** `runport benchmark --replay` stores fixed summary values (accuracy 1.0, latency 110 ms). It checks the pipeline but does not measure a model.
-2. **Placeholder scores for unlabelled cases.** For a case with no `expected_answer`, the live CLI heuristic records fixed accuracy 0.70 and groundedness 0.75, rather than leaving them empty. This conflicts with the "null is not 0" spirit.
-3. **`GenericRunner` scores are completion rates.** It stores accuracy, groundedness and overall as 1.0 or 0.0 by case status, so they measure completion, not correctness.
+1. ~~**CLI replay summary is fixed.**~~ **Fixed.** Replay now scores recorded outputs (`--fixtures`) with the live heuristic; unrecorded cases stay unscored. The web API's replay no longer generates synthetic outputs either.
+2. ~~**Placeholder scores for unlabelled cases.**~~ **Fixed.** Unlabelled cases now have no accuracy, groundedness or overall score, and run-level means may be NULL (migration 3).
+3. ~~**`GenericRunner` scores are completion rates.**~~ **Fixed.** `GenericRunner` (and the web API's replay) leave score columns empty; completion stays in the case counts.
 4. **`benchmark-rag` cannot run on a fresh clone.** It needs `data/audit/parsed_records_*.jsonl` and points to a `runport audit-kb` command, but that command does not exist and the files are not shipped.
 5. **`smoke-test --live` sends nothing.** It asks for approval and then sends no requests.
 6. **`annotate` is read-only.** It lists verification status but does not edit labels.

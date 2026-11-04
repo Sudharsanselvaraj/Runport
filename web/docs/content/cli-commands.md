@@ -41,7 +41,7 @@ Lists each case's ground-truth verification status and citation. Read-only in th
 ## benchmark
 
 ```bash
-runport benchmark [--model ID] [--dataset FILE] [--split TEST|DEV|ALL] [--live | --replay]
+runport benchmark [--model ID] [--dataset FILE] [--split TEST|DEV|ALL] [--live | --replay [--fixtures FILE]]
 ```
 
 | Option | Default |
@@ -51,6 +51,7 @@ runport benchmark [--model ID] [--dataset FILE] [--split TEST|DEV|ALL] [--live |
 | `-s`, `--split` | `TEST` |
 | `--live` | off: without it nothing is sent |
 | `--replay` | off |
+| `-f`, `--fixtures` | the dataset file (replay only: recorded outputs to score) |
 
 See [Executing benchmark runs](/executing-runs).
 

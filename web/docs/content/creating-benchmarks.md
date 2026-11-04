@@ -83,7 +83,7 @@ for case, res in zip(cases, results[0].case_results):
 ```
 
 > [!IMPORTANT]
-> For `GenericRunner` runs, the stored `accuracy` and `overall_score` columns are 1.0 when a case completed with status `success` and 0.0 otherwise. They are completion rates, not correctness. See [Understanding results](/understanding-results).
+> `GenericRunner` leaves the stored `accuracy`, `groundedness` and `overall_score` columns empty: it measures completion, not correctness. The scores you compute here are the measurement. See [Understanding results](/understanding-results#genericrunner-runs).
 
 ## Live plans
 

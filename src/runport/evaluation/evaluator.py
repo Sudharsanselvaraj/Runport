@@ -25,14 +25,15 @@ class RubricEvaluator:
         out_clean = generated_output.strip()
 
         # 1. Format adherence: non-empty, proper punctuation, reasonable length
+        has_reference = bool(expected_answer and expected_answer.strip())
         if not out_clean:
+            # An empty answer to a labelled case is wrong (0). Without a label there is nothing to score.
             return EvaluationScore(
                 score_id=score_id,
                 execution_id=execution_id,
-                accuracy=0.0,
-                groundedness=0.0,
+                accuracy=0.0 if has_reference else None,
+                groundedness=0.0 if has_reference else None,
                 format_adherence=0.0,
-                overall_score=0.0,
                 evaluator_type="RUBRIC_HEURISTIC",
                 notes="Generated response was empty.",
             )
@@ -44,14 +45,16 @@ class RubricEvaluator:
             format_adherence -= 0.2
         format_adherence = max(0.2, min(1.0, format_adherence))
 
-        # 2. Accuracy & Groundedness
-        if expected_answer and expected_answer.strip():
-            ref_tokens = self._tokenize(expected_answer)
+        # 2. Accuracy & Groundedness (lexical overlap with the reference; unmeasured stays None)
+        accuracy: Optional[float] = None
+        groundedness: Optional[float] = None
+        notes = "Rubric heuristic: word overlap with the verified reference answer."
+        if has_reference:
+            ref_tokens = self._tokenize(expected_answer or "")
             gen_tokens = self._tokenize(out_clean)
 
             if not ref_tokens:
-                accuracy = 0.8
-                groundedness = 0.8
+                notes = "Reference answer has no words longer than two characters; overlap cannot be scored."
             else:
                 overlap = len(ref_tokens.intersection(gen_tokens))
                 accuracy = round(min(1.0, overlap / len(ref_tokens)), 4)
@@ -61,9 +64,7 @@ class RubricEvaluator:
                 if "hallucination" in out_clean.lower() or "error" in out_clean.lower():
                     groundedness = max(0.0, groundedness - 0.4)
         else:
-            # Baseline when unlabelled
-            accuracy = 0.70
-            groundedness = 0.75
+            notes = "No expected answer: accuracy and groundedness are not scored."
 
         return EvaluationScore(
             score_id=score_id,
@@ -72,5 +73,5 @@ class RubricEvaluator:
             groundedness=groundedness,
             format_adherence=format_adherence,
             evaluator_type="RUBRIC_HEURISTIC",
-            notes="Rubric heuristic evaluation against verified ground truth citation.",
+            notes=notes,
         )

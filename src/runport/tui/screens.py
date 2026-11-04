@@ -825,12 +825,10 @@ def build_evaluation_main_panel(
                 model_disp = model_id
 
             cases_str = str(run.get("total_cases", 0))
-            acc = float(run.get("mean_accuracy", 0.0))
-            acc_str = f"{acc * 100:.1f}%"
-            groundedness = float(run.get("mean_groundedness", 0.0))
-            grd_str = f"{groundedness * 100:.1f}%"
-            lat = float(run.get("mean_latency_ms", 0.0))
-            lat_str = f"{lat:.1f}ms"
+            # Unmeasured means render as "-" (null is not 0).
+            acc_str = f"{float(run['mean_accuracy']) * 100:.1f}%" if run.get("mean_accuracy") is not None else "-"
+            grd_str = f"{float(run['mean_groundedness']) * 100:.1f}%" if run.get("mean_groundedness") is not None else "-"
+            lat_str = f"{float(run['mean_latency_ms']):.1f}ms" if run.get("mean_latency_ms") is not None else "-"
             cost_str = f"${float(run.get('total_cost_usd', 0)):.4f}"
             is_dry = bool(run.get("is_dry_run", 0))
             mode_badge = f"[{TEXT_MUTED}]REPLAYED[/]" if is_dry else f"[bold {COLOR_WARNING}]LIVE[/]"
@@ -897,7 +895,9 @@ def build_evaluation_main_panel(
             mean_acc_str = f"{float(sel_run['mean_accuracy']) * 100:.1f}%" if sel_run.get("mean_accuracy") is not None else "-"
             det_table.add_row("Mean Accuracy", mean_acc_str, "Factual overlap against verified reference answers")
             det_table.add_row(
-                "Faithfulness (Groundedness)", f"{float(sel_run.get('mean_groundedness', 0)) * 100:.1f}%", "Context-supported ratio to prevent hallucinations"
+                "Faithfulness (Groundedness)",
+                f"{float(sel_run['mean_groundedness']) * 100:.1f}%" if sel_run.get("mean_groundedness") is not None else "-",
+                "Context-supported ratio to prevent hallucinations",
             )
             det_table.add_row("Execution Notes", str(sel_run.get("notes", "RAG evaluation")), "Tracked under local budget policy ceilings")
 

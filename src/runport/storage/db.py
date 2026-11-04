@@ -49,10 +49,10 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     completed_cases INTEGER NOT NULL,
     failed_cases INTEGER NOT NULL,
     total_cost_usd TEXT NOT NULL,
-    mean_latency_ms REAL NOT NULL,
-    mean_accuracy REAL NOT NULL,
-    mean_groundedness REAL NOT NULL,
-    mean_overall_score REAL NOT NULL,
+    mean_latency_ms REAL,
+    mean_accuracy REAL,
+    mean_groundedness REAL,
+    mean_overall_score REAL,
     is_dry_run INTEGER NOT NULL DEFAULT 1,
     notes TEXT
 );
@@ -109,6 +109,59 @@ class DatabaseManager:
             self._migrate_ledger(conn)
             self._migrate_evaluation_results(conn)
             conn.commit()
+            self._migrate_evaluation_runs(conn)
+
+    @staticmethod
+    def _migrate_evaluation_runs(conn: sqlite3.Connection) -> None:
+        """Allow NULL run-level means ('Null is not 0'): an unmeasured mean must not be stored as 0.
+
+        Rebuilds the table without NOT NULL on the mean columns. Foreign keys are switched off for the
+        rebuild (outside any transaction, as SQLite requires) so evaluation_results keeps its references.
+        """
+        cols = {r[1]: bool(r[3]) for r in conn.execute("PRAGMA table_info(evaluation_runs)").fetchall()}
+        if not cols or not any(cols.get(c, False) for c in ("mean_latency_ms", "mean_accuracy", "mean_groundedness", "mean_overall_score")):
+            return
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            conn.execute("BEGIN")
+            conn.execute("""
+                CREATE TABLE evaluation_runs_new (
+                    run_id TEXT PRIMARY KEY,
+                    timestamp TEXT NOT NULL,
+                    model_id TEXT NOT NULL,
+                    dataset_path TEXT NOT NULL,
+                    total_cases INTEGER NOT NULL,
+                    completed_cases INTEGER NOT NULL,
+                    failed_cases INTEGER NOT NULL,
+                    total_cost_usd TEXT NOT NULL,
+                    mean_latency_ms REAL,
+                    mean_accuracy REAL,
+                    mean_groundedness REAL,
+                    mean_overall_score REAL,
+                    is_dry_run INTEGER NOT NULL DEFAULT 1,
+                    notes TEXT
+                )
+            """)
+            conn.execute("""
+                INSERT INTO evaluation_runs_new SELECT
+                    run_id, timestamp, model_id, dataset_path, total_cases, completed_cases, failed_cases,
+                    total_cost_usd, mean_latency_ms, mean_accuracy, mean_groundedness, mean_overall_score,
+                    is_dry_run, notes
+                FROM evaluation_runs
+            """)
+            conn.execute("DROP TABLE evaluation_runs")
+            conn.execute("ALTER TABLE evaluation_runs_new RENAME TO evaluation_runs")
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+                "VALUES (3, datetime('now'), 'Make run-level mean columns in evaluation_runs nullable')"
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
 
     @staticmethod
     def _migrate_evaluation_results(conn: sqlite3.Connection) -> None:
@@ -407,10 +460,10 @@ class DatabaseManager:
                     run["completed_cases"],
                     run["failed_cases"],
                     str(run["total_cost_usd"]) if run.get("total_cost_usd") is not None else "0.0000",
-                    float(run["mean_latency_ms"]) if run.get("mean_latency_ms") is not None else 0.0,
-                    float(run["mean_accuracy"]) if run.get("mean_accuracy") is not None else 0.0,
-                    float(run["mean_groundedness"]) if run.get("mean_groundedness") is not None else 0.0,
-                    float(run["mean_overall_score"]) if run.get("mean_overall_score") is not None else 0.0,
+                    float(run["mean_latency_ms"]) if run.get("mean_latency_ms") is not None else None,
+                    float(run["mean_accuracy"]) if run.get("mean_accuracy") is not None else None,
+                    float(run["mean_groundedness"]) if run.get("mean_groundedness") is not None else None,
+                    float(run["mean_overall_score"]) if run.get("mean_overall_score") is not None else None,
                     1 if run.get("is_dry_run", False) else 0,
                     run.get("notes", ""),
                 ),

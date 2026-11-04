@@ -40,15 +40,17 @@ Trace exports group these as `OK`, `INVALID_OUTPUT` and `ERROR`.
 - **overall score**: `0.50 × accuracy + 0.35 × groundedness + 0.15 × format`.
 
 > [!WARNING]
-> These are word-overlap heuristics, not a judgment of correctness. When a case has **no** expected answer, the heuristic records fixed values (accuracy 0.70, groundedness 0.75) rather than leaving the score empty; treat them as placeholders, not measurements. Use [Scorers](/scorers) for stricter evaluation.
+> These are word-overlap heuristics, not a judgment of correctness. Use [Scorers](/scorers) for stricter evaluation.
+
+When a case has **no** expected answer, or the expected answer has no word longer than two characters, accuracy, groundedness and the overall score are left **empty** (shown as `—`). Format adherence is still recorded. Means are taken over the scored cases only, and a mean over no scored cases is empty, never 0.
 
 ## GenericRunner runs
 
-For runs executed with `GenericRunner`, the stored accuracy, groundedness and overall columns are 1.0 for a `success` case and 0.0 otherwise: they measure completion, not correctness. Score correctness with a scorer over `case_results`; see [Creating benchmarks](/creating-benchmarks#4-score-the-outputs).
+`GenericRunner` records whether each case completed (`completed_cases`, `failed_cases`, and `format_adherence` of 1.0 for valid output or 0.0 for empty output). It does not judge correctness, so its accuracy, groundedness and overall columns are left **empty**. Score correctness with a scorer over `case_results`; see [Creating benchmarks](/creating-benchmarks#4-score-the-outputs).
 
 ## Replay runs
 
-CLI replay runs store fixed summary values (accuracy 1.0, latency 110 ms) and are a pipeline check only. See [Executing benchmark runs](/executing-runs#replay-mode).
+Replay runs score recorded outputs with the same heuristic as live runs. Cases without a recording are counted as failed and left unscored. See [Executing benchmark runs](/executing-runs#replay-mode).
 
 ## Cost
 

@@ -38,7 +38,7 @@ uv run runport benchmark --replay --dataset data/evaluation/synthetic_seed_eval.
 A replay run is stored with provenance `REPLAYED` and books `$0.00`.
 
 > [!IMPORTANT]
-> The CLI replay mode verifies the pipeline (dataset loading, storage, reporting) end to end. It does not measure a model: it replays the dataset's own records and records fixed summary values. To replay recorded model outputs, use `ReplayRunner` with a fixtures file; see [Reproducibility](/reproducibility#deterministic-replay).
+> Replay scores recorded model outputs. The seed dataset has none, so this run reports `0 / 2` recorded outputs and leaves every score empty rather than inventing one. Add `--fixtures recorded.jsonl` to replay real outputs; see [Executing benchmark runs](/executing-runs#replay-mode).
 
 Without `--replay` or `--live`, `runport benchmark` only explains what it would do and sends nothing.
 

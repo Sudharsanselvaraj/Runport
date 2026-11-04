@@ -175,11 +175,13 @@ class GenericRunner:
                         "prompt_tokens": res.tokens_in,
                         "completion_tokens": res.tokens_out,
                         "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else None,
-                        "accuracy": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
-                        "groundedness": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
-                        "format_adherence": 1.0 if res.status != TargetStatus.INVALID_OUTPUT else 0.0,
-                        "overall_score": 1.0 if res.status == TargetStatus.SUCCESS else 0.0,
-                        "evaluator_notes": res.error_message,
+                        # GenericRunner records whether a case completed, not whether it was right.
+                        # Correctness is unmeasured here (None), so it is never stored as a score.
+                        "accuracy": None,
+                        "groundedness": None,
+                        "format_adherence": (1.0 if res.status == TargetStatus.SUCCESS else 0.0 if res.status == TargetStatus.INVALID_OUTPUT else None),
+                        "overall_score": None,
+                        "evaluator_notes": res.error_message or "Not scored: apply a scorer from runport.scorers to case_results.",
                     }
                 )
 
@@ -235,10 +237,11 @@ class GenericRunner:
                 "completed_cases": run_res.successful_cases,
                 "failed_cases": run_res.failed_cases + run_res.invalid_cases,
                 "total_cost_usd": f"{run_res.total_spend_usd:.6f}",
-                "mean_latency_ms": run_res.mean_latency_ms,
-                "mean_accuracy": run_res.successful_cases / len(cases) if cases else 0.0,
-                "mean_groundedness": run_res.successful_cases / len(cases) if cases else 0.0,
-                "mean_overall_score": run_res.successful_cases / len(cases) if cases else 0.0,
+                "mean_latency_ms": run_res.mean_latency_ms if cases else None,
+                # Unscored: completion counts live in completed_cases / failed_cases, not in score columns.
+                "mean_accuracy": None,
+                "mean_groundedness": None,
+                "mean_overall_score": None,
                 "is_dry_run": 1 if not plan.is_live else 0,
                 "notes": f"Plan: {plan.plan_id} (Fingerprint: {plan.fingerprint[:12]})",
             }

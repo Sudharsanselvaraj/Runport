@@ -114,6 +114,10 @@ def test_replay_run_books_zero_and_persists_results(client):
             "plan_fingerprint": "plan-fp-replay-1",
             "is_replay": True,
             "sample_size": 2,
+            "replay_fixtures": [
+                {"case_id": "c1", "output_text": "YES", "latency_ms": 120.0},
+                {"case_id": "c2", "output_text": "NO", "latency_ms": 90.0},
+            ],
         },
     )
     assert res.status_code == 200
@@ -154,3 +158,26 @@ def test_sanitized_trace_export(client):
     res_zip = client.get("/api/reports/export-traces?format=zip")
     assert res_zip.status_code == 200
     assert res_zip.headers["content-type"] == "application/zip"
+
+
+def test_replay_without_recordings_scores_nothing(client):
+    """Invariant 10: replay never invents outputs. Cases without a recording are unscored, not 0 and not 1."""
+    res = client.post(
+        "/api/runs",
+        json={
+            "target_ids": ["test-model-1"],
+            "dataset_name": "test_dataset.jsonl",
+            "plan_fingerprint": "plan-fp-replay-2",
+            "is_replay": True,
+            "sample_size": 2,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success_count"] == 0 and data["failed_count"] == 2
+    assert all(p["output_text"] is None for p in data["results_preview"])
+
+    detail = client.get(f"/api/runs/{data['run_id']}").json()
+    assert detail["run"]["mean_accuracy"] is None
+    assert detail["run"]["mean_latency_ms"] is None
+    assert all(r["accuracy"] is None and r["generated_output"] == "" for r in detail["results"])

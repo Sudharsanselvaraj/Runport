@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from runport.core.budget import BudgetExceededError, BudgetService
 from runport.dataset.manager import DatasetManager
 from runport.evaluation.evaluator import RubricEvaluator
+from runport.evaluation.replay_scoring import mean_or_none
 from runport.core.live_guard import LiveAuthorization, require_live_authorization
 from runport.providers.base import (
     BaseProvider,
@@ -34,10 +35,11 @@ class BenchmarkRunReport(BaseModel):
     completed_cases: int
     failed_cases: int
     total_cost_usd: Decimal
-    mean_latency_ms: float
-    mean_accuracy: float
-    mean_groundedness: float
-    mean_overall_score: float
+    # None = nothing measured (for example, no labelled cases). Never reported as 0.
+    mean_latency_ms: Optional[float]
+    mean_accuracy: Optional[float]
+    mean_groundedness: Optional[float]
+    mean_overall_score: Optional[float]
     results: List[Dict[str, Any]] = Field(default_factory=list)
     notes: Optional[str] = None
 
@@ -172,11 +174,12 @@ class BenchmarkRunner:
                     raise
 
         # 4. Aggregate metrics
+        # Means cover measured values only; unlabelled cases have no accuracy and are left out.
         n_comp = len(completed_results)
-        mean_lat = sum(r["latency_ms"] for r in completed_results) / n_comp if n_comp else 0.0
-        mean_acc = sum(r["accuracy"] for r in completed_results) / n_comp if n_comp else 0.0
-        mean_grd = sum(r["groundedness"] for r in completed_results) / n_comp if n_comp else 0.0
-        mean_ovr = sum(r["overall_score"] for r in completed_results) / n_comp if n_comp else 0.0
+        mean_lat = mean_or_none((r["latency_ms"] for r in completed_results), ndigits=2)
+        mean_acc = mean_or_none(r["accuracy"] for r in completed_results)
+        mean_grd = mean_or_none(r["groundedness"] for r in completed_results)
+        mean_ovr = mean_or_none(r["overall_score"] for r in completed_results)
 
         run_summary = {
             "run_id": run_id,
@@ -187,10 +190,10 @@ class BenchmarkRunner:
             "completed_cases": n_comp,
             "failed_cases": failed_count,
             "total_cost_usd": str(total_run_cost),
-            "mean_latency_ms": round(mean_lat, 2),
-            "mean_accuracy": round(mean_acc, 4),
-            "mean_groundedness": round(mean_grd, 4),
-            "mean_overall_score": round(mean_ovr, 4),
+            "mean_latency_ms": mean_lat,
+            "mean_accuracy": mean_acc,
+            "mean_groundedness": mean_grd,
+            "mean_overall_score": mean_ovr,
             "is_dry_run": False,  # legacy column: this tool no longer produces simulated runs
             "notes": f"Evaluation over {dataset_path.name} (split: {split or 'ALL'})",
         }
@@ -209,10 +212,10 @@ class BenchmarkRunner:
             completed_cases=n_comp,
             failed_cases=failed_count,
             total_cost_usd=total_run_cost,
-            mean_latency_ms=round(mean_lat, 2),
-            mean_accuracy=round(mean_acc, 4),
-            mean_groundedness=round(mean_grd, 4),
-            mean_overall_score=round(mean_ovr, 4),
+            mean_latency_ms=mean_lat,
+            mean_accuracy=mean_acc,
+            mean_groundedness=mean_grd,
+            mean_overall_score=mean_ovr,
             results=completed_results,
             notes=run_summary["notes"],
         )

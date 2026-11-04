@@ -92,15 +92,18 @@ class ReplayRunner:
             )
 
         output_text = record.get("output_text") or record.get("output") or record.get("response") or record.get("text")
-        latency_ms = record.get("latency_ms", 0.0)
+        latency_ms = record.get("latency_ms")  # unrecorded latency stays None, never 0
         tokens_in = record.get("tokens_in") or record.get("prompt_tokens")
         tokens_out = record.get("tokens_out") or record.get("completion_tokens")
 
-        status_str = record.get("status", "success")
+        # A record without an output is not a successful replay, whatever its status field says.
+        status_str = record.get("status")
         try:
-            status = TargetStatus(status_str)
+            status = TargetStatus(status_str) if status_str is not None else TargetStatus.SUCCESS
         except ValueError:
-            status = TargetStatus.SUCCESS if output_text is not None else TargetStatus.FAILED
+            status = TargetStatus.SUCCESS
+        if output_text is None and status == TargetStatus.SUCCESS:
+            status = TargetStatus.FAILED
 
         return TargetResult(
             target_id=record.get("target_id") or tid,
@@ -114,7 +117,7 @@ class ReplayRunner:
             cost_basis=CostBasis.UNAVAILABLE,
             is_replay=True,
             provenance="REPLAYED",
-            error_message=record.get("error_message"),
+            error_message=record.get("error_message") or (None if output_text is not None else f"Fixture for case '{case_id}' has no recorded output"),
             error_code=record.get("error_code"),
             metadata={
                 "case_id": case_id,

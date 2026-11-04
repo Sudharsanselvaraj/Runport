@@ -69,7 +69,7 @@ uv run runport benchmark --replay --dataset data/evaluation/synthetic_seed_eval.
 Key guarantees:
 - **$0.00 Spend**: Provenance is recorded as `REPLAYED`.
 - **Zero Network Traffic**: Complete offline execution.
-- Generates accuracy, Wilson 95% score intervals, and latency percentiles.
+- Scores recorded outputs (from the dataset or `--fixtures recorded.jsonl`) with the same heuristic as live runs. Cases without a recording stay unscored; nothing is filled in.
 
 ---
 

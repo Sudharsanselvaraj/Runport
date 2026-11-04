@@ -11,6 +11,19 @@ from rich.table import Table
 console = Console()
 
 
+def _fmt_pct(value: Optional[float], digits: int = 1) -> str:
+    """Percent for a measured value; an em dash for an unmeasured one (never 0%)."""
+    return "—" if value is None else f"{float(value) * 100:.{digits}f}%"
+
+
+def _fmt_ms(value: Optional[float], digits: int = 1) -> str:
+    return "—" if value is None else f"{float(value):.{digits}f} ms"
+
+
+def _fmt_diff(a: Optional[float], b: Optional[float], scale: float = 1.0, unit: str = "") -> str:
+    return "—" if a is None or b is None else f"{(float(b) - float(a)) * scale:+.1f}{unit}"
+
+
 def _require_live_confirmation(models: List[str], dataset_name: str):
     """Fail closed: a live run needs interactive typed confirmation, or the command exits before any request."""
     from runport.core.live_guard import confirm_live_run
@@ -61,6 +74,13 @@ def run_benchmark(
         "--replay",
         help="Execute offline using deterministic replay targets with provenance REPLAYED ($0.00 spend).",
     ),
+    fixtures: Optional[Path] = typer.Option(
+        None,
+        "--fixtures",
+        "-f",
+        metavar="<file>",
+        help="Replay only: JSONL of recorded outputs (output_text, latency_ms, tokens). Defaults to the dataset file.",
+    ),
 ) -> None:
     """Benchmark a candidate model with REAL requests (typed approval required), tracked against the budget."""
     from runport.evaluation.runner import BenchmarkRunner
@@ -71,6 +91,7 @@ def run_benchmark(
     dataset_path = Path(dataset_path_val) if not isinstance(dataset_path_val, Path) else dataset_path_val
     live = getattr(live, "default", live) if hasattr(live, "default") else live
     replay = getattr(replay, "default", replay) if hasattr(replay, "default") else replay
+    fixtures = getattr(fixtures, "default", fixtures) if hasattr(fixtures, "default") else fixtures
 
     split_val = getattr(split, "default", split) if hasattr(split, "default") else split
     split_str = str(split_val).strip()
@@ -87,6 +108,7 @@ def run_benchmark(
         )
         from runport.dataset.manager import DatasetManager
         from runport.runs.replay import ReplayRunner
+        from runport.evaluation.replay_scoring import score_replay_results
         from runport.storage.db import DatabaseManager
         import uuid
         from datetime import datetime, timezone
@@ -101,38 +123,17 @@ def run_benchmark(
         if not cases:
             cases = all_cases
 
-        replay_runner = ReplayRunner(fixtures=dataset_path, target_id=model_id)
+        # Recorded outputs come from --fixtures, or from the dataset itself when its records carry them.
+        # A case without a recording is not scored; nothing is substituted for it.
+        fixture_path = Path(fixtures) if fixtures else dataset_path
+        replay_runner = ReplayRunner(fixtures=fixture_path, target_id=model_id)
         db_mgr = DatabaseManager()
         db_mgr.init_db()
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        results = []
-        for c in cases:
-            cid = getattr(c, "id", None) or getattr(c, "case_id", "case")
-            prompt = getattr(c, "prompt", "")
-            expected = getattr(c, "expected_answer", "") or getattr(c, "reference_answer", "")
-            res = replay_runner.replay_case(case_id=cid, input_payload={"prompt": prompt})
-            gen_out = res.output_text or expected or "Replay verified answer"
-            results.append(
-                {
-                    "result_id": f"res-{uuid.uuid4().hex[:8]}",
-                    "run_id": run_id,
-                    "case_id": cid,
-                    "prompt": prompt,
-                    "expected_answer": expected,
-                    "generated_output": gen_out,
-                    "latency_ms": 110.0,
-                    "prompt_tokens": 42,
-                    "completion_tokens": 28,
-                    "cost_usd": "0.0000",
-                    "accuracy": 1.0,
-                    "groundedness": 0.0,
-                    "format_adherence": 1.0,
-                    "overall_score": 1.0,
-                    "evaluator_notes": "Provenance: REPLAYED",
-                }
-            )
+        replayed = [replay_runner.replay_case(case_id=c.id, input_payload={"query": c.query}) for c in cases]
+        results, agg = score_replay_results(run_id, cases, replayed)
 
         db_mgr.save_evaluation_run(
             {
@@ -141,15 +142,15 @@ def run_benchmark(
                 "model_id": model_id,
                 "dataset_path": dataset_path.name,
                 "total_cases": len(cases),
-                "completed_cases": len(cases),
-                "failed_cases": 0,
+                "completed_cases": agg["completed_cases"],
+                "failed_cases": agg["failed_cases"],
                 "total_cost_usd": "0.0000",
-                "mean_latency_ms": 110.0,
-                "mean_accuracy": 1.0,
-                "mean_groundedness": 0.0,
-                "mean_overall_score": 1.0,
+                "mean_latency_ms": agg["mean_latency_ms"],
+                "mean_accuracy": agg["mean_accuracy"],
+                "mean_groundedness": agg["mean_groundedness"],
+                "mean_overall_score": agg["mean_overall_score"],
                 "is_dry_run": 1,
-                "notes": "Replay benchmark run",
+                "notes": f"Replay benchmark run (fixtures: {fixture_path.name})",
             }
         )
         db_mgr.save_evaluation_results(results)
@@ -160,13 +161,19 @@ def run_benchmark(
         summary_table.add_column("Benchmark Evaluation Context", style="italic")
 
         summary_table.add_row("Run Identifier", run_id, "Unique execution run ID stored in SQLite")
-        summary_table.add_row("Evaluated Cases", f"{len(cases)} / {len(cases)}", f"Split: {split_str.upper()}")
-        summary_table.add_row("Mean Latency", "110.0 ms", "Deterministic replay turnaround")
-        summary_table.add_row("Mean Accuracy", "100.0%", "Factual overlap against ground truth citations")
-        summary_table.add_row("Mean Groundedness", "0.0%", "Context-supported ratio")
-        summary_table.add_row("Overall Score", "[bold green]100.0%[/bold green]", "Weighted composite score")
+        summary_table.add_row("Recorded Outputs", f"{agg['completed_cases']} / {len(cases)}", f"Fixtures: {fixture_path.name} · Split: {split_str.upper()}")
+        summary_table.add_row("Mean Latency", _fmt_ms(agg["mean_latency_ms"]), "From recorded latencies")
+        summary_table.add_row("Mean Accuracy", _fmt_pct(agg["mean_accuracy"]), "Word overlap with the expected answer (labelled cases only)")
+        summary_table.add_row("Mean Groundedness", _fmt_pct(agg["mean_groundedness"]), "Overlap-based groundedness heuristic")
+        summary_table.add_row("Overall Score", _fmt_pct(agg["mean_overall_score"]), "Weighted composite rubric score")
         summary_table.add_row("Run Spend (USD)", "$0.0000", "Provenance: REPLAYED ($0.00 spend)")
         console.print(summary_table)
+
+        if agg["completed_cases"] == 0:
+            console.print(
+                "[yellow]No recorded outputs found for these cases, so nothing was scored.[/yellow] "
+                "Pass [bold]--fixtures <file.jsonl>[/bold] with recorded outputs (case id plus output_text) to replay a real run."
+            )
 
         case_table = Table(title="Per-Case Performance Breakdown", show_header=True, header_style="bold blue")
         case_table.add_column("Case ID", style="cyan", width=14)
@@ -181,8 +188,8 @@ def run_benchmark(
             case_table.add_row(
                 r["case_id"],
                 q_snip,
-                f"{r['latency_ms']:.0f} ms",
-                f"{r['accuracy'] * 100:.0f}%",
+                _fmt_ms(r["latency_ms"], digits=0),
+                _fmt_pct(r["accuracy"], digits=0),
                 "REPLAYED",
                 "$0.0000",
             )
@@ -232,10 +239,10 @@ def run_benchmark(
 
     summary_table.add_row("Run Identifier", report.run_id, "Unique execution run ID stored in SQLite")
     summary_table.add_row("Evaluated Cases", f"{report.completed_cases} / {report.total_cases}", f"Split: {split.upper()}")
-    summary_table.add_row("Mean Latency", f"{report.mean_latency_ms:.1f} ms", "End-to-end inference turnaround")
-    summary_table.add_row("Mean Accuracy", f"{report.mean_accuracy * 100:.1f}%", "Factual overlap against ground truth citations")
-    summary_table.add_row("Mean Groundedness", f"{report.mean_groundedness * 100:.1f}%", "Absence of unsupported hallucinations")
-    summary_table.add_row("Overall Score", f"[bold green]{report.mean_overall_score * 100:.1f}%[/bold green]", "Weighted composite rubric score")
+    summary_table.add_row("Mean Latency", _fmt_ms(report.mean_latency_ms), "End-to-end inference turnaround")
+    summary_table.add_row("Mean Accuracy", _fmt_pct(report.mean_accuracy), "Word overlap with the expected answer (labelled cases only)")
+    summary_table.add_row("Mean Groundedness", _fmt_pct(report.mean_groundedness), "Overlap-based groundedness heuristic")
+    summary_table.add_row("Overall Score", f"[bold green]{_fmt_pct(report.mean_overall_score)}[/bold green]", "Weighted composite rubric score")
     summary_table.add_row("Run Spend (USD)", f"${report.total_cost_usd:.4f}", "Deducted and verified against budget ledger")
     console.print(summary_table)
 
@@ -252,10 +259,10 @@ def run_benchmark(
         case_table.add_row(
             r["case_id"],
             q_snip,
-            f"{r['latency_ms']:.0f} ms",
-            f"{r['accuracy'] * 100:.0f}%",
-            f"{r['groundedness'] * 100:.0f}%",
-            f"{r['overall_score'] * 100:.0f}%",
+            _fmt_ms(r["latency_ms"], digits=0),
+            _fmt_pct(r["accuracy"], digits=0),
+            _fmt_pct(r["groundedness"], digits=0),
+            _fmt_pct(r["overall_score"], digits=0),
         )
     console.print(case_table)
 
@@ -293,35 +300,31 @@ def compare_runs(
     table.add_column(f"Run B ({data_b['model_id'][:18]})", justify="right")
     table.add_column("Delta (B - A)", justify="right", style="bold")
 
-    acc_a = float(data_a["mean_accuracy"])
-    acc_b = float(data_b["mean_accuracy"])
-    d_acc = acc_b - acc_a
-    d_acc_str = f"[green]+{d_acc * 100:.1f}%[/green]" if d_acc >= 0 else f"[red]{d_acc * 100:.1f}%[/red]"
+    def _num(row, key):
+        return float(row[key]) if row.get(key) is not None else None
 
-    lat_a = float(data_a["mean_latency_ms"])
-    lat_b = float(data_b["mean_latency_ms"])
-    d_lat = lat_b - lat_a
-    d_lat_str = f"[green]{d_lat:+.1f} ms[/green]" if d_lat <= 0 else f"[yellow]{d_lat:+.1f} ms[/yellow]"
+    acc_a, acc_b = _num(data_a, "mean_accuracy"), _num(data_b, "mean_accuracy")
+    grd_a, grd_b = _num(data_a, "mean_groundedness"), _num(data_b, "mean_groundedness")
+    sc_a, sc_b = _num(data_a, "mean_overall_score"), _num(data_b, "mean_overall_score")
+    lat_a, lat_b = _num(data_a, "mean_latency_ms"), _num(data_b, "mean_latency_ms")
 
-    sc_a = float(data_a["mean_overall_score"])
-    sc_b = float(data_b["mean_overall_score"])
-    d_sc = sc_b - sc_a
-    d_sc_str = f"[green]+{d_sc * 100:.1f}%[/green]" if d_sc >= 0 else f"[red]{d_sc * 100:.1f}%[/red]"
+    def _colour(delta_str: str, good: bool) -> str:
+        return delta_str if delta_str == "—" else (f"[green]{delta_str}[/green]" if good else f"[red]{delta_str}[/red]")
+
+    def _higher_better(a, b, scale=100.0, unit="%"):
+        return _colour(_fmt_diff(a, b, scale, unit), a is not None and b is not None and b >= a)
 
     cost_a = Decimal(data_a["total_cost_usd"])
     cost_b = Decimal(data_b["total_cost_usd"])
-    d_cost = cost_b - cost_a
-    d_cost_str = f"${d_cost:+.4f}"
+    d_cost_str = f"${cost_b - cost_a:+.4f}"
 
-    table.add_row("Mean Accuracy", f"{acc_a * 100:.1f}%", f"{acc_b * 100:.1f}%", d_acc_str)
+    # Unmeasured means show as an em dash and produce no delta; they are never compared as 0.
+    table.add_row("Mean Accuracy", _fmt_pct(acc_a), _fmt_pct(acc_b), _higher_better(acc_a, acc_b))
+    table.add_row("Mean Groundedness", _fmt_pct(grd_a), _fmt_pct(grd_b), _higher_better(grd_a, grd_b))
+    table.add_row("Overall Score", _fmt_pct(sc_a), _fmt_pct(sc_b), _higher_better(sc_a, sc_b))
     table.add_row(
-        "Mean Groundedness",
-        f"{float(data_a['mean_groundedness']) * 100:.1f}%",
-        f"{float(data_b['mean_groundedness']) * 100:.1f}%",
-        f"{(float(data_b['mean_groundedness']) - float(data_a['mean_groundedness'])) * 100:+.1f}%",
+        "Mean Latency", _fmt_ms(lat_a), _fmt_ms(lat_b), _colour(_fmt_diff(lat_a, lat_b, 1.0, " ms"), lat_a is not None and lat_b is not None and lat_b <= lat_a)
     )
-    table.add_row("Overall Score", f"{sc_a * 100:.1f}%", f"{sc_b * 100:.1f}%", d_sc_str)
-    table.add_row("Mean Latency", f"{lat_a:.1f} ms", f"{lat_b:.1f} ms", d_lat_str)
     table.add_row("Total Run Spend", f"${cost_a:.4f}", f"${cost_b:.4f}", d_cost_str)
     table.add_row(
         "Completed Cases", f"{data_a['completed_cases']}", f"{data_b['completed_cases']}", f"{data_b['completed_cases'] - data_a['completed_cases']:+d}"

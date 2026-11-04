@@ -14,6 +14,7 @@ uv run runport benchmark [--model ID] [--dataset FILE] [--split TEST|DEV|ALL] [-
 | `-s`, `--split` | `TEST` | `TEST`, `DEV` or `ALL` |
 | `--live` | off | Send real requests to OpenRouter |
 | `--replay` | off | Run offline with provenance `REPLAYED` and $0.00 spend |
+| `-f`, `--fixtures` | the dataset file | Replay only: JSONL of recorded outputs to score |
 
 ## Explain mode (default)
 
@@ -27,8 +28,14 @@ uv run runport benchmark --replay --dataset data/evaluation/synthetic_seed_eval.
 
 Replay mode needs no key and no network. The run is stored with provenance `REPLAYED` and books $0.00, so it is safe in CI.
 
-> [!WARNING]
-> In this release the CLI replay summary is a pipeline check: it replays the dataset's own records and stores fixed values (accuracy 1.0, latency 110 ms). It does not measure any model. Use `ReplayRunner` with recorded outputs to replay real model results; see [Reproducibility](/reproducibility#deterministic-replay).
+Replay scores **recorded outputs**, the same way a live run is scored. Point it at a JSONL file of recordings with `--fixtures` (one object per case: `id`, `output_text`, and optionally `latency_ms` and token counts); without `--fixtures` it looks for recordings in the dataset file itself.
+
+```bash
+uv run runport benchmark --replay --dataset cases.jsonl --fixtures recorded.jsonl
+```
+
+> [!NOTE]
+> A case with no recording is not scored: its output, latency and scores stay empty and are left out of every mean. Nothing is substituted, not the expected answer and not a fixed timing. The bundled seed dataset carries no recordings, so replaying it on its own reports `0 / N` recorded outputs and no scores.
 
 ## Live mode
 

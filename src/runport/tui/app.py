@@ -860,11 +860,14 @@ class WorkbenchTUI:
                     self.selected_run_results = self.budget_service.db.get_evaluation_results_for_run(run_id) if run_id else []
                 except Exception:
                     self.selected_run_results = []
-                acc_pct = float(sel_run.get("mean_accuracy", 0)) * 100
-                grd_pct = float(sel_run.get("mean_groundedness", 0)) * 100
+
+                def _pct(key: str) -> str:
+                    return f"{float(sel_run[key]) * 100:.1f}%" if sel_run.get(key) is not None else "-"
+
+                lat = f"{float(sel_run['mean_latency_ms']):.1f}ms" if sel_run.get("mean_latency_ms") is not None else "-"
                 self.feedback_message = (
                     f"Inspected Run: {run_id} ({sel_run.get('model_id')}) | "
-                    f"Acc: {acc_pct:.1f}% | Faithfulness: {grd_pct:.1f}% | Lat: {float(sel_run.get('mean_latency_ms', 0)):.1f}ms"
+                    f"Acc: {_pct('mean_accuracy')} | Faithfulness: {_pct('mean_groundedness')} | Lat: {lat}"
                 )
                 self.log_buffer.add("INFO", f"Inspected benchmark run {run_id}")
             else:

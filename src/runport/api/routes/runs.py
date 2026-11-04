@@ -112,26 +112,16 @@ def execute_run(req: RunExecutionRequest) -> Dict[str, Any]:
 
     if req.is_replay:
         # Isolated replay execution
-        fixtures = req.replay_fixtures or []
-        if not fixtures:
-            # Generate deterministic synthetic baseline fixtures from dataset queries
-            for c in cases:
-                cid = str(c.get("case_id") or c.get("id") or "")
-                fixtures.append(
-                    {
-                        "case_id": cid,
-                        "query": c.get("query") or c.get("input") or "",
-                        "output_text": f"Simulated deterministic response for case {cid}",
-                        "latency_ms": 110.0,
-                        "tokens_in": 150,
-                        "tokens_out": 40,
-                    }
-                )
-
+        # Replay only what was recorded: the request's fixtures, or recorded outputs carried by the
+        # dataset records themselves. Nothing is generated for cases without a recording (invariant 10).
+        fixtures = req.replay_fixtures or cases
         runner = ReplayRunner(fixtures=fixtures, target_id=req.target_ids[0])
         results = runner.replay_dataset(cases, target_id=req.target_ids[0])
 
-        success_count = sum(1 for r in results if r.is_success)
+        from runport.evaluation.replay_scoring import score_replay_results
+
+        eval_results, agg = score_replay_results(run_id, cases, results)
+        success_count = agg["completed_cases"]
 
         # Persist replay run to database for Results, Compare, and Reports tabs
         db = DatabaseManager(settings.db_path)
@@ -139,8 +129,6 @@ def execute_run(req: RunExecutionRequest) -> Dict[str, Any]:
         from datetime import datetime, timezone
 
         now_str = datetime.now(timezone.utc).isoformat()
-        latencies = [r.latency_ms for r in results if r.latency_ms is not None]
-        mean_lat = sum(latencies) / len(latencies) if latencies else 0.0
         db.save_evaluation_run(
             {
                 "run_id": run_id,
@@ -149,37 +137,16 @@ def execute_run(req: RunExecutionRequest) -> Dict[str, Any]:
                 "dataset_path": req.dataset_name,
                 "total_cases": len(results),
                 "completed_cases": success_count,
-                "failed_cases": len(results) - success_count,
+                "failed_cases": agg["failed_cases"],
                 "total_cost_usd": "0.0000",
-                "mean_latency_ms": mean_lat,
-                "mean_accuracy": 1.0 if success_count == len(results) else (success_count / len(results) if results else 0.0),
-                "mean_groundedness": None,
-                "mean_overall_score": 1.0,
+                "mean_latency_ms": agg["mean_latency_ms"],
+                "mean_accuracy": agg["mean_accuracy"],
+                "mean_groundedness": agg["mean_groundedness"],
+                "mean_overall_score": agg["mean_overall_score"],
                 "is_dry_run": True,
                 "notes": "Replay benchmark run",
             }
         )
-        eval_results = []
-        for idx, (c, r) in enumerate(zip(cases, results)):
-            eval_results.append(
-                {
-                    "result_id": f"{run_id}-{idx}",
-                    "run_id": run_id,
-                    "case_id": str(c.get("case_id") or c.get("id") or idx),
-                    "prompt": str(c.get("query") or c.get("input") or ""),
-                    "expected_answer": str(c.get("ground_truth") or c.get("expected") or ""),
-                    "generated_output": r.output_text,
-                    "latency_ms": r.latency_ms,
-                    "prompt_tokens": r.tokens_in,
-                    "completion_tokens": r.tokens_out,
-                    "cost_usd": "0.0000",
-                    "accuracy": 1.0 if r.is_success else 0.0,
-                    "groundedness": None,
-                    "format_adherence": 1.0,
-                    "overall_score": 1.0 if r.is_success else 0.0,
-                    "evaluator_notes": f"Provenance: {r.provenance}",
-                }
-            )
         db.save_evaluation_results(eval_results)
         return {
             "run_id": run_id,
