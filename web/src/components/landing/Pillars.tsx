@@ -188,6 +188,7 @@ export const Pillars: React.FC = () => {
     <section className="rp-section rp-pl" id="why" aria-labelledby="rp-pl-title">
       <div className="rp-pl-inner" ref={ref}>
         <Reveal className="rp-pl-head">
+          <p className="rp-eyebrow">Why Runport</p>
           <h2 id="rp-pl-title" className="rp-h2 rp-fade-heading">
             {c.titleA} {c.titleB}
           </h2>

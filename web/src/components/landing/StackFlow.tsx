@@ -164,6 +164,7 @@ export const StackFlow: React.FC = () => {
     <section className="rp-section rp-sf" id="stack" aria-labelledby="rp-sf-title">
       <div className="rp-sf-head">
         <Reveal>
+          <p className="rp-eyebrow">Integrations</p>
           <h2 id="rp-sf-title" className="rp-sf-title">
             {c.titleA}
             <br />

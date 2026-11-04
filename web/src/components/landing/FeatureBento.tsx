@@ -32,48 +32,32 @@ function useLoop(ref: React.RefObject<Element>, ms: number, fn: () => void, enab
   }, [inView, reduce, ms, enabled]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-// ---------- visuals ----------
+// ---------- visuals (minimal: one idea per tile, no nested boxes) ----------
 
 const Leaderboard: React.FC = () => {
   const reduce = useReducedMotion()
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, VIEW)
   const rows = [
-    { name: 'gpt-4o-mini', acc: 0.913, cost: '$0.13', basis: 'ESTIMATED' },
-    { name: 'claude-3-5-haiku', acc: 0.886, cost: '$0.49', basis: 'ACTUAL' },
-    { name: 'llama3.1 · ollama', acc: 0.742, cost: '$0.00', basis: 'UNAVAILABLE' },
+    { name: 'gpt-4o-mini', acc: 0.913, cost: '$0.13' },
+    { name: 'claude-3-5-haiku', acc: 0.886, cost: '$0.49' },
+    { name: 'llama3.1 · local', acc: 0.742, cost: '$0.00' },
   ]
   return (
     <div className="rp-bx-board" ref={ref}>
-      <div className="rp-bx-board-head">
-        <span>#</span>
-        <span>Model</span>
-        <span className="rp-bx-hide-sm" />
-        <span className="rp-bx-right">Accuracy</span>
-        <span className="rp-bx-right">Cost / 1k</span>
-        <span className="rp-bx-right rp-bx-hide-sm">Basis</span>
-      </div>
       {rows.map((r, i) => (
-        <motion.div
-          key={r.name}
-          className="rp-bx-board-row"
-          initial={reduce ? false : { opacity: 0, x: -10 }}
-          animate={inView || reduce ? { opacity: 1, x: 0 } : undefined}
-          transition={{ duration: 0.5, delay: 0.15 + i * 0.12, ease: EASE_OUT }}
-        >
-          <span className="rp-bx-rank">{i + 1}</span>
+        <div key={r.name} className="rp-bx-board-row">
           <span className="rp-bx-name">{r.name}</span>
           <span className="rp-bx-bar">
             <motion.i
               initial={{ scaleX: reduce ? r.acc : 0 }}
               animate={inView || reduce ? { scaleX: r.acc } : undefined}
-              transition={{ duration: reduce ? 0 : 1.2, delay: reduce ? 0 : 0.35 + i * 0.12, ease: EASE_OUT }}
+              transition={{ duration: reduce ? 0 : 1.2, delay: reduce ? 0 : 0.2 + i * 0.12, ease: EASE_OUT }}
             />
           </span>
           <span className="rp-bx-num">{(r.acc * 100).toFixed(1)}%</span>
-          <span className="rp-bx-num">{r.cost}</span>
-          <span className="rp-bx-tag">{r.basis}</span>
-        </motion.div>
+          <span className="rp-bx-num rp-bx-dim">{r.cost}</span>
+        </div>
       ))}
     </div>
   )
@@ -90,37 +74,34 @@ const SpendRing: React.FC = () => {
     const c = animate(0, used * 5, { duration: 1.6, ease: EASE_OUT, onUpdate: setShown })
     return () => c.stop()
   }, [inView, reduce])
-  const R = 52
+  const R = 54
   const C = 2 * Math.PI * R
   return (
     <div className="rp-bx-ring" ref={ref}>
-      <svg viewBox="0 0 140 140" aria-hidden="true">
-        <circle cx="70" cy="70" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" />
-        <circle cx="70" cy="70" r={R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeDasharray={`2 ${C / 40 - 2}`} />
-        <motion.circle
-          cx="70"
-          cy="70"
-          r={R}
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth="8"
-          strokeLinecap="round"
-          transform="rotate(-90 70 70)"
-          strokeDasharray={C}
-          initial={{ strokeDashoffset: reduce ? C * (1 - used) : C }}
-          animate={inView ? { strokeDashoffset: C * (1 - used) } : undefined}
-          transition={{ duration: reduce ? 0 : 1.6, ease: EASE_OUT }}
-        />
-      </svg>
-      <div className="rp-bx-ring-label">
-        <strong>${shown.toFixed(2)}</strong>
-        <span>of $5.00 total</span>
+      <div className="rp-bx-ring-gauge">
+        <svg viewBox="0 0 140 140" aria-hidden="true">
+          <circle cx="70" cy="70" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3" />
+          <motion.circle
+            cx="70"
+            cy="70"
+            r={R}
+            fill="none"
+            stroke="#ffffff"
+            strokeWidth="3"
+            strokeLinecap="round"
+            transform="rotate(-90 70 70)"
+            strokeDasharray={C}
+            initial={{ strokeDashoffset: reduce ? C * (1 - used) : C }}
+            animate={inView ? { strokeDashoffset: C * (1 - used) } : undefined}
+            transition={{ duration: reduce ? 0 : 1.6, ease: EASE_OUT }}
+          />
+        </svg>
+        <div className="rp-bx-ring-label">
+          <strong>${shown.toFixed(2)}</strong>
+          <span>of $5.00</span>
+        </div>
       </div>
       <ul className="rp-bx-caps">
-        <li>
-          <span>Pilot</span>
-          <span>$1.00</span>
-        </li>
         <li>
           <span>Per run</span>
           <span>$1.00</span>
@@ -129,7 +110,7 @@ const SpendRing: React.FC = () => {
           <span>Per case</span>
           <span>$0.05</span>
         </li>
-        <li className="is-ok">
+        <li>
           <span>Unresolved</span>
           <span>0</span>
         </li>
@@ -145,7 +126,6 @@ const Redaction: React.FC = () => {
   const [redacted, setRedacted] = useState(!!reduce)
   useEffect(() => {
     if (reduce) return
-    setRedacted(false)
     const t = window.setTimeout(() => setRedacted(true), 1400)
     return () => window.clearTimeout(t)
   }, [reduce])
@@ -155,11 +135,9 @@ const Redaction: React.FC = () => {
   })
   return (
     <div className="rp-bx-code" ref={ref}>
+      <p className="rp-bx-dim">POST /v1/chat/completions</p>
       <p>
-        <span className="k">POST</span> /api/v1/chat/completions
-      </p>
-      <p>
-        authorization: Bearer{' '}
+        <span className="rp-bx-dim">authorization </span>
         <span className={`rp-bx-secret${redacted ? ' is-red' : ''}`}>
           <motion.span
             key={redacted ? 'r' : 's'}
@@ -171,19 +149,13 @@ const Redaction: React.FC = () => {
           </motion.span>
         </span>
       </p>
-      <p>
-        model: <span className="s">"claude-3-5-haiku"</span>
-      </p>
-      <p>
-        usage: {'{'} prompt: 214, completion: 87 {'}'}
-      </p>
-      <p className="c">cost_usd: 0.0004 · ACTUAL</p>
+      <p className="rp-bx-dim">cost_usd 0.0004 · ACTUAL</p>
     </div>
   )
 }
 
 const HEX = '0123456789abcdef'
-const HASH = 'c07a5e19b2d4f0a83e61'
+const HASH = 'c07a5e19b2d4f0a8'
 const HashCheck: React.FC = () => {
   const ref = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
@@ -206,15 +178,15 @@ const HashCheck: React.FC = () => {
   useLoop(ref, 4600, run)
   return (
     <div className="rp-bx-hash" ref={ref}>
-      <div className="rp-bx-hash-row">
-        <span>before run</span>
-        <code>sha256:{HASH}</code>
-      </div>
-      <div className="rp-bx-hash-row">
-        <span>after run</span>
-        <code className={settled ? 'is-ok' : undefined}>sha256:{reduce ? HASH : text}</code>
-      </div>
-      <p className={`rp-bx-verdict${settled ? ' is-ok' : ''}`}>{settled ? '✓ source unchanged' : 'verifying…'}</p>
+      <p>
+        <span className="rp-bx-dim">before</span>
+        <code>{HASH}</code>
+      </p>
+      <p>
+        <span className="rp-bx-dim">after</span>
+        <code>{reduce ? HASH : text}</code>
+      </p>
+      <p className={`rp-bx-verdict${settled ? ' is-ok' : ''}`}>{settled ? 'unchanged' : 'verifying'}</p>
     </div>
   )
 }
@@ -222,32 +194,30 @@ const HashCheck: React.FC = () => {
 const Flow: React.FC = () => {
   const reduce = useReducedMotion()
   const sources = [
-    { logo: 'dify.svg', y: 18 },
-    { logo: 'n8n.svg', y: 50 },
-    { logo: 'langgraph.svg', y: 82 },
-    { logo: 'flowise.png', y: 114 },
+    { logo: 'dify.svg', y: 20 },
+    { logo: 'n8n.svg', y: 52 },
+    { logo: 'langgraph.svg', y: 84 },
+    { logo: 'flowise.png', y: 116 },
   ]
   return (
     <div className="rp-bx-flow">
-      <svg viewBox="0 0 300 132" aria-hidden="true">
+      <svg viewBox="0 0 300 136" aria-hidden="true">
         {sources.map((s, i) => {
-          const d = `M44 ${s.y} C 130 ${s.y}, 150 66, 214 66`
+          const d = `M40 ${s.y} C 120 ${s.y}, 150 68, 218 68`
           return (
             <g key={s.logo}>
-              <path d={d} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.2" />
+              <path d={d} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="1" />
               {!reduce && (
-                <circle r="2.6" fill="#fff" opacity="0">
-                  <animateMotion dur="1.8s" repeatCount="indefinite" begin={`${i * 0.45}s`} path={d} keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines="0.4 0 0.2 1" />
-                  <animate attributeName="opacity" dur="1.8s" repeatCount="indefinite" begin={`${i * 0.45}s`} values="0;1;1;0" keyTimes="0;0.15;0.85;1" />
+                <circle r="2" fill="#fff" opacity="0">
+                  <animateMotion dur="2.2s" repeatCount="indefinite" begin={`${i * 0.55}s`} path={d} keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines="0.4 0 0.2 1" />
+                  <animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" begin={`${i * 0.55}s`} values="0;0.9;0.9;0" keyTimes="0;0.15;0.85;1" />
                 </circle>
               )}
-              <rect x="10" y={s.y - 14} width="28" height="28" rx="7" fill="#131315" stroke="rgba(255,255,255,0.12)" />
-              <image href={`${LOGOS}/${s.logo}`} x="17" y={s.y - 7} width="14" height="14" />
+              <image href={`${LOGOS}/${s.logo}`} x="18" y={s.y - 8} width="16" height="16" opacity="0.85" />
             </g>
           )
         })}
-        <rect x="214" y="48" width="78" height="36" rx="8" fill="#151517" stroke="rgba(255,255,255,0.2)" />
-        <text x="253" y="70" textAnchor="middle" fontFamily="'Intel One Mono', ui-monospace, monospace" fontSize="9.5" fill="rgba(255,255,255,0.85)">
+        <text x="226" y="72" fontFamily="'Intel One Mono', ui-monospace, monospace" fontSize="10" fill="rgba(255,255,255,0.75)">
           TargetResult
         </text>
       </svg>
@@ -260,40 +230,33 @@ const Deltas: React.FC = () => {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, VIEW)
   const rows = [
-    { label: 'Accuracy', a: '91.3%', b: '88.6%', d: -2.7, unit: '%' },
-    { label: 'p50 latency', a: '402 ms', b: '348 ms', d: -54, unit: ' ms', better: true },
-    { label: 'Tokens / case', a: '301', b: '274', d: -27, unit: '' },
-    { label: 'Cost / 1k', a: '$0.13', b: '$0.49', d: 0.36, unit: '', money: true },
+    { label: 'Accuracy', d: -2.7, max: 5, text: '−2.7%' },
+    { label: 'p50 latency', d: -54, max: 100, text: '−54 ms' },
+    { label: 'Cost / 1k', d: 0.36, max: 0.5, text: '+$0.36' },
   ]
-  const max = { Accuracy: 5, 'p50 latency': 100, 'Tokens / case': 50, 'Cost / 1k': 0.5 } as Record<string, number>
   return (
     <div className="rp-bx-deltas" ref={ref}>
-      <div className="rp-bx-deltas-head">
-        <span />
+      <div className="rp-bx-deltas-legend">
         <span>Run A</span>
+        <span className="rp-bx-dim">vs</span>
         <span>Run B</span>
-        <span className="rp-bx-axis-label">B − A</span>
       </div>
       {rows.map((r, i) => {
-        const w = Math.min(1, Math.abs(r.d) / max[r.label]) * 50
+        const w = Math.min(1, Math.abs(r.d) / r.max) * 50
         const right = r.d > 0
         return (
           <div key={r.label} className="rp-bx-delta-row">
             <span className="rp-bx-name">{r.label}</span>
-            <span className="rp-bx-num">{r.a}</span>
-            <span className="rp-bx-num">{r.b}</span>
             <span className="rp-bx-axis">
               <motion.i
                 className={right ? 'is-right' : 'is-left'}
                 style={{ width: `${w}%`, [right ? 'left' : 'right']: '50%' } as React.CSSProperties}
                 initial={{ scaleX: reduce ? 1 : 0 }}
                 animate={inView || reduce ? { scaleX: 1 } : undefined}
-                transition={{ duration: reduce ? 0 : 0.9, delay: reduce ? 0 : 0.25 + i * 0.1, ease: EASE_OUT }}
+                transition={{ duration: reduce ? 0 : 0.9, delay: reduce ? 0 : 0.2 + i * 0.1, ease: EASE_OUT }}
               />
-              <em style={{ [right ? 'left' : 'right']: `calc(50% + ${w}% + 6px)` } as React.CSSProperties}>
-                {r.money ? `+$${r.d.toFixed(2)}` : `${r.d > 0 ? '+' : ''}${r.d}${r.unit}`}
-              </em>
             </span>
+            <span className="rp-bx-num">{r.text}</span>
           </div>
         )
       })}
@@ -335,7 +298,7 @@ const Tile: React.FC<{ card: CarouselCard; index: number }> = ({ card, index }) 
       </div>
       <div className="rp-bx-copy">
         <h3>
-          <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
+          <Icon size={15} strokeWidth={1.6} aria-hidden="true" />
           {card.title}
         </h3>
         <p>{card.body}</p>
@@ -350,6 +313,7 @@ export const FeatureBento: React.FC = () => {
     <section id="features" className="rp-section rp-bx">
       <div className="rp-bx-inner">
         <Reveal className="rp-bx-head">
+          <p className="rp-eyebrow">Features</p>
           <h2 className="rp-h2 rp-fade-heading">
             {c.titleA}
             <br />
@@ -361,7 +325,7 @@ export const FeatureBento: React.FC = () => {
             <Tile key={card.icon} card={card} index={i} />
           ))}
         </div>
-        <p className="rp-bx-note">Sample values. Every tile mirrors a shipped feature.</p>
+        <p className="rp-bx-note">Sample values</p>
       </div>
     </section>
   )
