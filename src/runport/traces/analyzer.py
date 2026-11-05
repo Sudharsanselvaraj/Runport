@@ -12,6 +12,10 @@ from runport.traces.models import (
 )
 
 
+def _fmt_ms(value: Optional[float]) -> str:
+    return f"{value:.1f}ms" if value is not None else "unavailable"
+
+
 class TraceDiagnosticAnalyzer:
     """Diagnoses production trace failures across the 4 RAG failure categories.
 
@@ -85,7 +89,7 @@ class TraceDiagnosticAnalyzer:
             category=FailureCategory.NO_FAILURE_DETECTED,
             confidence=0.85,
             hypothesis="Trace response appears grounded, coherent, and within normal operational bounds.",
-            evidence=[f"Latency: {trace.latency_ms:.1f}ms", f"Tokens: {trace.total_tokens}"],
+            evidence=[f"Latency: {_fmt_ms(trace.latency_ms)}", f"Tokens: {trace.total_tokens if trace.total_tokens is not None else 'unavailable'}"],
             suggested_action="No remediation necessary.",
         )
 
@@ -93,8 +97,8 @@ class TraceDiagnosticAnalyzer:
         """Analyzes a collection of traces and generates an aggregated diagnostic report."""
         diagnoses: List[DiagnosisHypothesis] = []
         category_counts = {cat.value: 0 for cat in FailureCategory}
-        total_lat = 0.0
-        total_tokens = 0
+        latencies: List[float] = []
+        token_counts: List[int] = []
         failure_count = 0
 
         for t in traces:
@@ -103,18 +107,22 @@ class TraceDiagnosticAnalyzer:
             category_counts[diag.category.value] += 1
             if diag.category != FailureCategory.NO_FAILURE_DETECTED:
                 failure_count += 1
-            total_lat += t.latency_ms
-            total_tokens += t.total_tokens
+            if t.latency_ms is not None:
+                latencies.append(t.latency_ms)
+            if t.total_tokens is not None:
+                token_counts.append(t.total_tokens)
 
         n = len(traces)
-        mean_lat = round(total_lat / n, 2) if n > 0 else 0.0
+        mean_lat = round(sum(latencies) / len(latencies), 2) if latencies else None
 
         return TraceDiagnosticReport(
             total_traces=n,
             diagnosed_failures=failure_count,
             category_counts=category_counts,
             mean_latency_ms=mean_lat,
-            total_tokens=total_tokens,
+            total_tokens=sum(token_counts) if token_counts else None,
+            traces_missing_latency=n - len(latencies),
+            traces_missing_tokens=n - len(token_counts),
             diagnoses=diagnoses,
         )
 

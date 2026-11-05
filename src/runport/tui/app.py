@@ -879,7 +879,7 @@ class WorkbenchTUI:
                     self.trace_report.diagnoses[self.content_cursor] if (self.trace_report and self.content_cursor < len(self.trace_report.diagnoses)) else None
                 )
                 cat_str = diag.category.value if diag else "UNANALYZED"
-                self.feedback_message = f"Inspected Trace: {trace.id} [{cat_str}] | Latency: {trace.latency_ms:.0f}ms | Tokens: {trace.total_tokens}"
+                self.feedback_message = f"Inspected Trace: {trace.id} [{cat_str}] | Latency: {(f'{trace.latency_ms:.0f}ms' if trace.latency_ms is not None else 'unavailable')} | Tokens: {trace.total_tokens if trace.total_tokens is not None else 'unavailable'}"
                 self.log_buffer.add("INFO", f"Inspected trace {trace.id}")
             else:
                 self.feedback_message = "No traces loaded"

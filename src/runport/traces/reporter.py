@@ -50,7 +50,7 @@ class DiagnosticReporter:
             f"**Generated At**: `{now_str}`  ",
             f"**Total Analyzed Traces**: `{report.total_traces}`  ",
             f"**Identified Candidate Failures**: `{report.diagnosed_failures}`  ",
-            f"**Mean Trace Latency**: `{report.mean_latency_ms:.1f} ms`  ",
+            f"**Mean Trace Latency**: `{report.mean_latency_ms:.1f} ms`  " if report.mean_latency_ms is not None else "**Mean Trace Latency**: `unavailable`  ",
             "",
             "---",
             "",

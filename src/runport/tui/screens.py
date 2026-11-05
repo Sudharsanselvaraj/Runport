@@ -1010,7 +1010,7 @@ def build_traces_main_panel(
 
             q_text = trace.input_query
             q_snippet = q_text[:42] + "…" if len(q_text) > 42 else q_text
-            lat_str = f"{trace.latency_ms:.0f}ms"
+            lat_str = f"{trace.latency_ms:.0f}ms" if trace.latency_ms is not None else "n/a"
 
             if diag:
                 cat_badge = _format_failure_category(diag.category.value)
