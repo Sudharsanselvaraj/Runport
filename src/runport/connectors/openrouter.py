@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError, ProviderError, ProviderRequest, RateLimitError, scrub_secrets
 from runport.providers.openrouter import OpenRouterAdapter
@@ -27,6 +27,7 @@ class OpenRouterTarget(Target):
         max_tokens: int = 512,
         timeout_seconds: float = 30.0,
         target_id: Optional[str] = None,
+        temperature: Optional[float] = 0.0,
     ) -> None:
         super().__init__(
             target_id=target_id or model_id,
@@ -40,6 +41,7 @@ class OpenRouterTarget(Target):
         self.adapter = adapter or OpenRouterAdapter(timeout_seconds=timeout_seconds)
         self.system_prompt = system_prompt
         self.max_tokens = max_tokens
+        self.temperature = temperature
         try:  # catalog price, when the model is registered; unknown models stay unpriced (and are refused before sending)
             in_price, out_price = self.adapter._get_pricing_for_model(model_id)
             self.pricing = TargetPricing(input_usd_per_1m=in_price, output_usd_per_1m=out_price)
@@ -51,13 +53,18 @@ class OpenRouterTarget(Target):
         if not isinstance(query, str) or not query.strip():
             return TargetResult(self.target_id, TargetStatus.FAILED, error_code="NO_QUERY", error_message="case has no query text", request_sent=False)
         messages = ([{"role": "system", "content": self.system_prompt}] if self.system_prompt else []) + [{"role": "user", "content": query}]
-        # GenericRunner has already enforced live authorization for this plan before calling execute().
+        return self.generate_messages(messages, case_id=str(input_payload.get("id") or ""))
+
+    def generate_messages(self, messages: List[Dict[str, str]], case_id: str = "") -> TargetResult:
+        """One chat request with these messages, mapped to a TargetResult with cost provenance."""
+        # GenericRunner has already enforced live authorization for this plan before any target is executed.
         request = ProviderRequest(
             model_id=self.model_id,
             messages=messages,
             max_tokens=self.max_tokens,
+            temperature=self.temperature,
             live_authorized=True,
-            case_id=str(input_payload.get("id") or ""),
+            case_id=case_id,
         )
         try:
             resp = self.adapter.generate(request)
