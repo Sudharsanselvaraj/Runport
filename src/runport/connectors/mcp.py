@@ -40,6 +40,7 @@ LATEST_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 CLIENT_INFO = {"name": "runport", "version": "0.1.0"}
 _STDERR_TAIL_LINES = 20
+_SENSITIVE_ENV_NAME = re.compile(r"KEY|TOKEN|SECRET|PASS|AUTH|CREDENTIAL|COOKIE|PRIVATE", re.IGNORECASE)
 _REDACTED = "[REDACTED_SECRET]"
 
 
@@ -689,7 +690,10 @@ class McpToolTarget(Target):
         self.validate_arguments = validate_arguments
         self.init_timeout_seconds = init_timeout_seconds if init_timeout_seconds is not None else timeout_seconds
         self.transport_name = StdioTransport.name if command else StreamableHttpTransport.name
-        self._secrets = sorted({v for v in [*self._headers.values(), *(env or {}).values()] if isinstance(v, str) and len(v) >= 4}, key=len, reverse=True)
+        # Values that must never appear in results: every header value, and env values whose variable name looks like a
+        # credential. (Redacting every env value would also rewrite ordinary words such as "true" or a PATH entry.)
+        sensitive_env = [v for k, v in (env or {}).items() if _SENSITIVE_ENV_NAME.search(k)]
+        self._secrets = sorted({v for v in [*self._headers.values(), *sensitive_env] if isinstance(v, str) and len(v) >= 4}, key=len, reverse=True)
         self._session: Optional[McpSession] = None
         self._tools: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
