@@ -80,12 +80,14 @@ class TraceDiagnosticAnalyzer:
             )
 
         # Default: No significant failure detected
+        lat_str = f"Latency: {trace.latency_ms:.1f}ms" if trace.latency_ms is not None else "Latency: UNAVAILABLE"
+        tok_str = f"Tokens: {trace.total_tokens}" if trace.total_tokens is not None else "Tokens: UNAVAILABLE"
         return DiagnosisHypothesis(
             trace_id=trace.id,
             category=FailureCategory.NO_FAILURE_DETECTED,
             confidence=0.85,
             hypothesis="Trace response appears grounded, coherent, and within normal operational bounds.",
-            evidence=[f"Latency: {trace.latency_ms:.1f}ms", f"Tokens: {trace.total_tokens}"],
+            evidence=[lat_str, tok_str],
             suggested_action="No remediation necessary.",
         )
 
@@ -93,8 +95,6 @@ class TraceDiagnosticAnalyzer:
         """Analyzes a collection of traces and generates an aggregated diagnostic report."""
         diagnoses: List[DiagnosisHypothesis] = []
         category_counts = {cat.value: 0 for cat in FailureCategory}
-        total_lat = 0.0
-        total_tokens = 0
         failure_count = 0
 
         for t in traces:
@@ -103,14 +103,15 @@ class TraceDiagnosticAnalyzer:
             category_counts[diag.category.value] += 1
             if diag.category != FailureCategory.NO_FAILURE_DETECTED:
                 failure_count += 1
-            total_lat += t.latency_ms
-            total_tokens += t.total_tokens
 
-        n = len(traces)
-        mean_lat = round(total_lat / n, 2) if n > 0 else 0.0
+        valid_lats = [t.latency_ms for t in traces if t.latency_ms is not None]
+        mean_lat = round(sum(valid_lats) / len(valid_lats), 2) if valid_lats else None
+
+        valid_toks = [t.total_tokens for t in traces if t.total_tokens is not None]
+        total_tokens = sum(valid_toks) if valid_toks else None
 
         return TraceDiagnosticReport(
-            total_traces=n,
+            total_traces=len(traces),
             diagnosed_failures=failure_count,
             category_counts=category_counts,
             mean_latency_ms=mean_lat,

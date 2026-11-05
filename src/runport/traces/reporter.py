@@ -43,6 +43,7 @@ class DiagnosticReporter:
         """Writes a human-readable Markdown summary report."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        lat_display = f"{report.mean_latency_ms:.1f} ms" if report.mean_latency_ms is not None else "UNAVAILABLE"
 
         lines = [
             "# Runport — Trace Diagnostic Report",
@@ -50,7 +51,7 @@ class DiagnosticReporter:
             f"**Generated At**: `{now_str}`  ",
             f"**Total Analyzed Traces**: `{report.total_traces}`  ",
             f"**Identified Candidate Failures**: `{report.diagnosed_failures}`  ",
-            f"**Mean Trace Latency**: `{report.mean_latency_ms:.1f} ms`  ",
+            f"**Mean Trace Latency**: `{lat_display}`  ",
             "",
             "---",
             "",

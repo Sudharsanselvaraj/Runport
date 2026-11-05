@@ -186,6 +186,37 @@ def test_reporter_export(tmp_path: Path):
     assert "trace-langfuse-001" in md_content
 
 
+def test_trace_null_is_not_zero():
+    """Missing latency and tokens remain None / UNAVAILABLE, never defaulted to 0."""
+    t = TraceRecord(
+        id="t-null-invariant",
+        timestamp="2026-10-14T01:00:00Z",
+        input_query="How long is the Foundation in Science programme?",
+        output_response="Foundation in Science is a 1-year programme.",
+        spans=[
+            ObservationSpan(
+                id="s-null",
+                name="retrieval",
+                type="retrieval",
+                output_data="Foundation in Science is a 1-year programme.",
+            )
+        ],
+    )
+    assert t.latency_ms is None
+    assert t.total_tokens is None
+    assert t.prompt_tokens is None
+    assert t.completion_tokens is None
+
+    analyzer = TraceDiagnosticAnalyzer()
+    diag = analyzer.analyze_trace(t)
+    assert "Latency: UNAVAILABLE" in diag.evidence
+    assert "Tokens: UNAVAILABLE" in diag.evidence
+
+    report = analyzer.analyze_batch([t])
+    assert report.mean_latency_ms is None
+    assert report.total_tokens is None
+
+
 def test_cli_import_traces():
     """CLI import-traces command executes successfully via Typer runner."""
     result = runner.invoke(

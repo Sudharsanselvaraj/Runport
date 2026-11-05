@@ -4,7 +4,7 @@ import csv
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from runport.providers.base import scrub_secrets
 from runport.traces.models import ObservationSpan, TraceRecord
@@ -111,15 +111,37 @@ class TraceImporter:
         input_query = cls._anonymize_text(input_query)
         output_response = cls._anonymize_text(output_response)
 
-        latency_ms = float(scrubbed.get("latency") or scrubbed.get("latency_ms") or scrubbed.get("duration") or 0.0)
-        # If latency is in seconds (e.g. 1.25s), normalize to ms
-        if 0.0 < latency_ms < 50.0:
-            latency_ms = latency_ms * 1000.0
+        raw_lat = scrubbed.get("latency") if scrubbed.get("latency") is not None else scrubbed.get("latency_ms")
+        if raw_lat is None:
+            raw_lat = scrubbed.get("duration")
+        if raw_lat is not None and str(raw_lat).strip():
+            try:
+                latency_ms: Optional[float] = float(raw_lat)
+                if latency_ms is not None and 0.0 < latency_ms < 50.0:
+                    latency_ms = latency_ms * 1000.0
+            except (ValueError, TypeError):
+                latency_ms = None
+        else:
+            latency_ms = None
 
         usage = scrubbed.get("usage") or {}
-        total_tokens = int(scrubbed.get("total_tokens") or usage.get("total") or 0)
-        prompt_tokens = int(scrubbed.get("prompt_tokens") or usage.get("prompt") or usage.get("input") or 0)
-        completion_tokens = int(scrubbed.get("completion_tokens") or usage.get("completion") or usage.get("output") or 0)
+        raw_tot = scrubbed.get("total_tokens") if scrubbed.get("total_tokens") is not None else usage.get("total")
+        try:
+            total_tokens: Optional[int] = int(raw_tot) if raw_tot is not None and str(raw_tot).strip() else None
+        except (ValueError, TypeError):
+            total_tokens = None
+
+        raw_prompt = scrubbed.get("prompt_tokens") if scrubbed.get("prompt_tokens") is not None else (usage.get("prompt") or usage.get("input"))
+        try:
+            prompt_tokens: Optional[int] = int(raw_prompt) if raw_prompt is not None and str(raw_prompt).strip() else None
+        except (ValueError, TypeError):
+            prompt_tokens = None
+
+        raw_comp = scrubbed.get("completion_tokens") if scrubbed.get("completion_tokens") is not None else (usage.get("completion") or usage.get("output"))
+        try:
+            completion_tokens: Optional[int] = int(raw_comp) if raw_comp is not None and str(raw_comp).strip() else None
+        except (ValueError, TypeError):
+            completion_tokens = None
 
         # Parse subordinate observations / spans
         spans: List[ObservationSpan] = []
@@ -130,9 +152,16 @@ class TraceImporter:
                     obs_id = str(obs.get("id") or obs.get("observationId") or "")
                     obs_name = str(obs.get("name") or obs.get("type") or "unnamed_span")
                     obs_type = str(obs.get("type") or "span")
-                    obs_lat = float(obs.get("latency") or obs.get("latency_ms") or 0.0)
-                    if 0.0 < obs_lat < 50.0:
-                        obs_lat = obs_lat * 1000.0
+                    raw_obs_lat = obs.get("latency") if obs.get("latency") is not None else obs.get("latency_ms")
+                    if raw_obs_lat is not None and str(raw_obs_lat).strip():
+                        try:
+                            obs_lat: Optional[float] = float(raw_obs_lat)
+                            if obs_lat is not None and 0.0 < obs_lat < 50.0:
+                                obs_lat = obs_lat * 1000.0
+                        except (ValueError, TypeError):
+                            obs_lat = None
+                    else:
+                        obs_lat = None
                     spans.append(
                         ObservationSpan(
                             id=obs_id,
@@ -176,27 +205,43 @@ class TraceImporter:
         input_query = cls._anonymize_text(row.get("input") or row.get("query") or row.get("prompt") or "")
         output_response = cls._anonymize_text(row.get("output") or row.get("response") or row.get("completion") or "")
 
-        try:
-            latency_ms = float(row.get("latency") or row.get("latency_ms") or 0.0)
-            if 0.0 < latency_ms < 50.0:
-                latency_ms = latency_ms * 1000.0
-        except ValueError:
-            latency_ms = 0.0
+        raw_lat = row.get("latency") or row.get("latency_ms")
+        if raw_lat is not None and str(raw_lat).strip():
+            try:
+                latency_ms: Optional[float] = float(raw_lat)
+                if latency_ms is not None and 0.0 < latency_ms < 50.0:
+                    latency_ms = latency_ms * 1000.0
+            except (ValueError, TypeError):
+                latency_ms = None
+        else:
+            latency_ms = None
 
-        try:
-            total_tokens = int(row.get("total_tokens") or row.get("tokens") or 0)
-        except ValueError:
-            total_tokens = 0
+        raw_tok = row.get("total_tokens") or row.get("tokens")
+        if raw_tok is not None and str(raw_tok).strip():
+            try:
+                total_tokens: Optional[int] = int(raw_tok)
+            except (ValueError, TypeError):
+                total_tokens = None
+        else:
+            total_tokens = None
 
-        try:
-            prompt_tokens = int(row.get("prompt_tokens") or 0)
-        except ValueError:
-            prompt_tokens = 0
+        raw_prompt = row.get("prompt_tokens")
+        if raw_prompt is not None and str(raw_prompt).strip():
+            try:
+                prompt_tokens: Optional[int] = int(raw_prompt)
+            except (ValueError, TypeError):
+                prompt_tokens = None
+        else:
+            prompt_tokens = None
 
-        try:
-            completion_tokens = int(row.get("completion_tokens") or 0)
-        except ValueError:
-            completion_tokens = 0
+        raw_comp = row.get("completion_tokens")
+        if raw_comp is not None and str(raw_comp).strip():
+            try:
+                completion_tokens: Optional[int] = int(raw_comp)
+            except (ValueError, TypeError):
+                completion_tokens = None
+        else:
+            completion_tokens = None
 
         raw_tags = row.get("tags") or ""
         tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
