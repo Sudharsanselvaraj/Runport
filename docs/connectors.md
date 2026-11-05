@@ -18,6 +18,7 @@ Runport benchmarks any AI system — raw model endpoints, prompt wrappers, local
 | `langflow` | Langflow Flow Execution Engine | *Experimental* | `streaming` | `UNAVAILABLE` |
 | `n8n` | n8n Webhook Workflow Automation | *Experimental* | `text`, `json` | `UNAVAILABLE` |
 | `langgraph` | LangGraph StateGraph HTTP Endpoints | *Experimental* | `streaming`, `per_step_trace` | `UNAVAILABLE` |
+| `mcp` | Model Context Protocol servers (stdio, Streamable HTTP) | *Experimental* | `tools`, `json`, `schema_validation` | `UNAVAILABLE` |
 
 > [!NOTE]
 > Connectors marked **Experimental** (`flowise`, `langflow`, `n8n`, `langgraph`) are community reference adapters and will remain labeled experimental until they complete the formal offline contract test suite.

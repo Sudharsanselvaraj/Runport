@@ -199,6 +199,7 @@ Runport decouples target execution from evaluation scoring, allowing unified ben
 | **Langflow** (`langflow`) | Workflow | *Experimental* | Langflow multi-agent and RAG flow executions. |
 | **n8n** (`n8n`) | Workflow | *Experimental* | n8n webhook automation pipelines. |
 | **LangGraph** (`langgraph`) | Workflow | *Experimental* | LangGraph StateGraph agent endpoints with per-step trace recording. |
+| **MCP server** (`mcp`) | Tools | *Experimental* | Tools of a Model Context Protocol server over stdio or Streamable HTTP, with input-schema validation. |
 
 For detailed connector schemas and configuration examples, see the [Connector Documentation](docs/connectors/README.md).
 
