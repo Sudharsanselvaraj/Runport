@@ -13,7 +13,8 @@
     "dev:docs": "vite --config vite.docs.config.ts",
     "build:docs": "tsc && vite build --config vite.docs.config.ts",
     "preview:docs": "vite preview --config vite.docs.config.ts",
-    "build:site": "npm run build:landing && vite build --config vite.docs.config.ts --outDir ../dist-landing/docs --emptyOutDir"
+    "build:site": "npm run build:landing && vite build --config vite.docs.config.ts --outDir ../dist-landing/docs --emptyOutDir",
+    "test": "node --experimental-strip-types --no-warnings --test tests/*.test.ts"
   },
   "dependencies": {
     "framer-motion": "^14.9.0",
