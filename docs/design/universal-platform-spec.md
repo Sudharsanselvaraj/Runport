@@ -8,6 +8,31 @@ Everything under "Proposed" is design, not shipped behaviour. Everything under "
 
 ---
 
+## 0. Implementation status (2026-11-05, branch `claude/charming-wiles-d0e566`)
+
+Sections 1 to 9 below are the original audit and design; this section records what has since been built. Where they disagree, this section is current.
+
+| Item | Status | Where |
+|---|---|---|
+| F1 targets unreachable from interfaces | **Done.** CLI (`benchmark --target`), Web API (`/api/plan`, `/api/runs`), SDK and MCP server all run through `ExecutionService` → `GenericRunner` | `services/execution.py`, `cli/commands/benchmarks.py`, `api/routes/`, `sdk.py`, `mcp_server/` |
+| F2 `/api/targets/test` bypass | **Done** (plan → approve → execute) | `api/routes/targets.py` |
+| F3 trace zeros | **Done** | `traces/models.py`, `traces/importer.py`, `traces/analyzer.py` |
+| F4 overclaimed capabilities | **Done**; claims are now generated from one registry and checked by tests | `connectors/registry.py`, `tests/test_capability_registry.py` |
+| F5 stale limits in ARCHITECTURE.md | **Done** | `docs/ARCHITECTURE.md` |
+| F6 four status tables | **Done** (all embed the generated matrix) | `README.md`, `docs/connectors*.md`, `web/src/data/connectors.ts` |
+| F7 trajectory schema | Not started (M2) | — |
+| Unknown spend booked as $0 | **Done**: billing modes; billable + no cost → `UNRESOLVED`, run halts | `targets/base.py`, `runs/executor.py` |
+| Remote API without token | **Done**: fails closed; DNS-rebinding Host check | `api/app.py` |
+| Approval lifecycle | **Done**: persisted, expiring, fingerprint-bound, atomic single use, human channels only | `services/approvals.py` |
+| `/api/runs` live returned "queued" without running | **Done**: executes | `api/routes/runs.py` |
+| MCP server (4.2) | **Done** (stdio, hand-written JSON-RPC; tested with the official SDK client) | `mcp_server/server.py`, `tests/test_mcp_server.py` |
+| Workspace `targets:` (5.1) | **Done** using the existing `TargetConfig` list, `$NAME`/`${NAME}` secrets | `core/workspace.py`, `connectors/registry.py` |
+| RAG and classification runners on GenericRunner | **Not done**: they keep their own guarded loops (live authorization, preflight, confidentiality gate, unresolved booking) | `rag/runner.py`, `classification/runner.py` |
+| `runport smoke-test --live` | Approves but sends nothing (unchanged); not an execution path | `cli/commands/benchmarks.py` |
+| TypeScript SDK, OTel ingestion, framework adapters, JUnit, CI action | Not started (M4–M6) | — |
+
+---
+
 ## 1. Audit: what exists today
 
 ### 1.1 Verified module map

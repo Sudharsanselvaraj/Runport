@@ -68,6 +68,8 @@ def _pricing(spec: Mapping[str, Any]) -> Optional[TargetPricing]:
     p = spec.get("pricing")
     if not p:
         return None
+    if not isinstance(p, dict):
+        raise TargetSpecError(f"pricing must be a mapping, got {type(p).__name__} (write it in YAML block style)")
     dec = lambda k: Decimal(str(p[k])) if p.get(k) is not None else None  # noqa: E731
     return TargetPricing(
         input_usd_per_1m=dec("input_usd_per_1m"), output_usd_per_1m=dec("output_usd_per_1m"), fixed_usd_per_request=dec("fixed_usd_per_request")

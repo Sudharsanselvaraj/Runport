@@ -8,7 +8,7 @@ export interface NavGroup {
 }
 
 export const NAV: NavGroup[] = [
-  { title: 'Getting started', pages: ['introduction', 'installation', 'quickstart'] },
+  { title: 'Getting started', pages: ['introduction', 'installation', 'quickstart', 'integrating-projects'] },
   { title: 'Core concepts', pages: ['architecture', 'benchmarks', 'runs-and-plans', 'datasets', 'invariants'] },
   { title: 'Model providers', pages: ['openai-compatible', 'openrouter', 'ollama', 'vllm', 'custom-http'] },
   { title: 'Benchmarking', pages: ['creating-benchmarks', 'executing-runs', 'rag-benchmarks', 'reproducibility'] },

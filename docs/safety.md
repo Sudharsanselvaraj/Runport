@@ -39,7 +39,7 @@ If any case in the dataset contains a forbidden key, **the entire batch is abort
 When evaluating arbitrary HTTP workflow endpoints or custom webhooks, Runport defends against SSRF vulnerabilities:
 - **Cloud Metadata Protection**: Requests to cloud metadata services (e.g. `169.254.169.254`, `metadata.google.internal`) are blocked fail-closed.
 - **Loopback and Private Network Checks**: External requests cannot be routed into internal infrastructure unless explicitly authorized.
-- **Non-loopback Web UI Guard**: If the local web server binds to a non-loopback interface (e.g. `0.0.0.0`), execution fails unless a secure `RUNPORT_API_TOKEN` environment variable is explicitly provided.
+- **API access policy**: without `RUNPORT_API_TOKEN` the API serves only loopback clients with a loopback `Host` header (DNS-rebinding protection) and refuses every remote client; with a token, every request must present it. `runport web` refuses a non-loopback bind without a token. See the dashboards documentation for the full policy.
 
 ---
 

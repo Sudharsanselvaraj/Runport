@@ -91,3 +91,24 @@ def test_specs_refuse_literal_credentials_and_local_code_where_disallowed():
         registry.build_target("x", {"type": "subprocess", "command": ["sh"]}, allow_local_processes=False)
     with pytest.raises(registry.TargetSpecError, match="not set"):
         registry.build_target("x", {"type": "dify", "api_key": "$DEFINITELY_UNSET_VAR_123"})
+
+
+def test_documented_workspace_example_builds_with_the_builtin_yaml_reader(tmp_path, monkeypatch):
+    from runport.core.workspace import load_workspace_config
+    from runport.services.execution import ExecutionService
+    from runport.storage.db import DatabaseManager
+
+    (tmp_path / "runport.yaml").write_text(
+        "targets:\n  - id: support-agent\n    type: http_workflow\n    endpoint: https://agent.example.com/chat\n"
+        "    headers:\n      Authorization: Bearer ${SUPPORT_AGENT_TOKEN}\n    options:\n      output_path: reply\n"
+        '      payload_template:\n        message: "{{query}}"\n      pricing:\n        fixed_usd_per_request: "0.002"\n'
+    )
+    monkeypatch.setattr("runport.core.workspace.find_workspace_file", lambda *a, **k: tmp_path / "runport.yaml")
+    monkeypatch.setenv("SUPPORT_AGENT_TOKEN", "abc")
+    ws = load_workspace_config(tmp_path / "runport.yaml")
+    targets, _ = ExecutionService(db=DatabaseManager(tmp_path / "x.db"), workspace=ws).resolve(["support-agent"])
+    t = targets["support-agent"]
+    assert t.payload_template == {"message": "{{query}}"} and t.output_path == "reply"
+    assert t.pricing.fixed_usd_per_request is not None and t.headers["Authorization"] == "Bearer abc"
+    with pytest.raises(registry.TargetSpecError, match="mapping"):
+        registry.build_target("x", {"type": "http_workflow", "url": "https://a.example.com", "pricing": "{fixed: 1}"})
