@@ -503,10 +503,32 @@ def benchmark_rag(
         console.print("Nothing was sent. Add --live to request typed approval for real requests.", markup=False)
         raise typer.Exit(code=2)
 
+    import getpass
+
+    from runport.core.budget import BudgetExceededError
+    from runport.core.live_guard import confirm_live_run
+    from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError, UsageUnavailableError
+    from runport.services.execution import ExecutionService
+
     live_models = [model] + ([compare_with] if compare_with else [])
-    live_auth = _require_live_confirmation(live_models, dataset.name)
-    runner = RAGBenchmarkRunner(retriever=retriever, top_k=top_k)
-    report_a = runner.run(model_id=model, dataset_path=dataset, split=split_enum, live_authorization=live_auth)
+    service = ExecutionService()
+    runner = RAGBenchmarkRunner(retriever=retriever, top_k=top_k, db_mgr=service.db, budget_service=service.budget_service)
+
+    def approve(plan) -> None:
+        projected = f"${plan.projected_max_cost_usd:.4f}" if plan.projected_max_cost_usd is not None else "unknown"
+        summary = [f"Live RAG run requested. Models: {', '.join(live_models)}. Dataset: {dataset.name}. Worst-case spend {projected}."]
+        confirm_live_run(live_models, summary, plan_fingerprint=plan.fingerprint, echo=lambda line: console.print(line, markup=False, highlight=False))
+        service.approve(plan.plan_id, plan.fingerprint, channel="cli_interactive", approver=getpass.getuser())
+
+    try:
+        reports = runner.run_planned(service, live_models, dataset, split_enum, approve)
+    except LiveNotAuthorizedError as e:
+        console.print(f"[bold red]Live run refused:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except (BudgetExceededError, ConfidentialityViolationError, UsageUnavailableError) as e:
+        console.print(f"[bold red]RAG benchmark failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    report_a = reports[0]
 
     summary_table = Table(title="Decoupled RAG Performance Summary", show_header=True, header_style="bold magenta")
     summary_table.add_column("Subsystem / Metric", style="cyan")
@@ -596,8 +618,7 @@ def benchmark_rag(
                 expand=False,
             )
         )
-        runner_b = RAGBenchmarkRunner(retriever=retriever)
-        report_b = runner_b.run(model_id=compare_with, dataset_path=dataset, split=split_enum, live_authorization=live_auth)
+        report_b = reports[1]
 
         comp_table = Table(title=f"Comparative Benchmark: {model} vs {compare_with}", show_header=True, header_style="bold magenta")
         comp_table.add_column("Metric", style="cyan")

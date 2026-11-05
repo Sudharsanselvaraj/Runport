@@ -115,3 +115,63 @@ def test_cli_approve_refuses_without_a_terminal_and_approves_with_one(tmp_path, 
     assert ok.exit_code == 0, ok.output
     approved = service.get_plan(plan.plan_id)
     assert approved.status == "APPROVED" and approved.approved_by.startswith("cli_interactive:")
+
+
+def test_cli_benchmark_rag_plans_approves_and_runs_through_the_service(tmp_path, monkeypatch):
+    """benchmark-rag --live: one plan, typed approval bound to its fingerprint, execution via GenericRunner."""
+    from runport.core.live_guard import LiveAuthorization
+
+    model = "google/gemini-3.5-flash-lite"
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "audit").mkdir(parents=True)
+    (tmp_path / "data" / "audit" / "parsed_records_general_kb.jsonl").write_text(
+        '{"record_id": "REC-1", "source_file": "x.md", "question_clean": "tuition fees?", "answer_clean": "Fees are RM 1000", "parsing_status": "VALID", "programme_name": "P"}\n'
+    )
+    ds = tmp_path / "rag.jsonl"
+    DatasetManager.save_jsonl(
+        [
+            EvaluationCase(
+                id="r1",
+                query="What are the tuition fees?",
+                expected_answer="Fees are RM 1000",
+                classification=DataClassification.SYNTHETIC,
+                split=DatasetSplit.TEST,
+                relevant_record_ids=["REC-1"],
+                verification=VerificationRecord(status=VerificationStatus.VERIFIED, reference_source="synthetic"),
+            )
+        ],
+        ds,
+    )
+
+    class _OR:
+        def read(self):
+            body = {"choices": [{"message": {"content": "Fees are RM 1000."}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 40, "completion_tokens": 6}}
+            return json.dumps(body).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    calls = []
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-" + "x" * 40)
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: calls.append(req.full_url) or _OR())
+    monkeypatch.setattr("runport.providers.openrouter.registry.synthetic_live_blockers", lambda *a, **k: [])
+    seen = {}
+
+    def confirm(models, summary, *, plan_fingerprint=None, **kw):
+        seen["fp"] = plan_fingerprint
+        return LiveAuthorization(models=tuple(models))
+
+    monkeypatch.setattr("runport.core.live_guard.confirm_live_run", confirm)
+    result = CliRunner().invoke(app, ["benchmark-rag", "--model", model, "--dataset", str(ds), "--split", "TEST", "--live"])
+    assert result.exit_code == 0, result.output
+    assert len(seen["fp"]) == 64 and len(calls) == 1
+
+    from runport.services.approvals import ApprovalStore
+
+    rec = ApprovalStore(DatabaseManager(DatabaseManager().db_path)).find_by_fingerprint(seen["fp"])
+    assert rec.status == "CONSUMED" and rec.approved_by.startswith("cli_interactive:")
+    ledger = _ledger()
+    assert len(ledger) == 1 and ledger[0]["cost_basis"] == "ESTIMATED"
