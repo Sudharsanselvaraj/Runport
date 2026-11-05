@@ -1,7 +1,7 @@
 import React from 'react'
 import { Navigation } from './Navigation'
 import { HeroSection } from './HeroSection'
-import { StackFlow } from './StackFlow'
+import { BenchmarkFlowSection } from './BenchmarkFlow'
 import { ProductShowcase } from './ProductShowcase'
 import { FeatureBento } from './FeatureBento'
 import { MetricsSection } from './MetricsSection'
@@ -22,7 +22,7 @@ export const LandingPage: React.FC = () => (
     <Navigation />
     <main>
       <HeroSection />
-      <StackFlow />
+      <BenchmarkFlowSection />
       <ProductShowcase />
       <Pillars />
       <FeatureBento />

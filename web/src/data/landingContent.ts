@@ -120,61 +120,50 @@ export const LANDING_CONTENT = {
     description: 'Model APIs, local models, workflow engines and plain Python. Every target runs through the same seven guards into one trace and one scorecard.',
     cta: 'See all connectors',
     ctaHref: `${REPO}#integrations`,
-    groups: [
-      {
-        label: 'Model APIs',
-        cols: 2,
-        tiles: [
-          { name: 'OpenRouter', logo: '/assets/landing/logos/openrouter.svg' },
-          { name: 'OpenAI-compatible', logo: '/assets/landing/logos/openai.svg' },
-          { name: 'Ollama', logo: '/assets/landing/logos/ollama.svg' },
-          { name: 'vLLM', logo: '/assets/landing/logos/vllm.svg' },
-        ],
-      },
-      {
-        label: 'Workflows',
-        cols: 3,
-        tiles: [
-          { name: 'Dify', logo: '/assets/landing/logos/dify.svg' },
-          { name: 'Flowise', logo: '/assets/landing/logos/flowise.png', exp: true },
-          { name: 'Langflow', logo: '/assets/landing/logos/langflow.svg', exp: true },
-          { name: 'n8n', logo: '/assets/landing/logos/n8n.svg', exp: true },
-          { name: 'LangGraph', logo: '/assets/landing/logos/langgraph.svg', exp: true },
-          { name: 'HTTP endpoint', icon: 'globe' },
-        ],
-      },
-      {
-        label: 'Code',
-        cols: 2,
-        tiles: [
-          { name: 'Python callable', logo: '/assets/landing/logos/python.svg' },
-          { name: 'Subprocess', icon: 'terminal' },
-          { name: 'Plugins', icon: 'puzzle' },
-          { name: 'Replay', icon: 'replay' },
-        ],
-      },
-    ] as { label: string; cols: number; tiles: { name: string; logo?: string; icon?: 'globe' | 'terminal' | 'puzzle' | 'replay'; exp?: boolean }[] }[],
-    guards: ['Authorize', 'Privacy gate', 'Preflight', 'Transport', 'Validate', 'Persist', 'Book spend'],
-    trace: {
-      title: 'Sample run',
-      meta: 'plan 3f9a2c1e · 5 of 50 cases',
-      total: '4.96s',
+    // Plan, the seven runner guards in order, then scoring.
+    stages: [
+      { key: 'plan', label: 'Plan' },
+      { key: 'authorize', label: 'Authorize', guard: true },
+      { key: 'privacy', label: 'Privacy', guard: true },
+      { key: 'preflight', label: 'Preflight', guard: true },
+      { key: 'execute', label: 'Execute', guard: true },
+      { key: 'validate', label: 'Validate', guard: true },
+      { key: 'persist', label: 'Persist', guard: true },
+      { key: 'book', label: 'Book spend', guard: true },
+      { key: 'score', label: 'Score' },
+    ] as { key: string; label: string; guard?: boolean }[],
+    // Illustrative only: labelled "Sample run" on the page. Statuses are TargetStatus values.
+    run: {
+      id: 'run-3f9a2c1e',
+      target: 'gpt-4o-mini · OpenRouter',
+      total: 50,
+      shown: 6,
+      elapsed: '41.8s',
       rows: [
-        { id: 'case-001', status: 'OK', ms: 1120, basis: 'ESTIMATED' },
-        { id: 'case-002', status: 'OK', ms: 840, basis: 'ESTIMATED' },
-        { id: 'case-003', status: 'INVALID_OUTPUT', ms: 1620, basis: 'ESTIMATED', flag: true },
-        { id: 'case-004', status: 'OK', ms: 410, basis: 'ESTIMATED' },
-        { id: 'case-005', status: 'OK', ms: 970, basis: 'ESTIMATED' },
-      ] as { id: string; status: string; ms: number; basis: string; flag?: boolean }[],
+        { id: 'case-001', status: 'success', ms: 1120, tokens: 301 },
+        { id: 'case-002', status: 'success', ms: 840, tokens: 274 },
+        { id: 'case-003', status: 'invalid_output', ms: 1620, tokens: 12 },
+        { id: 'case-004', status: 'success', ms: 410, tokens: 188 },
+        { id: 'case-005', status: 'timeout', ms: 2000, tokens: null },
+        { id: 'case-006', status: 'success', ms: 970, tokens: 296 },
+      ] as { id: string; status: 'success' | 'invalid_output' | 'timeout' | 'failed'; ms: number; tokens: number | null }[],
     },
-    scores: [
-      { label: 'Accuracy', value: 0.84, decimals: 2, note: 'Wilson 95% 0.71–0.92' },
-      { label: 'p95 latency', value: 1.62, decimals: 2, suffix: 's', note: 'n = 50' },
-      { label: 'Cost / 1k cases', value: 0.82, decimals: 2, prefix: '$', note: 'ESTIMATED' },
-      { label: 'Invalid rate', value: 0.04, decimals: 2, note: '2 of 50 · in denominator', flag: true },
-      { label: 'Agreement κ', value: 0.61, decimals: 2, note: 'not accuracy' },
-      { label: 'Unresolved', value: 0, decimals: 0, prefix: '$', note: 'live runs unblocked' },
-    ] as { label: string; value: number; decimals: number; prefix?: string; suffix?: string; note: string; flag?: boolean }[],
+    // Two sample runs on the same plan. null = not measured; basis says how cost was obtained.
+    compare: {
+      a: { label: 'Run A', target: 'gpt-4o-mini', via: 'OpenRouter' },
+      b: { label: 'Run B', target: 'llama3.1', via: 'Ollama' },
+      primary: [
+        { label: 'Accuracy', a: '0.84', b: '0.74', note: 'Wilson 95% · 0.71–0.92 / 0.60–0.84' },
+        { label: 'p95 latency', a: '1.62s', b: '3.10s', note: 'p50 · 0.97s / 1.84s' },
+        { label: 'Cost / 1k cases', a: '$0.82', b: null, aBasis: 'ESTIMATED', bBasis: 'UNAVAILABLE', note: 'Local runs have no API price' },
+        { label: 'Invalid output', a: '4.0%', b: '8.0%', note: 'Counted in the denominator' },
+      ] as { label: string; a: string | null; b: string | null; aBasis?: string; bBasis?: string; note: string }[],
+      secondary: [
+        { label: 'Tokens / case', value: '268 · 241' },
+        { label: 'Agreement κ (A↔B)', value: '0.61', note: 'not accuracy' },
+        { label: 'Unresolved spend', value: '$0.00', note: 'live runs unblocked' },
+      ],
+    },
   },
 
   showcase: {
