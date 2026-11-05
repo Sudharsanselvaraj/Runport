@@ -195,24 +195,14 @@ export const LANDING_CONTENT = {
     titleA: 'From plan to proof.',
     titleB: 'Nothing skipped, nothing guessed.',
     subheading: 'Targets, approvals, spend limits and scores are wired together, so every result can show how it was produced.',
+    // One line each on desktop (12 words or fewer).
     cards: {
-      targets: {
-        title: 'Targets',
-        body: 'Models, prompts and workflows run behind one target interface.',
-      },
-      plan: {
-        title: 'Plan and approval',
-        body: 'Approval is bound to a SHA-256 fingerprint of the plan. Change the plan and the old approval is rejected.',
-      },
-      spend: {
-        title: 'Spend guard',
-        body: 'Ceilings are checked before every live request. A request that would cross the cap is blocked before it is sent.',
-      },
-      results: {
-        title: 'Results',
-        body: 'Scores come only from human-approved labels, with intervals. Agreement between models is reported as agreement, not accuracy.',
-      },
+      targets: { title: 'Targets', body: 'One interface for models, prompts and workflows.' },
+      plan: { title: 'Plan and approval', body: 'Approval is bound to the exact plan.' },
+      spend: { title: 'Spend guard', body: 'Ceilings are checked before every request.' },
+      results: { title: 'Results', body: 'Scores come only from human-approved labels.' },
     },
+    caption: 'Illustrations use sample data.',
   },
 
   // Product window under the hero; the dashboard `runport web` serves locally (127.0.0.1:8000).

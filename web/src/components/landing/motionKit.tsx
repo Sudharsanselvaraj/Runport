@@ -158,35 +158,30 @@ export const PointerParallax: React.FC<{ className?: string; children: React.Rea
 }
 
 /**
- * A bento card: cursor spotlight (CSS variables), shimmer border on hover, a
- * magnetic tilt up to 3 degrees and a 2px lift. Tilt is off for reduced motion
- * and touch screens.
+ * A bento card. Hover only brightens the border and shows a soft spotlight that
+ * follows the cursor (CSS variables). The card itself never moves, scales or
+ * tilts, so cards in a row keep identical top edges. It fades in (opacity only).
  */
 export const BentoCard: React.FC<{ className?: string; index?: number; children: React.ReactNode; labelledBy?: string }> = ({ className, index = 0, children, labelledBy }) => {
   const reduced = useReducedMotion()
   const onMove = (e: React.PointerEvent<HTMLElement>) => {
     const el = e.currentTarget
     const r = el.getBoundingClientRect()
-    const x = (e.clientX - r.left) / r.width
-    const y = (e.clientY - r.top) / r.height
-    el.style.setProperty('--mx', `${(x * 100).toFixed(1)}%`)
-    el.style.setProperty('--my', `${(y * 100).toFixed(1)}%`)
-    if (!reduced && finePointer()) {
-      el.style.setProperty('--rx', `${((0.5 - y) * 6).toFixed(2)}deg`)
-      el.style.setProperty('--ry', `${((x - 0.5) * 6).toFixed(2)}deg`)
-    }
-  }
-  const onLeave = (e: React.PointerEvent<HTMLElement>) => {
-    e.currentTarget.style.setProperty('--rx', '0deg')
-    e.currentTarget.style.setProperty('--ry', '0deg')
+    el.style.setProperty('--mx', `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`)
+    el.style.setProperty('--my', `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`)
   }
   return (
-    <Reveal index={index} className={`rp-bento-cell ${className ?? ''}`}>
-      <article className="rp-bento-card" onPointerMove={onMove} onPointerLeave={onLeave} aria-labelledby={labelledBy}>
+    <motion.div
+      className={`rp-bento-cell ${className ?? ''}`}
+      initial={reduced ? false : { opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true, margin: '0px 0px -10% 0px' }}
+      transition={{ duration: 0.6, delay: reduced ? 0 : index * 0.08, ease: EASE }}
+    >
+      <article className="rp-bento-card" onPointerMove={onMove} aria-labelledby={labelledBy}>
         <span className="rp-bento-spot" aria-hidden="true" />
-        <span className="rp-bento-noise" aria-hidden="true" />
         {children}
       </article>
-    </Reveal>
+    </motion.div>
   )
 }
