@@ -26,10 +26,11 @@ class OpenRouterTarget(Target):
         system_prompt: Optional[str] = DEFAULT_SYSTEM_PROMPT,
         max_tokens: int = 512,
         timeout_seconds: float = 30.0,
+        target_id: Optional[str] = None,
     ) -> None:
         super().__init__(
-            target_id=model_id,
-            name=model_id,
+            target_id=target_id or model_id,
+            name=target_id or model_id,
             target_type=TargetType.RAW_MODEL,
             capabilities=["text", "usage", "cost"],
             timeout_seconds=timeout_seconds,

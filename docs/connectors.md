@@ -6,22 +6,39 @@ Runport benchmarks any AI system — raw model endpoints, prompt wrappers, local
 
 ## Connector Status Matrix
 
-| Connector Type | Protocol / Target | Status | Capabilities | Cost Accounting |
-|:---|:---|:---:|:---|:---:|
-| `openai_compat` | OpenAI Chat Completions API | **Stable** | `streaming`, `logprobs`, `structured_output`, `usage` | `ESTIMATED` (via catalog rates) |
-| `openrouter` | OpenRouter Router & Meta-API | **Stable** | `streaming`, `logprobs`, `structured_output`, `usage`, `cost` | `ACTUAL` (provider reported) |
-| `dify` | Dify Chat & Workflow Apps | **Stable** | `streaming`, `usage`, `per_step_trace` (workflows) | `ESTIMATED` / `UNAVAILABLE` |
-| `http_workflow` | Custom REST / Webhook Endpoints | **Stable** | `text`, `json` | `ESTIMATED` / `UNAVAILABLE` |
-| `python_target` | In-Process Python Callables & CLI Binaries | **Stable** | `structured_output` | `UNAVAILABLE` ($0.00 compute) |
-| `ollama` | Local Ollama Engine (`/api/chat`, `/api/generate`) | **Stable** | `streaming`, `structured_output`, `usage` | `ACTUAL-LOCAL` ($0.00 compute) |
-| `flowise` | Flowise AI Flow Runner | *Experimental* | `streaming` | `UNAVAILABLE` |
-| `langflow` | Langflow Flow Execution Engine | *Experimental* | `streaming` | `UNAVAILABLE` |
-| `n8n` | n8n Webhook Workflow Automation | *Experimental* | `text`, `json` | `UNAVAILABLE` |
-| `langgraph` | LangGraph StateGraph HTTP Endpoints | *Experimental* | `streaming`, `per_step_trace` | `UNAVAILABLE` |
-| `mcp` | Model Context Protocol servers (stdio, Streamable HTTP) | *Experimental* | `tools`, `json`, `schema_validation` | `UNAVAILABLE` |
+<!-- BEGIN CONNECTOR MATRIX (generated from src/runport/connectors/registry.py; do not edit by hand) -->
+| Connector | Name | Status | Integration | Tested | Streaming | Tool calls | Structured output | Per-step trace | Usage | Cost | Errors / timeouts |
+|:---|:---|:---:|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `openai_compat` | OpenAI / OpenAI-compatible | **Stable** | native | yes | — | — | partial | — | yes | partial | yes |
+| `openrouter` | OpenRouter | **Stable** | native | yes | — | — | — | — | yes | yes | yes |
+| `dify` | Dify | **Stable** | native | yes | yes | — | — | partial | yes | partial | yes |
+| `http_workflow` | Generic HTTP endpoint | **Stable** | generic http | yes | — | — | — | — | partial | partial | yes |
+| `python_target` | Python callable | **Stable** | in process | yes | — | — | partial | — | — | — | yes |
+| `subprocess` | Subprocess (stdin/stdout) | **Stable** | in process | yes | — | — | — | — | — | — | yes |
+| `ollama` | Ollama | **Stable** | native | yes | — | — | partial | — | yes | — | yes |
+| `mcp` | MCP server (tools) | *Experimental* | native | yes | — | yes | yes | — | — | — | yes |
+| `flowise` | Flowise | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `langflow` | Langflow | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `n8n` | n8n | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `langgraph` | LangGraph | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `vllm` | vLLM | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `lm_studio` | LM Studio | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `localai` | LocalAI | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `litellm` | LiteLLM proxy | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `groq` | Groq | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `together` | Together | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `fireworks` | Fireworks | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `deepinfra` | DeepInfra | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `deepseek` | DeepSeek | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `mistral` | Mistral | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `anthropic` | Anthropic | Via | via `openrouter` | — | — | — | — | — | yes | yes | yes |
+| `gemini` | Gemini | Via | via `openrouter` | — | — | — | — | — | yes | yes | yes |
+| `langchain` | LangChain | Planned | none | — | — | — | — | — | — | — | — |
+| `crewai` | CrewAI | Planned | none | — | — | — | — | — | — | — | — |
+| `llamaindex` | LlamaIndex | Planned | none | — | — | — | — | — | — | — | — |
+<!-- END CONNECTOR MATRIX -->
 
-> [!NOTE]
-> Connectors marked **Experimental** (`flowise`, `langflow`, `n8n`, `langgraph`) are community reference adapters and will remain labeled experimental until they complete the formal offline contract test suite.
+See [docs/connectors/README.md](connectors/README.md) for the legend and per-connector notes.
 
 ---
 

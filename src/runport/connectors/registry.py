@@ -94,7 +94,7 @@ def build_target(name: str, spec: Mapping[str, Any], *, allow_local_processes: b
     if kind == "openrouter":
         from runport.connectors.openrouter import OpenRouterTarget
 
-        return OpenRouterTarget(model_id=s.get("model") or name, **timeout)
+        return OpenRouterTarget(model_id=s.get("model") or name, target_id=name, **timeout)
     if kind == "openai_compat":
         from runport.connectors.openai_compat import OpenAICompatConnector
 
@@ -505,3 +505,24 @@ def connector_info(connector_id: str) -> ConnectorInfo:
         if c.id == connector_id:
             return c
     raise KeyError(connector_id)
+
+
+_STATUS_LABEL = {"stable": "**Stable**", "experimental": "*Experimental*", "via": "Via", "planned": "Planned"}
+_CELL = {YES: "yes", NO: "—", PARTIAL: "partial"}
+
+
+def render_matrix_markdown() -> str:
+    """The connector capability table, generated from CONNECTOR_MATRIX (docs embed it between markers)."""
+    head = (
+        "| Connector | Name | Status | Integration | Tested | Streaming | Tool calls | Structured output | Per-step trace | Usage | Cost | Errors / timeouts |"
+    )
+    rows = [head, "|:---|:---|:---:|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"]
+    for c in CONNECTOR_MATRIX:
+        integration = f"via `{c.via}`" if c.via else c.integration.replace("_", " ")
+        caps = [c.tested, c.streaming, c.tool_calls, c.structured_output, c.per_step_trace, c.usage_reporting, c.cost_reporting, c.error_timeout_handling]
+        rows.append(f"| `{c.id}` | {c.name} | {_STATUS_LABEL[c.status]} | {integration} | " + " | ".join(_CELL[v] for v in caps) + " |")
+    return "\n".join(rows)
+
+
+MATRIX_BEGIN = "<!-- BEGIN CONNECTOR MATRIX (generated from src/runport/connectors/registry.py; do not edit by hand) -->"
+MATRIX_END = "<!-- END CONNECTOR MATRIX -->"
