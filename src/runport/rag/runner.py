@@ -4,12 +4,18 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from runport.core.budget import BudgetService
+from runport.core.budget import BudgetExceededError, BudgetService
 from runport.dataset.manager import DatasetManager
 from runport.core.live_guard import LiveAuthorization, require_live_authorization
-from runport.providers.base import BaseProvider, ProviderRequest, UsageUnavailableError, require_complete_usage
+from runport.core.approvers import TokenApprover
+from runport.core.workspace import load_workspace_config
+from runport.providers.base import BaseProvider, UsageUnavailableError
+from runport.rag.target import RagPipelineTarget, rag_case_scorer
+from runport.runs.executor import GenericRunner
+from runport.runs.planner import ExecutionPlan
+from runport.targets.base import TargetStatus
 from runport.providers.openrouter import OpenRouterAdapter
 from runport.rag.evaluator import RAGSystemEvaluator
 from runport.rag.models import RAGBenchmarkReport, RAGCaseEvaluation
@@ -36,6 +42,22 @@ class RAGBenchmarkRunner:
         self.evaluator = RAGSystemEvaluator()
         self.top_k = top_k
 
+    def _load_cases(self, dataset_path: Path, split: Optional[DatasetSplit]) -> List[EvaluationCase]:
+        all_cases = DatasetManager().load_jsonl(dataset_path)
+        cases = [c for c in all_cases if c.split == split] if split and split != DatasetSplit.UNASSIGNED else all_cases
+        if not cases:
+            raise ValueError(f"No cases found for evaluation in {dataset_path} (split: {split})")
+        for c in cases:
+            OpenRouterAdapter.validate_case_confidentiality(c)  # fail before anything is planned or sent
+        return cases
+
+    def target_for(self, model_id: str) -> RagPipelineTarget:
+        return RagPipelineTarget(model_id=model_id, retriever=self.retriever, adapter=self.provider, top_k=self.top_k)
+
+    def spec_for(self, model_id: str) -> Dict[str, Any]:
+        """What a plan fingerprint binds for this pipeline (no secrets)."""
+        return {"type": "rag", "model": model_id, "retriever": self.retriever.__class__.__name__, "top_k": self.top_k}
+
     def run(
         self,
         model_id: str,
@@ -43,37 +65,65 @@ class RAGBenchmarkRunner:
         split: Optional[DatasetSplit] = None,
         live_authorization: Optional[LiveAuthorization] = None,
     ) -> RAGBenchmarkReport:
-        """Runs the RAG benchmark with real requests. Needs a live authorization covering the model; there is no simulated mode."""
+        """Runs the RAG benchmark with real requests through GenericRunner. Needs a live authorization covering the model."""
         require_live_authorization(live_authorization, model_id)
-        run_id = f"rag_run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-        now_iso = datetime.now(timezone.utc).isoformat()
-
-        # 1. Load dataset
-        manager = DatasetManager()
-        all_cases = manager.load_jsonl(dataset_path)
-
-        if split and split != DatasetSplit.UNASSIGNED:
-            cases = [c for c in all_cases if c.split == split]
-        else:
-            cases = all_cases
-
-        if not cases:
-            raise ValueError(f"No cases found for evaluation in {dataset_path} (split: {split})")
-
-        # 2. Budget Preflight Check (model-specific pricing based on estimated prompt & output tokens)
-        in_price, out_price = self.provider._get_pricing_for_model(model_id)
-
-        # Estimate ~600 prompt tokens (system + context + query) and ~150 completion tokens per case
-        est_cost_per_case = (Decimal("600") * in_price / Decimal("1000000")) + (Decimal("150") * out_price / Decimal("1000000"))
-        estimated_cost = max(Decimal("0.0001"), round(est_cost_per_case * Decimal(len(cases)), 6))
-        self.budget_service.check_preflight_budget(
-            estimated_cost_usd=estimated_cost,
-            is_pilot=True,
-            model_id=model_id,
+        cases = self._load_cases(dataset_path, split)
+        case_dicts = [c.model_dump(mode="json") for c in cases]
+        plan = ExecutionPlan(
+            plan_id=f"rag-{uuid.uuid4().hex[:8]}",
+            target_ids=[model_id],
+            dataset_path=str(dataset_path),
+            dataset_hash=DatasetManager.compute_sha256(dataset_path),
+            total_cases=len(case_dicts),
+            budget_cap_usd=self.budget_service.policy.per_run_ceiling_usd,
+            prompt_template_hash=f"rag:{self.retriever.__class__.__name__}:top_k={self.top_k}",
+            is_live=True,
         )
+        runner = GenericRunner(budget_service=self.budget_service, db=self.db_mgr, workspace=load_workspace_config())
+        approver = TokenApprover(token=plan.fingerprint, enabled=True, operator="live_authorization")
+        run = runner.execute_plan(plan, {model_id: self.target_for(model_id)}, case_dicts, approver=approver, case_scorer=rag_case_scorer)[0]
+        return self.report_from_run(model_id, run, cases, dataset_path, split)
+
+    def run_planned(
+        self,
+        service: Any,
+        model_ids: Sequence[str],
+        dataset_path: Path,
+        split: Optional[DatasetSplit],
+        approve: Callable[[Any], None],
+    ) -> List[RAGBenchmarkReport]:
+        """Plan -> approve -> execute through ExecutionService (one plan and one approval for all models).
+
+        ``approve`` receives the PlanSummary and must approve it through a human channel (e.g. the CLI phrase).
+        """
+        cases = self._load_cases(dataset_path, split)
+        case_dicts = [c.model_dump(mode="json") for c in cases]
+        targets = {m: self.target_for(m) for m in model_ids}
+        specs = {m: self.spec_for(m) for m in model_ids}
+        plan = service.plan(targets, specs, case_dicts, dataset_label=Path(dataset_path).name, requested_by="cli")
+        if plan.blockers:
+            raise BudgetExceededError("Plan is blocked: " + "; ".join(plan.blockers))
+        approve(plan)
+        outcome = service.execute(plan.plan_id, targets, specs, case_dicts, case_scorer=rag_case_scorer)
+        by_target = {r.target_id: r for r in outcome.runs}
+        return [self.report_from_run(m, by_target[m], cases, dataset_path, split) for m in model_ids if m in by_target]
+
+    def report_from_run(
+        self,
+        model_id: str,
+        run: Any,
+        cases: List[EvaluationCase],
+        dataset_path: Path,
+        split: Optional[DatasetSplit],
+    ) -> RAGBenchmarkReport:
+        """RAG metrics (retrieval vs generation, abstention, failure attribution) from a GenericRunner run."""
+        if run.halted_reason:
+            raise UsageUnavailableError(run.halted_reason)
+        run_id = run.run_id
+        now_iso = (self.db_mgr.get_evaluation_run(run_id) or {}).get("timestamp") or datetime.now(timezone.utc).isoformat()
 
         case_results: List[RAGCaseEvaluation] = []
-        total_cost = Decimal("0.0000")
+        total_cost = run.total_spend_usd
         failure_breakdown: Dict[str, int] = {
             "SYSTEM_SUCCESS": 0,
             "RETRIEVAL_FAILURE": 0,
@@ -81,60 +131,22 @@ class RAGBenchmarkRunner:
             "PARAMETRIC_MEMORY_RESCUE": 0,
         }
 
-        # 3. Execution Loop
-        for case in cases:
-            OpenRouterAdapter.validate_case_confidentiality(case)
-
-            # Step 3a: Decoupled Retrieval Pass
-            import inspect
-
-            sig = inspect.signature(self.retriever.retrieve)
-            if "top_k" in sig.parameters:
-                ret_result = self.retriever.retrieve(case, top_k=self.top_k)
-            else:
-                ret_result = self.retriever.retrieve(case)
-
-            # Format grounded RAG prompt
-            context_block = "\n---\n".join(ret_result.chunks) if ret_result.chunks else "NO_CONTEXT_RETRIEVED"
-            system_prompt = (
-                "You are an AI assistant and knowledge retrieval agent. "
-                "Answer the student's question accurately, grounded strictly in the provided Context. "
-                "Never invent fees or qualification criteria. If the context does not contain sufficient details, state that clearly."
-            )
-            user_content = f"Context:\n{context_block}\n\nStudent Query: {case.query}"
-
-            prompt_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ]
-
-            # Step 3b: Decoupled Generation Pass
-            request = ProviderRequest(
-                model_id=model_id,
-                messages=prompt_messages,
-                live_authorized=True,
-                case_id=case.id,
-            )
-
-            response = self.provider.generate(request)
-            try:
-                require_complete_usage(response)
-            except UsageUnavailableError:
-                self.budget_service.record_unresolved_spend(
-                    f"tx_{run_id}_{case.id}", model_id, "openrouter", f"RAG case {case.id}: response lacked usable cost or token counts", run_id
-                )
-                raise
-
-            # Step 3c: Decoupled Scoring & Failure Attribution
+        # Per-case RAG metrics from what GenericRunner executed (failed generations carry no answer to score).
+        for case, res in zip(cases, run.case_results):
+            if res.status != TargetStatus.SUCCESS:
+                continue
+            retrieval = res.metadata.get("retrieval") or {}
+            chunks: List[str] = list(retrieval.get("chunks") or [])
+            generated = res.output_text or ""
+            gen_latency = float(res.metadata.get("generation_latency_ms") or 0.0)
+            ret_latency = float(retrieval.get("latency_ms") or 0.0)
             ans_corr, groundedness = self.evaluator.evaluate_generation(
-                generated_output=response.output_text,
-                retrieved_chunks=ret_result.chunks,
-                expected_answer=case.expected_answer,
+                generated_output=generated, retrieved_chunks=chunks, expected_answer=case.expected_answer
             )
 
             # Ground-Truth Source Retrieval Metrics against case.relevant_record_ids
             rel_set = set(case.relevant_record_ids)
-            ret_ids = ret_result.retrieved_record_ids
+            ret_ids = list(retrieval.get("record_ids") or [])
 
             recall_k = 0.0
             precision_k = 0.0
@@ -155,7 +167,7 @@ class RAGBenchmarkRunner:
             # Abstention evaluation
             abstention_corr = None
             if case.abstention_expected:
-                lower_gen = response.output_text.lower()
+                lower_gen = generated.lower()
                 abstention_phrases = [
                     "does not contain",
                     "not mentioned",
@@ -185,56 +197,39 @@ class RAGBenchmarkRunner:
                     attribution = "GENERATION_FAILURE"
             else:
                 attribution = self.evaluator.attribute_failure(
-                    retrieval_hit_rate=ret_result.hit_rate,
+                    retrieval_hit_rate=float(retrieval.get("hit_rate") or 0.0),
                     answer_correctness=ans_corr,
                     groundedness=groundedness,
                 )
             failure_breakdown[attribution] = failure_breakdown.get(attribution, 0) + 1
 
-            self.budget_service.record_spend(
-                transaction_id=f"tx_{run_id}_{case.id}",
-                model_id=model_id,
-                provider="openrouter",
-                amount_usd=response.cost_usd,
-                description=f"RAG Case {case.id} (model={model_id}, ret={ret_result.retriever_id})",
-                run_id=run_id,
-                is_pilot=True,
-                is_preflight_estimate=False,
-                cost_basis=response.cost_basis,
-            )
-            total_cost += response.cost_usd
-
-            e2e_lat = round(ret_result.latency_ms + response.latency_ms, 2)
+            e2e_lat = round(ret_latency + gen_latency, 2)
 
             case_eval = RAGCaseEvaluation(
                 case_id=case.id,
                 model_id=model_id,
-                retriever_id=ret_result.retriever_id,
+                retriever_id=str(retrieval.get("retriever_id") or self.retriever.__class__.__name__),
                 query=case.query,
-                retrieved_chunks=ret_result.chunks,
-                retrieved_record_ids=ret_result.retrieved_record_ids,
-                generated_answer=response.output_text,
+                retrieved_chunks=chunks,
+                retrieved_record_ids=ret_ids,
+                generated_answer=generated,
                 expected_answer=case.expected_answer,
-                source_status=str(
-                    getattr(case, "source_status", "SYNTHETIC").value
-                    if hasattr(getattr(case, "source_status", None), "value")
-                    else str(getattr(case, "source_status", "SYNTHETIC"))
-                ),
+                source_status=str(getattr(case.source_status, "value", case.source_status)),
                 relevant_record_ids=case.relevant_record_ids,
                 abstention_expected=case.abstention_expected,
                 recall_at_k=recall_k,
                 precision_at_k=precision_k,
                 reciprocal_rank=rr,
                 retrieval_hit=ret_hit,
-                retrieval_hit_rate=ret_result.hit_rate,
-                retrieval_precision=ret_result.precision,
-                retrieval_latency_ms=ret_result.latency_ms,
+                retrieval_hit_rate=float(retrieval.get("hit_rate") or 0.0),
+                retrieval_precision=float(retrieval.get("precision") or 0.0),
+                retrieval_latency_ms=ret_latency,
                 answer_correctness=ans_corr,
                 groundedness=groundedness,
                 abstention_correctness=abstention_corr,
-                generation_latency_ms=response.latency_ms,
+                generation_latency_ms=gen_latency,
                 e2e_latency_ms=e2e_lat,
-                cost_usd=response.cost_usd,
+                cost_usd=res.cost_usd if res.cost_usd is not None else Decimal("0"),
                 failure_attribution=attribution,
             )
             case_results.append(case_eval)
@@ -263,27 +258,27 @@ class RAGBenchmarkRunner:
         mean_gen_lat = round(sum(c.generation_latency_ms for c in case_results) / n, 2) if n else 0.0
         mean_e2e_lat = round(sum(c.e2e_latency_ms for c in case_results) / n, 2) if n else 0.0
 
-        # 5. Persist run to SQLite
-        run_record = {
-            "run_id": run_id,
-            "timestamp": now_iso,
-            "model_id": model_id,
-            "dataset_path": str(dataset_path),
-            "total_cases": len(cases),
-            "completed_cases": n,
-            "failed_cases": 0,
-            "total_cost_usd": str(total_cost),
-            "mean_latency_ms": mean_e2e_lat,
-            "mean_accuracy": mean_ans_corr,
-            "mean_groundedness": mean_grd,
-            "mean_overall_score": round((mean_ans_corr + mean_grd) / 2.0, 4),
-            "is_dry_run": False,  # legacy column: this tool no longer produces simulated runs
-            "notes": (
-                f"RAG benchmark (retriever={self.retriever.__class__.__name__}, split={split or 'ALL'}, "
-                f"top_k={self.top_k}, recall@k={mean_recall}, mrr={mean_mrr})"
-            ),
-        }
-        self.db_mgr.save_evaluation_run(run_record)
+        # 5. GenericRunner persisted the run, its per-case results and the spend; add the RAG summary to the run header.
+        saved = self.db_mgr.get_evaluation_run(run_id) or {}
+        self.db_mgr.save_evaluation_run(
+            {
+                **saved,
+                "run_id": run_id,
+                "timestamp": now_iso,
+                "model_id": model_id,
+                "dataset_path": str(dataset_path),
+                "total_cases": len(cases),
+                "completed_cases": run.successful_cases,
+                "failed_cases": run.failed_cases + run.invalid_cases + run.skipped_cases,
+                "total_cost_usd": str(total_cost),
+                "mean_latency_ms": mean_e2e_lat if n else None,
+                "is_dry_run": False,
+                "notes": (
+                    f"RAG benchmark via GenericRunner (retriever={self.retriever.__class__.__name__}, split={split or 'ALL'}, "
+                    f"top_k={self.top_k}, recall@k={mean_recall}, mrr={mean_mrr})"
+                ),
+            }
+        )
 
         return RAGBenchmarkReport(
             run_id=run_id,
