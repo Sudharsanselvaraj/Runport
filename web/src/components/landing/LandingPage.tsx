@@ -6,7 +6,6 @@ import { ProductShowcase } from './ProductShowcase'
 import { FeatureBento } from './FeatureBento'
 import { MetricsSection } from './MetricsSection'
 import { PlatformSection } from './PlatformSection'
-import { WaysToRun } from './WaysToRun'
 import { Pillars } from './Pillars'
 import { StackCards } from './StackCards'
 import { RunAnywhere } from './RunAnywhere'
@@ -30,7 +29,6 @@ export const LandingPage: React.FC = () => (
       <FeatureBento />
       <MetricsSection />
       <PlatformSection />
-      <WaysToRun />
       <RunAnywhere />
       <FAQSection />
       <FinalCTA />

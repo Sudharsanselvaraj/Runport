@@ -6,77 +6,79 @@ Component: `web/src/components/landing/BenchmarkFlow.tsx`. Logos and routes come
 
 ## History
 
-| Version | Composition | Problem |
+| Version | Composition | Outcome |
 | --- | --- | --- |
 | v2 | Dense directory beside the engine, six curved connectors | Tiny pills, crossing lines |
-| v3a | Three stacked panels: 46 bordered chips, engine, large results | Read as a dashboard; badges, counts and notes everywhere; very tall |
-| v3b | Four illustrated feature cards plus an execution and results row | Clean, but lost the "one pipeline" story |
-| **v4 (current)** | Three connected layers on one spine | — |
+| v3a | Three stacked panels with 46 bordered chips | Read as a dashboard; very tall |
+| v3b | Four illustrated feature cards | Clean, but lost the pipeline story |
+| v4 | Three connected layer cards on one spine | Clean; the categories stayed abstract |
+| **v5 (current)** | Integrations panel, then Runport, then a sample trace, then metrics, joined by dashed brackets | — |
 
-## Current composition: connected layers
+## Current composition
 
-Three layer cards of equal width (1080px), joined by a single vertical spine with ports. Each layer
-has the same header: a numbered tag, a title and one sentence.
+1. **Integrations panel.** One bordered panel with corner handles and three columns:
+   - **Model providers:** a 4×2 grid of tiles (OpenAI, OpenRouter, Anthropic, Gemini, Mistral,
+     DeepSeek, Groq, Together).
+   - **Workflows:** a 2×2 grid (Dify, LangGraph, LangChain, n8n).
+   - **Local and runtime:** Ollama, vLLM and Python, plus one wide tile, "Any OpenAI-compatible
+     endpoint".
 
-1. **01 Connect.** All six categories from `ecosystem.ts` (model providers, local inference,
-   workflows and agents, evaluation and scoring, data and traces, execution and infra), on a 3×2
-   grid with no inner borders. Each category shows its name, one row of overlapping logo discs (up
-   to six, then "+N"), and a single muted line such as "OpenAI, OpenRouter and 9 more". There are no
-   per-item chips, counts, `EXP` badges or route notes. Each disc's tooltip shows how Runport reaches
-   it, for example "Anthropic · via OpenRouter" or "LangGraph · experimental connector".
-2. **02 Execute.** The Runport engine as one slim layer: a state pill (Ready, Executing, Run
-   complete) and the nine-stage lifecycle on one track, with the seven runner guards bracketed and
-   marked "fail closed". The stage labels are sentence case.
-3. **03 Compare.** One sample-run window: a progress bar, a six-case timeline (status dot, latency
-   bar, duration), and a Run A / Run B table (accuracy, p95 latency, cost with its ESTIMATED or
-   UNAVAILABLE basis, invalid output). A footer line reads "Agreement κ … model consensus, not
-   accuracy".
+   Tiles are 86px squares with a logo and a short name. Each tile's tooltip shows how Runport reaches
+   it, for example "Anthropic · via OpenRouter" or "LangGraph · experimental connector". The rest of
+   the ecosystem is one click away through "See all connectors".
+2. **Runport.** Dashed bracket lines drop from each column's centre, merge, and lead into the Runport
+   emblem.
+3. **Sample run trace.** A dashed line leads to a trace panel: the run root (run id, target, 41.8s)
+   and five case rows with status squares, Gantt bars and durations. Invalid output is amber, and
+   timeout is red.
+4. **Metrics.** A dashed bracket fans out to six cards:
+   - Accuracy, highlighted, with its Wilson interval;
+   - p95 latency;
+   - Cost / 1k cases, tagged ESTIMATED;
+   - Invalid output;
+   - Agreement κ, marked "not accuracy";
+   - Unresolved spend.
+
+All bracket lines are measured from the live layout, so they always meet the elements they connect.
 
 ## Motion
 
-- The logo discs slide in, staggered by category.
-- When the engine reaches the viewport, the sample run plays once:
-  1. a signal drops down the spine;
-  2. the engine border lights and its ring turns while it runs;
-  3. the stages light in order;
-  4. a signal drops to Compare;
-  5. the case rows and latency bars reveal, then the comparison rows.
-- After the run, every 3.4s while the section is on screen, the next category lights up, a signal
-  travels down the spine, a highlight sweeps the lifecycle, and the engine glows.
-- **Reduced motion:** the finished state shows at once with no loops (verified: discs visible, 6 rows,
-  4 metrics, 9 stages lit, no ring).
-- **Performance:** worst frame 17ms over 300 frames.
+The sequence plays once when the panel scrolls into view:
+
+1. The tiles light up, staggered.
+2. The top brackets turn cyan and march.
+3. The emblem lights with a soft glow.
+4. The line drops to the trace.
+5. The trace rows fill one at a time.
+6. The bottom bracket lights.
+7. The metric cards light in order.
+
+The marching dashes run only while the section is on screen. With reduced motion, the finished state
+shows immediately with nothing moving. Worst frame: 17ms over 300 frames.
+
+## Responsive behaviour
+
+| Width | Behaviour |
+| --- | --- |
+| ≥1100px | Three columns; one row of six metrics with the fan-out bracket |
+| <1100px | Model providers take a full row and the other two columns sit side by side; metrics go 3 × 2; brackets simplify to one centre line |
+| <810px | Columns stack, with 4 tiles per row; trace rows drop the secondary column; metrics go 2 × 3 |
 
 ## Size
 
-| Width | v3a (stacked panels) | v3b (feature cards) | v4 (now) |
+| Width | v3a | v4 | v5 (now) |
 | --- | --- | --- | --- |
-| 1440 | about 2,200px | 1,939px | 1,607px |
-| 1024 | about 2,700px | 2,415px | 1,602px |
-| 390 | about 3,700px | 3,328px | 2,638px |
+| 1440 | about 2,200px | 1,607px | 1,476px |
+| 390 | about 3,700px | 2,638px | 1,947px |
 
 ## Validation
 
 - `npx tsc`, `npm run build`, `npm run build:landing` and `npm run build:site` pass.
-- At 1440, 1280, 1024, 768, 390 and 375: no horizontal overflow, broken images or console errors, no
-  truncated category lines, and the comparison table fits its window.
-- Screenshots: `artifacts/showcase/v4/`; earlier versions are in `before/`, `after/` and `v3/`.
-
-## Responsive behaviour
-
-- **Below 1024px:**
-  - categories go to two columns;
-  - each layer's description moves under its title;
-  - the results window stacks the timeline above the comparison.
-- **Below 810px:**
-  - categories go to one column;
-  - the lifecycle becomes a vertical list with a connecting rail;
-  - the spine shortens to 48px.
-- **Below 400px:** the comparison table tightens its padding and type.
+- At 1440, 1280, 1024, 768, 390 and 375: no horizontal overflow, broken images, console errors or
+  truncated labels.
+- Screenshots: `artifacts/showcase/v5/`.
 
 ## Remaining limitations
 
-- LocalAI, LiteLLM, Helicone, DeepEval and Ragas use monograms; no reliable logo was available.
-- Some marks (Mistral, DeepSeek, LangGraph, LangChain) are low-contrast on dark discs.
-- The later "Built for the loop" section (`StackCards.tsx`) also shows a logo orbit. It overlaps with
-  layer 01 thematically.
+- Only 16 of the 46 integrations are shown as tiles; the full list is behind "See all connectors".
+- The LangGraph and LangChain marks are low-contrast on the dark tiles.

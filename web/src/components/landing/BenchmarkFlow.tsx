@@ -1,208 +1,82 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useInView, useReducedMotion } from 'framer-motion'
-import { Braces, Download, FileJson, Gavel, Globe, Puzzle, Regex, RotateCcw, Search, Target, Terminal, Type, type LucideIcon } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { LANDING_CONTENT } from '../../data/landingContent'
-import { ECOSYSTEM, type EcoGroup, type EcoItem } from '../../data/ecosystem'
+import { ECOSYSTEM, type EcoItem } from '../../data/ecosystem'
 import { Reveal } from './motion'
 
-// "Keep your stack. Runport benchmarks it." as three connected layers:
-//   01 Connect  — the ecosystem, one row of overlapping logos per category
-//   02 Execute  — the Runport engine and its guarded lifecycle
-//   03 Compare  — a compact sample-run preview
-// One spine joins the layers. A step counter plays the sample run once when the
-// engine scrolls into view; afterwards an occasional ping lights one category and
-// sends a signal down the spine while the section is on screen. Reduced motion
-// shows the finished state. Routes per logo live in data/ecosystem.ts (tooltips).
+// "Keep your stack. Runport benchmarks it."
+//   integrations panel  ⇢  Runport  ⇢  sample run trace  ⇢  metric cards
+// Dashed bracket lines join the stages; they are measured from the live layout.
+// When the panel scrolls into view the sequence plays once: tiles light, the
+// brackets carry the signal into Runport, the trace bars fill, and the metrics
+// light one by one. Reduced motion shows the finished state. Each logo's tooltip
+// says how Runport reaches it (data/ecosystem.ts); sample data is labelled.
 
 const c = LANDING_CONTENT.stackFlow
-
-const ICONS: Record<NonNullable<EcoItem['icon']>, LucideIcon> = {
-  globe: Globe,
-  terminal: Terminal,
-  replay: RotateCcw,
-  puzzle: Puzzle,
-  target: Target,
-  regex: Regex,
-  braces: Braces,
-  text: Type,
-  search: Search,
-  gavel: Gavel,
-  database: FileJson,
-  file: FileJson,
-  download: Download,
-  upload: Download,
+const ITEMS = new Map(ECOSYSTEM.flatMap((g) => g.items).map((i) => [i.name, i]))
+const item = (name: string): EcoItem => {
+  const found = ITEMS.get(name)
+  if (!found) throw new Error(`ecosystem entry missing: ${name}`)
+  return found
 }
-const tip = (i: EcoItem) => (i.status === 'compat' ? `${i.name} · ${i.via}` : i.status === 'exp' ? `${i.name} · experimental connector` : `${i.name} · built-in`)
-const MAX_DISCS = 6
+const tip = (i: EcoItem) => (i.status === 'compat' ? `${i.name} · ${i.via}` : i.status === 'exp' ? `${i.name} · experimental connector` : `${i.name} · built-in connector`)
 
-// step sequence: 0 idle · 1 signal in · 2 engine on · 3–11 stages · 12 signal out · 13–18 rows · 19–22 metrics · 23 done
-const DONE = 23
-const stepMs = (s: number) => (s === 0 ? 150 : s === 1 ? 800 : s === 2 ? 300 : s < 12 ? 300 : s === 12 ? 650 : s < 19 ? 230 : 180)
+const COLUMNS: { label: string; cols: number; names: string[]; wide?: boolean }[] = [
+  { label: 'Model providers', cols: 4, names: ['OpenAI', 'OpenRouter', 'Anthropic', 'Gemini', 'Mistral', 'DeepSeek', 'Groq', 'Together'] },
+  { label: 'Workflows', cols: 2, names: ['Dify', 'LangGraph', 'LangChain', 'n8n'] },
+  { label: 'Local & runtime', cols: 3, names: ['Ollama', 'vLLM', 'Python callable'], wide: true },
+]
+const SHORT: Record<string, string> = { 'Python callable': 'Python' }
+
+const METRICS: { label: string; value: string; basis?: string; note?: string; key?: boolean }[] = [
+  { label: 'Accuracy', value: '0.84', note: 'Wilson 95% 0.71–0.92', key: true },
+  { label: 'p95 latency', value: '1.62s' },
+  { label: 'Cost / 1k cases', value: '$0.82', basis: 'ESTIMATED' },
+  { label: 'Invalid output', value: '4.0%' },
+  { label: 'Agreement κ', value: '0.61', note: 'not accuracy' },
+  { label: 'Unresolved spend', value: '$0.00' },
+]
+
+// 0 idle · 1 tiles · 2 top bracket · 3 runport · 4 line down · 5–10 trace rows · 11 bottom bracket · 12–17 metrics · 18 done
+const DONE = 18
+const stepMs = (s: number) => (s === 0 ? 120 : s === 1 ? 700 : s === 2 ? 700 : s === 3 ? 500 : s === 4 ? 450 : s < 11 ? 240 : s === 11 ? 450 : 170)
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
-// ---------- layer chrome ----------
-const LayerHead: React.FC<{ num: string; title: string; body: string; aside?: React.ReactNode }> = ({ num, title, body, aside }) => (
-  <header className="rp-ly-head">
-    <span className="rp-ly-num">{num}</span>
-    <h3>{title}</h3>
-    <p>{body}</p>
-    {aside}
-  </header>
+type Paths = { w: number; h: number; top: string[]; mid: string; bottom: string[] }
+const seg = (x1: number, y1: number, x2: number, y2: number) => `M ${Math.round(x1)} ${Math.round(y1)} L ${Math.round(x2)} ${Math.round(y2)}`
+
+const Handles: React.FC = () => (
+  <>
+    <i className="rp-cx-h is-tl" aria-hidden="true" />
+    <i className="rp-cx-h is-tr" aria-hidden="true" />
+    <i className="rp-cx-h is-bl" aria-hidden="true" />
+    <i className="rp-cx-h is-br" aria-hidden="true" />
+  </>
 )
 
-const Spine: React.FC<{ flowKey: string | null; lit: boolean; delay?: number }> = ({ flowKey, lit, delay = 0 }) => (
-  <div className={`rp-ly-spine${lit ? ' is-lit' : ''}`} aria-hidden="true">
-    <i className="rp-ly-port" />
-    <svg viewBox="0 0 2 100" preserveAspectRatio="none">
-      <line className="rp-ly-spine-base" x1="1" y1="0" x2="1" y2="100" />
-      {flowKey && <line key={flowKey} className="rp-ly-spine-trail" x1="1" y1="0" x2="1" y2="100" pathLength={100} style={{ animationDelay: `${delay}s` }} />}
-    </svg>
-    <i className="rp-ly-port" />
-  </div>
-)
-
-// ---------- 01 connect ----------
-const Disc: React.FC<{ item: EcoItem; k: number }> = ({ item, k }) => {
-  const Icon = item.icon ? ICONS[item.icon] : null
+const Tile: React.FC<{ name: string; k: number }> = ({ name, k }) => {
+  const i = item(name)
   return (
-    <span className="rp-ly-disc" style={{ '--k': k } as React.CSSProperties} title={tip(item)}>
-      {item.logo ? <img src={item.logo} alt={item.name} loading="lazy" /> : Icon ? <Icon size={15} strokeWidth={1.7} aria-label={item.name} /> : <b aria-label={item.name}>{item.mono}</b>}
-    </span>
+    <li className="rp-cx-tile" style={{ '--k': k } as React.CSSProperties} title={tip(i)}>
+      {i.logo ? <img src={i.logo} alt="" loading="lazy" /> : <b>{i.mono}</b>}
+      <span>{SHORT[name] ?? name}</span>
+    </li>
   )
 }
 
-const names = (g: EcoGroup) => {
-  const n = g.items.map((i) => i.name)
-  return n.length <= 2 ? n.join(' and ') : `${n.slice(0, 2).join(', ')} and ${n.length - 2} more`
-}
-
-const Category: React.FC<{ group: EcoGroup; ci: number; hot: boolean }> = ({ group, ci, hot }) => {
-  const shown = group.items.slice(0, MAX_DISCS)
-  const extra = group.items.length - shown.length
-  return (
-    <div className={`rp-ly-cat${hot ? ' is-hot' : ''}`} style={{ '--ci': ci } as React.CSSProperties}>
-      <p className="rp-ly-cat-name">{group.label}</p>
-      <div className="rp-ly-discs">
-        {shown.map((it, k) => (
-          <Disc key={it.name} item={it} k={k} />
-        ))}
-        {extra > 0 && (
-          <span className="rp-ly-disc is-more" style={{ '--k': shown.length } as React.CSSProperties} title={group.items.slice(MAX_DISCS).map((i) => i.name).join(', ')}>
-            +{extra}
-          </span>
-        )}
-      </div>
-      <p className="rp-ly-cat-list" title={group.items.map((i) => i.name).join(', ')}>
-        {names(group)}
-      </p>
-    </div>
-  )
-}
-
-// ---------- 02 execute ----------
-const Lifecycle: React.FC<{ lit: number; done: boolean; pingKey: number }> = ({ lit, done, pingKey }) => {
-  const stages = c.stages
-  return (
-    <div className="rp-ly-life">
-      <div className="rp-ly-guards">
-        <span>7 runner guards · fail closed</span>
-      </div>
-      <div className="rp-ly-track" aria-hidden="true">
-        <i className="rp-ly-track-fill" style={{ transform: `scaleX(${clamp((lit - 1) / (stages.length - 1), 0, 1)})` }} />
-        {pingKey > 0 && <i key={pingKey} className="rp-ly-sweep" />}
-      </div>
-      <ol className="rp-ly-stages">
-        {stages.map((s, i) => (
-          <li key={s.key} className={`rp-ly-stage${i < lit ? ' is-lit' : ''}${i === lit - 1 && !done ? ' is-now' : ''}`}>
-            <span className="rp-ly-node" />
-            <span>{s.label}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  )
-}
-
-// ---------- 03 compare ----------
-const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`)
-
-const Preview: React.FC<{ rows: number; metrics: number }> = ({ rows, metrics }) => {
-  const cmp = c.compare
-  const done = Math.round((rows / c.run.rows.length) * c.run.total)
-  return (
-    <div className="rp-ly-win">
-      <div className="rp-ly-win-bar">
-        <span className="rp-ly-sample">Sample run</span>
-        <span className="rp-ly-mono">{c.run.id}</span>
-        <span className="rp-ly-prog">
-          <i style={{ transform: `scaleX(${done / c.run.total})` }} />
-        </span>
-        <span className="rp-ly-mono">
-          {done}/{c.run.total}
-        </span>
-      </div>
-      <div className="rp-ly-res">
-        <div className="rp-ly-cases">
-          {c.run.rows.map((r, i) => (
-            <div key={r.id} className={`rp-ly-case is-${r.status}${i < rows ? ' is-on' : ''}`} title={r.status.replace('_', ' ')}>
-              <i className="rp-ly-dot" />
-              <span className="rp-ly-mono">{r.id}</span>
-              <span className="rp-ly-lane">
-                <i style={{ left: `${i * 12}%`, width: `${(r.ms / 2000) * 40}%` }} />
-              </span>
-              <span className="rp-ly-mono rp-ly-dim">{fmtMs(r.ms)}</span>
-            </div>
-          ))}
-        </div>
-        <table className="rp-ly-cmp">
-          <thead>
-            <tr>
-              <th />
-              <th>
-                <small>Run A</small>
-                {cmp.a.target}
-              </th>
-              <th>
-                <small>Run B</small>
-                {cmp.b.target}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {cmp.primary.map((m, i) => (
-              <tr key={m.label} className={i < metrics ? 'is-on' : undefined}>
-                <th scope="row">{m.label}</th>
-                <td>
-                  {m.aBasis && <i className={`rp-ly-basis is-${m.aBasis.toLowerCase()}`}>{m.aBasis}</i>}
-                  <b className={m.a === null ? 'is-null' : undefined}>{m.a ?? '—'}</b>
-                </td>
-                <td>
-                  {m.bBasis && <i className={`rp-ly-basis is-${m.bBasis.toLowerCase()}`}>{m.bBasis}</i>}
-                  <b className={m.b === null ? 'is-null' : undefined}>{m.b ?? '—'}</b>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className={`rp-ly-kappa${metrics >= cmp.primary.length ? ' is-on' : ''}`}>
-        Agreement κ {cmp.secondary[1].value} between runs · model consensus, not accuracy
-      </p>
-    </div>
-  )
-}
-
-// ---------- composition ----------
 export const BenchmarkFlow: React.FC = () => {
   const reduce = useReducedMotion()
   const rootRef = useRef<HTMLDivElement>(null)
-  const ecoRef = useRef<HTMLDivElement>(null)
-  const engineRef = useRef<HTMLDivElement>(null)
-  const ecoSeen = useInView(ecoRef, { once: true, margin: '0px 0px -12% 0px' })
-  const started = useInView(engineRef, { once: true, margin: '0px 0px -25% 0px' })
-  const live = useInView(rootRef, { margin: '-10% 0px -10% 0px' })
+  const panelRef = useRef<HTMLDivElement>(null)
+  const emblemRef = useRef<HTMLDivElement>(null)
+  const traceRef = useRef<HTMLDivElement>(null)
+  const colRefs = useRef<(HTMLDivElement | null)[]>([])
+  const metricRefs = useRef<(HTMLDivElement | null)[]>([])
+  const started = useInView(panelRef, { once: true, margin: '0px 0px -25% 0px' })
+  const live = useInView(rootRef, { margin: '-5% 0px -5% 0px' })
   const [s, setS] = useState(0)
-  const [ping, setPing] = useState<{ g: number | null; k: number }>({ g: null, k: 0 })
+  const [paths, setPaths] = useState<Paths | null>(null)
 
   useEffect(() => {
     if (!started) return
@@ -215,62 +89,152 @@ export const BenchmarkFlow: React.FC = () => {
     return () => window.clearTimeout(t)
   }, [started, s, reduce])
 
-  const done = s >= DONE
-  useEffect(() => {
-    if (!done || !live || reduce) return
-    const t = window.setInterval(() => setPing((p) => ({ g: (p.g === null ? 0 : p.g + 1) % ECOSYSTEM.length, k: p.k + 1 })), 3400)
-    return () => window.clearInterval(t)
-  }, [done, live, reduce])
+  const measure = useCallback(() => {
+    const root = rootRef.current
+    const P = panelRef.current?.getBoundingClientRect()
+    const E = emblemRef.current?.getBoundingClientRect()
+    const T = traceRef.current?.getBoundingClientRect()
+    if (!root || !P || !E || !T) return
+    const R = root.getBoundingClientRect()
+    const x = (v: number) => v - R.left
+    const y = (v: number) => v - R.top
+    const ex = x(E.left + E.width / 2)
+    const cols = colRefs.current.filter(Boolean).map((el) => (el as HTMLDivElement).getBoundingClientRect())
+    const stacked = cols.length > 1 && cols[1].top > cols[0].top + 4
+    const top: string[] = []
+    if (stacked) {
+      top.push(seg(ex, y(P.bottom), ex, y(E.top) - 6))
+    } else {
+      const yMid = y(P.bottom) + (E.top - P.bottom) * 0.45
+      const cx = cols.map((r) => x(r.left + r.width / 2))
+      cx.forEach((v) => top.push(seg(v, y(P.bottom), v, yMid)))
+      top.push(seg(Math.min(...cx), yMid, Math.max(...cx), yMid))
+      top.push(seg(ex, yMid, ex, y(E.top) - 6))
+    }
+    const mid = seg(ex, y(E.bottom) + 6, ex, y(T.top))
+    const ms = metricRefs.current.filter(Boolean).map((el) => (el as HTMLDivElement).getBoundingClientRect())
+    const bottom: string[] = []
+    const oneRow = ms.length > 1 && ms.every((r) => Math.abs(r.top - ms[0].top) < 4)
+    if (ms.length) {
+      if (oneRow) {
+        const yB = y(T.bottom) + (ms[0].top - T.bottom) * 0.5
+        const mx = ms.map((r) => x(r.left + r.width / 2))
+        bottom.push(seg(ex, y(T.bottom), ex, yB))
+        bottom.push(seg(Math.min(...mx), yB, Math.max(...mx), yB))
+        mx.forEach((v, i) => bottom.push(seg(v, yB, v, y(ms[i].top))))
+      } else {
+        bottom.push(seg(ex, y(T.bottom), ex, y(Math.min(...ms.map((r) => r.top)))))
+      }
+    }
+    setPaths({ w: Math.round(R.width), h: Math.round(R.height), top, mid, bottom })
+  }, [])
 
-  const lit = clamp(s - 2, 0, c.stages.length)
-  const rows = clamp(s - 12, 0, c.run.rows.length)
-  const metrics = clamp(s - 18, 0, c.compare.primary.length)
-  const inKey = ping.k > 0 ? `p${ping.k}` : s >= 1 && !reduce ? 'seq' : null
-  const outKey = ping.k > 0 ? `p${ping.k}` : s >= 12 && !reduce ? 'seq' : null
+  useLayoutEffect(() => {
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (rootRef.current) ro.observe(rootRef.current)
+    return () => ro.disconnect()
+  }, [measure])
 
+  const tiles = s >= 1
+  const topOn = s >= 2
+  const coreOn = s >= 3
+  const midOn = s >= 4
+  const rows = clamp(s - 4, 0, 6)
+  const botOn = s >= 11
+  const metrics = clamp(s - 11, 0, METRICS.length)
+  const run = c.run
+
+  let k = 0
   return (
-    <div ref={rootRef} className={`rp-ly${reduce ? ' is-reduced' : ''}`}>
-      <section ref={ecoRef} className={`rp-ly-layer rp-ly-connect${ecoSeen || reduce ? ' is-in' : ''}`} aria-label="Connect">
-        <LayerHead num="01" title="Connect" body="Hosted APIs, local servers, workflow platforms and your own code, all behind one target interface." />
-        <div className="rp-ly-cats">
-          {ECOSYSTEM.map((g, i) => (
-            <Category key={g.key} group={g} ci={i} hot={ping.g === i} />
+    <div ref={rootRef} className={`rp-cx${live ? ' is-live' : ''}${reduce ? ' is-reduced' : ''}`}>
+      {paths && (
+        <svg className="rp-cx-lines" width={paths.w} height={paths.h} viewBox={`0 0 ${paths.w} ${paths.h}`} aria-hidden="true">
+          {paths.top.map((d, i) => (
+            <path key={`t${i}`} d={d} className={topOn ? 'is-on' : undefined} />
+          ))}
+          <path d={paths.mid} className={midOn ? 'is-on' : undefined} />
+          {paths.bottom.map((d, i) => (
+            <path key={`b${i}`} d={d} className={botOn ? 'is-on' : undefined} />
+          ))}
+        </svg>
+      )}
+
+      <div ref={panelRef} className={`rp-cx-panel${tiles ? ' is-on' : ''}`}>
+        <Handles />
+        {COLUMNS.map((col, ci) => (
+          <div key={col.label} ref={(el) => (colRefs.current[ci] = el)} className="rp-cx-col" style={{ '--cols': col.cols } as React.CSSProperties}>
+            <p className="rp-cx-label">{col.label}</p>
+            <ul className="rp-cx-tiles">
+              {col.names.map((n) => (
+                <Tile key={n} name={n} k={k++} />
+              ))}
+              {col.wide && (
+                <li className="rp-cx-tile is-wide" style={{ '--k': k++ } as React.CSSProperties} title="Any server that speaks the OpenAI API: vLLM, LM Studio, LocalAI, TGI, LiteLLM and more">
+                  <Globe size={20} strokeWidth={1.6} aria-hidden="true" />
+                  <span>Any OpenAI-compatible endpoint</span>
+                </li>
+              )}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <div ref={emblemRef} className={`rp-cx-core${coreOn ? ' is-on' : ''}`}>
+        <img src="/assets/landing/runport-emblem.png" alt="Runport" />
+      </div>
+
+      <div ref={traceRef} className={`rp-cx-trace${midOn ? ' is-on' : ''}`}>
+        <Handles />
+        <div className="rp-cx-trace-head">
+          <span>Sample run</span>
+          <span className="rp-cx-accent">
+            {run.total} cases · {run.elapsed}
+          </span>
+        </div>
+        <div className="rp-cx-trace-body">
+          <div className={`rp-cx-row is-root${rows > 0 ? ' is-on' : ''}`}>
+            <i className="rp-cx-sq" />
+            <span className="rp-cx-name">{run.id}</span>
+            <span className="rp-cx-id">{c.compare.a.target} · {c.compare.a.via}</span>
+            <span className="rp-cx-bar">
+              <i style={{ left: '0%', width: '100%' }} />
+            </span>
+            <span className="rp-cx-ms">{run.elapsed}</span>
+          </div>
+          {run.rows.slice(0, 5).map((r, i) => (
+            <div key={r.id} className={`rp-cx-row is-${r.status}${i + 1 < rows ? ' is-on' : ''}`} title={r.status.replace('_', ' ')}>
+              <i className="rp-cx-sq" />
+              <span className="rp-cx-name">{r.id}</span>
+              <span className="rp-cx-id">{r.status.replace('_', ' ')}</span>
+              <span className="rp-cx-bar">
+                <i style={{ left: `${i * 14}%`, width: `${(r.ms / 2000) * 30}%` }} />
+              </span>
+              <span className="rp-cx-ms">{r.ms >= 1000 ? `${(r.ms / 1000).toFixed(2)}s` : `${r.ms}ms`}</span>
+            </div>
           ))}
         </div>
-      </section>
+      </div>
 
-      <Spine flowKey={inKey} lit={s >= 1} />
-
-      <section ref={engineRef} className={`rp-ly-layer rp-ly-engine${s >= 2 ? ' is-on' : ''}${done ? ' is-done' : ''}`} aria-label="Execute">
-        <span className="rp-ly-ring" aria-hidden="true" />
-        {ping.k > 0 && <span key={ping.k} className="rp-ly-glow" aria-hidden="true" />}
-        <LayerHead
-          num="02"
-          title="Execute"
-          body="Every call runs the same guarded lifecycle. Anything unapproved or over budget fails closed."
-          aside={
-            <span className={`rp-ly-state${done ? ' is-done' : s >= 2 ? ' is-run' : ''}`}>
-              <img src="/assets/landing/runport-emblem.png" alt="" />
-              {done ? 'Run complete' : s >= 2 ? 'Executing' : 'Ready'}
+      <div className="rp-cx-metrics">
+        {METRICS.map((m, i) => (
+          <div key={m.label} ref={(el) => (metricRefs.current[i] = el)} className={`rp-cx-metric${i < metrics ? ' is-on' : ''}${m.key ? ' is-key' : ''}`}>
+            <span className="rp-cx-metric-label">{m.label}</span>
+            <span className="rp-cx-metric-value">
+              {m.basis && <i className="rp-cx-basis">{m.basis}</i>}
+              {m.value}
             </span>
-          }
-        />
-        <Lifecycle lit={lit} done={done} pingKey={ping.k} />
-      </section>
+            {m.note && <span className="rp-cx-metric-note">{m.note}</span>}
+          </div>
+        ))}
+      </div>
 
-      <Spine flowKey={outKey} lit={s >= 12} delay={ping.k > 0 ? 1 : 0} />
-
-      <section className={`rp-ly-layer rp-ly-compare${s >= 12 ? ' is-on' : ''}`} aria-label="Compare">
-        <LayerHead num="03" title="Compare" body="Per-case traces roll up into accuracy with confidence intervals, latency, and cost with its source." />
-        <Preview rows={rows} metrics={metrics} />
-      </section>
-
-      <p className="rp-ly-foot">Results shown are a sample run for illustration. Hover a logo to see how Runport reaches it.</p>
+      <p className="rp-cx-foot">Sample run for illustration. Hover a logo to see how Runport reaches it.</p>
     </div>
   )
 }
 
-/** The landing section: heading, then the three connected layers. */
+/** The landing section: heading, then the integration flow. */
 export const BenchmarkFlowSection: React.FC = () => (
   <section className="rp-section rp-sf" id="stack" aria-labelledby="rp-sf-title">
     <div className="rp-sf-head">
