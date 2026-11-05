@@ -22,6 +22,9 @@ def _isolate_local_state(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(settings, "reports_dir", base / "reports")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("RUNPORT_SKIP_DOTENV", "1")
+    # Starlette's TestClient sends "Host: testserver"; allow it as a loopback host name for in-process API tests.
+    monkeypatch.setenv("RUNPORT_ALLOWED_HOSTS", "testserver")
+    monkeypatch.delenv("RUNPORT_API_TOKEN", raising=False)
 
     from decimal import Decimal
     from runport.models.catalog import ModelCandidate, seed_default_portfolio

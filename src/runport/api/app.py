@@ -1,13 +1,64 @@
 """FastAPI application factory for the Runport web dashboard and REST API."""
 
+import hmac
 import os
 from pathlib import Path
-from fastapi import FastAPI
+from typing import Optional
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from runport.api.routes import budget, datasets, events, models, plan, reports, runs, setup, targets
+
+
+_PUBLIC_API_PATHS = frozenset({"/api/health", "/api/docs", "/api/openapi.json", "/api/redoc"})
+_LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})  # "testclient" is Starlette's in-process TestClient
+_LOOPBACK_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+def _host_name(host_header: str) -> str:
+    host = host_header.strip().lower()
+    if host.startswith("["):  # [::1]:8000
+        return host.split("]")[0] + "]"
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+def _access_policy_middleware(api_token: Optional[str], extra_allowed_hosts: str):
+    """Access policy for /api routes (static dashboard files are not gated).
+
+    * Token configured (RUNPORT_API_TOKEN): every /api request, local or remote, must present exactly that token
+      as `Authorization: Bearer <token>` or `X-Runport-Token`. Compared in constant time.
+    * No token configured (local development): only loopback clients are served, and only when the Host header is a
+      loopback name (or listed in RUNPORT_ALLOWED_HOSTS), which blocks DNS-rebinding from a browser. Remote clients
+      are refused outright, whatever credentials they send: remote access fails closed until a token is set.
+    """
+    allowed_hosts = _LOOPBACK_HOST_NAMES | {h.strip().lower() for h in extra_allowed_hosts.split(",") if h.strip()}
+
+    async def middleware(request: Request, call_next):
+        path = request.url.path
+        if not path.startswith("/api") or path in _PUBLIC_API_PATHS:
+            return await call_next(request)
+
+        if api_token:
+            auth_header = request.headers.get("Authorization", "")
+            presented = auth_header[7:].strip() if auth_header.startswith("Bearer ") else request.headers.get("X-Runport-Token", "")
+            if not presented or not hmac.compare_digest(presented.encode("utf-8"), api_token.encode("utf-8")):
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized: a valid RUNPORT_API_TOKEN is required."})
+            return await call_next(request)
+
+        client_host = request.client.host if request.client else ""
+        if client_host not in _LOOPBACK_CLIENTS:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Remote access is disabled. Set RUNPORT_API_TOKEN on the server to allow authenticated network access."},
+            )
+        if _host_name(request.headers.get("host", "")) not in allowed_hosts:
+            return JSONResponse(status_code=403, content={"detail": "Host header is not a loopback name; request refused (DNS-rebinding protection)."})
+        return await call_next(request)
+
+    return middleware
 
 
 def create_app() -> FastAPI:
@@ -37,30 +88,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    api_token = os.environ.get("RUNPORT_API_TOKEN")
-
-    @app.middleware("http")
-    async def local_security_middleware(request, call_next):
-        client_host = request.client.host if request.client else "127.0.0.1"
-        is_local = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
-
-        # If non-localhost client or token explicitly required
-        if api_token or not is_local:
-            path = request.url.path
-            if path.startswith("/api") and path not in ("/api/health", "/api/docs", "/api/openapi.json", "/api/redoc"):
-                auth_header = request.headers.get("Authorization", "")
-                custom_token = request.headers.get("X-Runport-Token", "")
-                bearer_token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else custom_token
-                expected = api_token or "secret"
-                if not bearer_token or (api_token and bearer_token != expected):
-                    from fastapi.responses import JSONResponse
-
-                    return JSONResponse(
-                        status_code=401,
-                        content={"detail": "Unauthorized: API token required for remote network access."},
-                    )
-
-        return await call_next(request)
+    app.middleware("http")(_access_policy_middleware(os.environ.get("RUNPORT_API_TOKEN") or None, os.environ.get("RUNPORT_ALLOWED_HOSTS", "")))
 
     # API routers
     app.include_router(setup.router, prefix="/api")
