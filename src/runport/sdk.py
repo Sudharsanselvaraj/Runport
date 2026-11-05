@@ -65,7 +65,7 @@ def _target(target: TargetLike, target_id: Optional[str], service: ExecutionServ
         tid = target.target_id
         return {tid: target}, {tid: {"type": "sdk_target", "class": f"{type(target).__module__}.{type(target).__qualname__}", "target_id": tid}}
     if callable(target):
-        tid = target_id or getattr(target, "__name__", "callable")
+        tid = str(target_id or getattr(target, "__name__", "callable"))
         try:
             source_ref = f"{target.__module__}:{target.__qualname__}"
             digest = json.dumps({"source": inspect.getsource(target)})
