@@ -10,7 +10,10 @@
     <meta name="description" content="Runport is an open-source, local-first workbench for benchmarking models, prompts and agent workflows under hard spend caps." />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..900&family=Intel+One+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
+    <!-- fonts load without blocking first paint; text renders in the fallback font until they arrive -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..900&family=Intel+One+Mono:wght@400;500&family=Instrument+Serif&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..900&family=Intel+One+Mono:wght@400;500&family=Instrument+Serif&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..900&family=Intel+One+Mono:wght@400;500&family=Instrument+Serif&display=swap"></noscript>
     <link rel="preload" as="image" href="/assets/landing/hero-bg.png" type="image/png">
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

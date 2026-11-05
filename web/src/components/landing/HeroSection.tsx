@@ -58,7 +58,7 @@ export const HeroSection: React.FC = () => {
 
       <motion.div className="rp-hero-foot" {...rise(0.4, 20, 0)}>
         <p className="rp-body">{c.marqueeLabel}</p>
-        <div className="rp-marquee" aria-label={c.marquee.join(', ')}>
+        <div className="rp-marquee" role="group" aria-label={c.marquee.join(', ')}>
           <div className="rp-marquee-track" aria-hidden="true">
             {[...c.marquee, ...c.marquee].map((name, i) => (
               // style keyed to the name's position in the original list so the

@@ -32,31 +32,31 @@ const Prov: React.FC<{ p: 'ACTUAL' | 'ESTIMATED' | 'UNRESOLVED' | 'UNAVAILABLE' 
 
 const Shell: React.FC<{ kind: MockupKind; children: React.ReactNode }> = ({ kind, children }) => (
   <div className="mk-app">
-    <aside className="mk-side">
+    <div className="mk-side">
       <div className="mk-brand">
         <img src="/assets/landing/runport-emblem.png" alt="" width={18} height={18} />
         <span>RUNPORT</span>
       </div>
-      <nav className="mk-nav">
+      <div className="mk-nav">
         {NAV.map(({ key, label, Icon }) => (
           <div key={key} className={`mk-nav-item${ACTIVE[kind] === key ? ' is-active' : ''}`}>
             <Icon size={15} />
             <span>{label}</span>
           </div>
         ))}
-      </nav>
+      </div>
       <div className="mk-side-foot">
         <div className="mk-wal"><span className="mk-dot mk-dot-green" />Local WAL active</div>
         <div className="mk-muted">127.0.0.1:8000</div>
       </div>
-    </aside>
-    <main className="mk-main">
+    </div>
+    <div className="mk-main">
       <div className="mk-top">
         <div className="mk-search"><Search size={14} /><span>Search runs, models, datasets…</span><kbd>⌘K</kbd></div>
         <span className="mk-sample">Sample data</span>
       </div>
       <div className="mk-body">{children}</div>
-    </main>
+    </div>
   </div>
 )
 
@@ -75,7 +75,7 @@ const Bar: React.FC<{ pct: number; tone?: 'green' | 'blue' | 'amber' }> = ({ pct
 function Plan() {
   return (
     <>
-      <Head crumb="Plans › ticket-intent" title="Ticket intent · v3" badge={<span className="mk-badge mk-badge-green"><ShieldCheck size={12} />Approved</span>} sub="TEST split · 240 cases · prompt template intent_v3.txt" />
+      <Head crumb="Plans › ticket-routing" title="Ticket routing · v3" badge={<span className="mk-badge mk-badge-green"><ShieldCheck size={12} />Approved</span>} sub="TEST split · 240 cases · prompt template routing_v3.txt" />
       <div className="mk-card">
         <div className="mk-card-title">Candidates</div>
         <table className="mk-table">
@@ -116,7 +116,7 @@ function Run() {
   ]
   return (
     <>
-      <Head crumb="Live Run › ticket-intent v3" title="Running · 132 / 240" badge={<span className="mk-badge mk-badge-blue"><Circle size={8} fill="currentColor" />Live</span>} />
+      <Head crumb="Live Run › ticket-routing v3" title="Running · 132 / 240" badge={<span className="mk-badge mk-badge-blue"><Circle size={8} fill="currentColor" />Live</span>} />
       <div className="mk-card">
         <div className="mk-row-between"><span className="mk-card-title">Progress · TEST split</span><span className="mk-num">55%</span></div>
         <Bar pct={55} tone="blue" />
@@ -148,7 +148,7 @@ function Score() {
   const classes: [string, number][] = [['billing', 94], ['tech_support', 92], ['account', 89], ['shipping', 90], ['other', 81]]
   return (
     <>
-      <Head crumb="Results › ticket-intent v3 › gpt-4o-mini" title="Supervised metrics" badge={<span className="mk-badge mk-badge-green">Human-approved labels</span>} />
+      <Head crumb="Results › ticket-routing v3 › gpt-4o-mini" title="Supervised metrics" badge={<span className="mk-badge mk-badge-green">Human-approved labels</span>} />
       <div className="mk-grid-3">
         <div className="mk-stat"><span>Accuracy</span><b>91.3%</b><em>Wilson 95% [87.0, 94.2]</em></div>
         <div className="mk-stat"><span>Macro F1</span><b>0.897</b><em>5 classes</em></div>
@@ -227,7 +227,7 @@ function Datasets() {
   const checks = ['Schema: required fields present', 'No forbidden fields', 'No DEV/TEST leakage', 'Secrets redacted', 'SHA-256 unchanged after run']
   return (
     <>
-      <Head crumb="Datasets › ticket_intent.jsonl" title="ticket_intent.jsonl" badge={<span className="mk-badge mk-badge-green">Valid</span>} sub="240 TEST · 120 DEV · 5 labels" />
+      <Head crumb="Datasets › ticket_routing.jsonl" title="ticket_routing.jsonl" badge={<span className="mk-badge mk-badge-green">Valid</span>} sub="240 TEST · 120 DEV · 5 labels" />
       <div className="mk-card">
         <div className="mk-card-title">Validation</div>
         <div className="mk-checks">{checks.map((c) => <div key={c}><CheckCircle2 size={13} className="mk-ok" />{c}</div>)}</div>
