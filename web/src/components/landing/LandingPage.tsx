@@ -4,7 +4,6 @@ import { HeroSection } from './HeroSection'
 import { BenchmarkFlowSection } from './BenchmarkFlow'
 import { ProductShowcase } from './ProductShowcase'
 import { MetricsSection } from './MetricsSection'
-import { PlatformSection } from './PlatformSection'
 import { Pillars } from './Pillars'
 import { StackCards } from './StackCards'
 import { RunAnywhere } from './RunAnywhere'
@@ -37,7 +36,6 @@ export const LandingPage: React.FC = () => (
         <BentoSection />
       </Suspense>
       <MetricsSection />
-      <PlatformSection />
       <RunAnywhere />
       <FAQSection />
       <FinalCTA />
