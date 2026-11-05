@@ -212,6 +212,14 @@ export default function App() {
   const [testPrompt, setTestPrompt] = useState<string>('Explain strict ground truth validation in two concise sentences.')
   const [testingRunning, setTestingRunning] = useState<boolean>(false)
   const [testResult, setTestResult] = useState<any | null>(null)
+  // A target probe sends a real, possibly billed request, so the API asks for approval of an exact plan first.
+  const [testApproval, setTestApproval] = useState<{
+    plan_fingerprint: string
+    plan_nonce: string
+    expected_confirmation_phrase: string
+    message: string
+    per_case_cap_usd: string
+  } | null>(null)
 
   // Screen 4: Dataset preview & upload
   const [selectedDatasetDetail, setSelectedDatasetDetail] = useState<DatasetDetail | null>(null)
@@ -380,7 +388,7 @@ export default function App() {
   }
 
   // Target Tester
-  const handleTestTarget = async () => {
+  const handleTestTarget = async (approval?: { plan_fingerprint: string; plan_nonce: string }) => {
     setTestingRunning(true)
     setTestResult(null)
     try {
@@ -396,9 +404,22 @@ export default function App() {
             api_key: testApiKey || undefined,
           },
           input_payload: { query: testPrompt },
+          approve_token: approval?.plan_fingerprint,
+          plan_nonce: approval?.plan_nonce,
         }),
       })
-      setTestResult(await res.json())
+      const body = await res.json()
+      if (res.status === 428) {
+        setTestApproval(body.detail)
+        return
+      }
+      setTestApproval(null)
+      if (!res.ok) {
+        const detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+        setTestResult({ status: 'failed', error_message: detail })
+        return
+      }
+      setTestResult(body)
     } catch (e: any) {
       setTestResult({ status: 'failed', error_message: e.message })
     } finally {
@@ -965,12 +986,31 @@ export default function App() {
 
                   <button
                     className="btn btn-primary"
-                    onClick={handleTestTarget}
+                    onClick={() => handleTestTarget()}
                     disabled={testingRunning}
                   >
                     {testingRunning ? <RefreshCw className="animate-spin" size={15} /> : <Play size={15} />}
                     Execute Probe Test
                   </button>
+
+                  {testApproval && (
+                    <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-input)', fontSize: '0.8rem' }}>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Approval required</div>
+                      <div style={{ marginBottom: '0.5rem' }}>{testApproval.message}</div>
+                      <div style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                        Spend cap for this request: ${testApproval.per_case_cap_usd}. Plan{' '}
+                        <code>{testApproval.plan_fingerprint.slice(0, 16)}</code>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button className="btn btn-primary" onClick={() => handleTestTarget(testApproval)} disabled={testingRunning}>
+                          Approve and send
+                        </button>
+                        <button className="btn" onClick={() => setTestApproval(null)} disabled={testingRunning}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
