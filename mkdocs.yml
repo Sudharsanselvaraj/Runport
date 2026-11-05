@@ -47,6 +47,14 @@ nav:
   - Safety & Privacy: safety.md
   - Web UI & TUI: web-ui.md
   - CLI Reference: cli.md
+  - Specifications:
+      - Roadmap Audit: ROADMAP_IMPLEMENTATION_AUDIT.md
+      - Universal Execution: UNIVERSAL_EXECUTION_ARCHITECTURE.md
+      - Canonical Trace Schema: CANONICAL_TRACE_SCHEMA.md
+      - SDK API Contract: SDK_API_CONTRACT.md
+      - MCP Architecture: MCP_ARCHITECTURE.md
+      - Multi-User Security: MULTI_USER_SECURITY_MODEL.md
+      - Roadmap Release Plan: ROADMAP_RELEASE_PLAN.md
   - FAQ: faq.md
 
 exclude_docs: |
