@@ -21,6 +21,7 @@ class TargetType(str, Enum):
     WORKFLOW_LANGGRAPH = "workflow_langgraph"
     PYTHON_CALLABLE = "python_callable"
     SUBPROCESS = "subprocess"
+    MCP_TOOL = "mcp_tool"
 
 
 class TargetStatus(str, Enum):

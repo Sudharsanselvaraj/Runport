@@ -5,6 +5,7 @@ from runport.connectors.flowise import FlowiseConnector
 from runport.connectors.http_workflow import HttpWorkflowConnector
 from runport.connectors.langflow import LangflowConnector
 from runport.connectors.langgraph import LangGraphConnector
+from runport.connectors.mcp import McpToolTarget
 from runport.connectors.n8n import N8nConnector
 from runport.connectors.ollama import OllamaConnector
 from runport.connectors.openai_compat import OpenAICompatConnector
@@ -16,6 +17,7 @@ __all__ = [
     "HttpWorkflowConnector",
     "LangGraphConnector",
     "LangflowConnector",
+    "McpToolTarget",
     "N8nConnector",
     "OllamaConnector",
     "OpenAICompatConnector",
