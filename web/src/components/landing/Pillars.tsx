@@ -228,7 +228,7 @@ export const Pillars: React.FC = () => {
         <Reveal delay={0.12}>
           <div className="rp-pl-body" id="rp-pl-panel" role="tabpanel" aria-labelledby={`rp-pl-tab-${tab.key}`}>
             <div className="rp-pl-media">
-              <img className="rp-pl-art" src="/assets/landing/testimonial-bg.jpg" alt="" loading="lazy" />
+              <div className="rp-pl-art" aria-hidden="true" />
               <AnimatePresence mode="wait">
                 <motion.div key={tab.key} className="rp-pl-window" {...fade}>
                   <Mock />

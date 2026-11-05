@@ -34,7 +34,7 @@ export const MetricsSection: React.FC = () => {
             </div>
           </div>
           <div className="rp-proof-media">
-            <img src="/assets/landing/testimonial-bg.jpg" alt="" loading="lazy" />
+            <div className="rp-proof-art" aria-hidden="true" />
             <div className="rp-proof-facts">
               {c.proof.facts.map((f) => (
                 <div key={f.label}>
