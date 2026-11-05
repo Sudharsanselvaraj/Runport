@@ -68,6 +68,12 @@ export interface RunTarget {
   link: { label: string; href: string }
 }
 
+export interface StackCard {
+  key: 'stack' | 'controls' | 'cli' | 'local'
+  title: string
+  body: string
+}
+
 export interface FAQItem {
   id: string
   question: string
@@ -333,6 +339,35 @@ export const LANDING_CONTENT = {
 
   // Tabbed pillars (spend, truth, local). Every row maps to shipped behaviour;
   // mockup numbers are illustrative and labelled "Sample" on the page.
+  // Four illustrated cards under "Why Runport". Every claim maps to shipped code:
+  // Target abstraction, runner guards, the Typer CLI, and the local SQLite store.
+  stackCards: {
+    eyebrow: 'Built for the loop',
+    title: 'Fits the stack you already run.',
+    subheading: 'One target interface, guardrails the runner enforces, a CLI for every step, and a store that stays on your disk.',
+    cards: [
+      {
+        key: 'stack',
+        title: 'Connects to the whole stack',
+        body: 'Hosted models, local servers and orchestrated workflows all run behind one target interface.',
+      },
+      {
+        key: 'controls',
+        title: 'Guardrails, out of the box',
+        body: 'Held-out splits, an append-only spend ledger and a fingerprinted plan approval are enforced by the runner, not by convention.',
+      },
+      {
+        key: 'cli',
+        title: 'One command for each step',
+        body: 'Validate, run, compare, reconcile and export from the terminal. The same runs appear in the TUI and the dashboard.',
+      },
+      {
+        key: 'local',
+        title: 'Local-first by default',
+        body: 'There is no Runport cloud. Runs, the spend ledger and traces live in a SQLite file you own.',
+      },
+    ] as StackCard[],
+  },
   pillars: {
     titleA: 'Benchmarks you',
     titleB: 'can trust.',
