@@ -76,3 +76,6 @@ docs/PROGRESS_LANDING.md
 
 # Landing-page audit screenshots (third-party reference captures; keep local)
 artifacts/
+
+# landing site build output
+web/dist-landing/
