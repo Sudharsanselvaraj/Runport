@@ -33,6 +33,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # the lockfile was generated on macOS; add Rollup's Linux binary (npm/cli#4828)
+      - run: npm install --no-save @rollup/rollup-linux-x64-gnu
       - run: npm test
       - name: Build landing page and docs
         run: npm run build:site
