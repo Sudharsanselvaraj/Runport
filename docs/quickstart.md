@@ -6,39 +6,42 @@ Get up and running with Runport in under two minutes.
 
 ## 1. Installation
 
-### Requirements
-- **Python**: 3.11, 3.12, or 3.13
-- **uv** (recommended) or standard `pip`
+Runport requires **Python 3.11, 3.12, or 3.13**.
 
-### Install with uv
+### Option A: Install via uv (Recommended)
+
+[`uv`](https://docs.astral.sh/uv/) provides fast, reliable dependency resolution:
+
 ```bash
-# Clone the repository
+# Global CLI install
+uv tool install runport
+
+# Or clone and run locally
 git clone https://github.com/Sudharsanselvaraj/runport.git
 cd runport
-
-# Install dependencies including dev and report tools
 uv sync --extra dev --extra report
 ```
 
-### Install with pip
+### Option B: Install via pip
+
 ```bash
-pip install -e .
+pip install runport
 ```
 
 ---
 
 ## 2. Initialize a Workspace
 
-Initialize your local workspace configuration and data directory structure:
+Set up your local configuration, data directories, and SQLite WAL ledger:
 
 ```bash
 uv run runport init
 ```
 
 This generates:
-- `runport.yaml`: Active workspace configuration defining spend ceilings, privacy gates, and connectors.
+- `runport.yaml`: Active workspace settings defining budget caps, connectors, and privacy rules.
+- `.runport/runport.db`: Local append-only SQLite WAL ledger.
 - `data/`: Local evaluation datasets and trace stores.
-- `.runport/`: Local SQLite WAL ledger (`runport.db`).
 
 ---
 
@@ -51,16 +54,16 @@ uv run runport validate-dataset data/evaluation/synthetic_seed_eval.jsonl
 ```
 
 Runport verifies:
-- Strict JSONL syntax and required target columns.
-- Split cleanliness (`TEST`, `DEV`, `TRAIN`).
-- Overlap detection to prevent test-set contamination.
-- Forbidden identifier redaction.
+- JSONL syntax and required target columns (`case_id`, `input_text`, `expected_output`).
+- Split cleanliness (`TRAIN`, `DEV`, `TEST`).
+- Overlap detection preventing test-set contamination.
+- Forbidden PII identifiers.
 
 ---
 
-## 4. Run an Offline Replay Benchmark
+## 4. Run an Offline Replay Benchmark ($0.00 Spend)
 
-Execute a benchmark immediately without spending money or providing an API key using the deterministic replay engine:
+Test your setup immediately without spending a cent or configuring API keys using the deterministic offline replay engine:
 
 ```bash
 uv run runport benchmark --replay --dataset data/evaluation/synthetic_seed_eval.jsonl
@@ -69,52 +72,66 @@ uv run runport benchmark --replay --dataset data/evaluation/synthetic_seed_eval.
 Key guarantees:
 - **$0.00 Spend**: Provenance is recorded as `REPLAYED`.
 - **Zero Network Traffic**: Complete offline execution.
-- Scores recorded outputs (from the dataset or `--fixtures recorded.jsonl`) with the same heuristic as live runs. Cases without a recording stay unscored; nothing is filled in.
+- Evaluates test cases and computes statistical metrics using recorded ground truth.
 
 ---
 
-## 5. Live Evaluation (Under Spend Caps)
+## 5. Live Evaluation (Under Fail-Closed Spend Caps)
 
 To evaluate live candidate models (via OpenRouter or supported workflow endpoints):
 
-1. Set your API key in the shell:
+1. **Set your API key**:
    ```bash
    export OPENROUTER_API_KEY="sk-or-v1-..."
    ```
 
-2. Run preflight verification (checks key presence without touching the network):
+2. **Verify credentials offline**:
    ```bash
    uv run runport api-preflight
    ```
 
-3. Execute evaluation with explicit `--live` flag and spend cap enforcement:
+3. **Execute live evaluation**:
    ```bash
    uv run runport benchmark --live --model google/gemini-3.5-flash-lite
    ```
 
-Runport prompts for an interactive cryptographic plan confirmation before sending any HTTP request.
+Runport computes a cryptographic SHA-256 plan fingerprint and prompts for interactive typed confirmation before dispatching any request.
 
 ---
 
-## 6. Inspect Budget & Telemetry
+## 6. Launch the Local Interfaces
 
-Check your ledger balance, active spend ceilings, and reconciliation status:
-
-```bash
-uv run runport budget status
-```
-
----
-
-## 7. Launch Dashboards
-
-### Interactive Terminal UI (Rich)
+### Terminal UI Dashboard (`runport ui`)
 ```bash
 uv run runport ui
 ```
+Full-screen dashboard featuring CPU/memory gauges, real-time inference streams, model catalog browsers, and budget monitors.
 
-### Local Web Dashboard (FastAPI + React)
+### Web Dashboard (`runport web`)
 ```bash
 uv run runport web
 ```
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
+Opens the React + FastAPI web dashboard at **http://127.0.0.1:8000** for interactive plan previews, confusion matrices, and trace analysis.
+
+---
+
+## 7. Evaluate with Pytest & Python SDK
+
+You can also use Runport directly in Python test suites:
+
+```python
+import pytest
+from runport.scorers.classification import ClassificationReportScorer
+from runport.scorers.stats import wilson
+
+def test_intent_classification():
+    predictions = ["SUPPORT", "BILLING", "SUPPORT"]
+    ground_truth = ["SUPPORT", "BILLING", "SALES"]
+
+    scorer = ClassificationReportScorer(allowed_labels=["SUPPORT", "BILLING", "SALES"])
+    report = scorer.compute_report(predictions, ground_truth)
+    lo, hi = wilson(report.valid_cases, report.total_cases)
+
+    assert report.accuracy >= 0.60
+    assert lo > 0.20
+```

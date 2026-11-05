@@ -49,11 +49,14 @@ nav:
   - CLI Reference: cli.md
   - FAQ: faq.md
 
+exclude_docs: |
+  README.md
+
 not_in_nav: |
   ARCHITECTURE.md
   DECISIONS.md
   INVARIANT_TESTS.md
-  PROGRESS*.md
-  SCREENSHOTS.md
+  competitive-positioning.md
   connectors/*
+  README.md
 
