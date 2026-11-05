@@ -63,6 +63,7 @@ html.rd-lock { overflow: hidden; }
 
 /* ---------- brand & controls ---------- */
 .rd-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--rp-white); }
+.rd-emblem { width: 20px; height: 20px; object-fit: contain; margin-right: -2px; }
 .rd-wordmark { font-size: var(--rp-body); font-weight: 600; letter-spacing: 0.02em; }
 .rd-brand-sep { width: 1px; height: 16px; background: var(--rp-line); }
 .rd-brand-label { font-size: var(--rp-title); font-weight: 500; }

@@ -35,6 +35,7 @@ export const DocsHeader: React.FC<DocsHeaderProps> = ({ crumbs, onMenu, onSearch
       <Menu size={16} />
     </button>
     <a href={pageHref('')} className="rd-brand rd-header-brand">
+      <img className="rd-emblem" src="./emblem.png" alt="" width="20" height="20" />
       <span className="rd-wordmark">RUNPORT</span>
       <span className="rd-brand-sep" aria-hidden="true" />
       <span className="rd-brand-label">Docs</span>

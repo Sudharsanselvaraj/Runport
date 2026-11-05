@@ -87,6 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ current, open, onClose, onSear
       <aside className={`rd-sidebar${open ? ' is-open' : ''}`} aria-label="Documentation">
         <div className="rd-side-top">
           <a href="#/" className="rd-brand" onClick={onClose}>
+            <img className="rd-emblem" src="./emblem.png" alt="" width="20" height="20" />
             <span className="rd-wordmark">RUNPORT</span>
             <span className="rd-brand-sep" aria-hidden="true" />
             <span className="rd-brand-label">Docs</span>
