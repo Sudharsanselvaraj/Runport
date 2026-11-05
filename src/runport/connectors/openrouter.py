@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError, ProviderError, ProviderRequest, RateLimitError, scrub_secrets
 from runport.providers.openrouter import OpenRouterAdapter
-from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus, TargetType
+from runport.targets.base import BillingMode, CostBasis, Target, TargetPricing, TargetResult, TargetStatus, TargetType
 
 DEFAULT_SYSTEM_PROMPT = "You are an AI benchmark evaluator. Answer accurately, ground all answers in academic guidelines, and never invent fees or policies."
 
@@ -39,6 +39,11 @@ class OpenRouterTarget(Target):
         self.adapter = adapter or OpenRouterAdapter(timeout_seconds=timeout_seconds)
         self.system_prompt = system_prompt
         self.max_tokens = max_tokens
+        try:  # catalog price, when the model is registered; unknown models stay unpriced (and are refused before sending)
+            in_price, out_price = self.adapter._get_pricing_for_model(model_id)
+            self.pricing = TargetPricing(input_usd_per_1m=in_price, output_usd_per_1m=out_price)
+        except Exception:
+            self.pricing = None
 
     def execute(self, input_payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> TargetResult:
         query = input_payload.get("query") or input_payload.get("prompt") or input_payload.get("input")
@@ -72,7 +77,8 @@ class OpenRouterTarget(Target):
             )
 
         basis = _BASIS.get(resp.cost_basis)
-        cost = resp.actual_cost_usd if basis == CostBasis.ACTUAL else resp.estimated_cost_usd if basis == CostBasis.ESTIMATED else None
+        # resp.cost_usd is the adapter's recorded spend: actual when reported, else the catalog estimate; 0 only with UNAVAILABLE.
+        cost = resp.cost_usd if basis is not None else None
         return TargetResult(
             target_id=self.target_id,
             status=TargetStatus.SUCCESS,

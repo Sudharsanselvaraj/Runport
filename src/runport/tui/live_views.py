@@ -963,8 +963,8 @@ def build_execution_header(ctx: LiveContext, project: str = "runport") -> Table:
     sp = Text()
     if b is not None:
         by = b.spend_by_basis
-        actual = by.get("PROVIDER_REPORTED", Decimal("0")) + by.get("RECONCILED", Decimal("0"))
-        est = by.get("ESTIMATED_FROM_CATALOG", Decimal("0"))
+        actual = b.actual_spend_usd
+        est = b.estimated_spend_usd
         other = b.cumulative_spend_usd - actual - est
         sp.append(
             f"COUNTED vs CAPS ${b.cumulative_spend_usd:.4f} = ACTUAL ${actual:.4f} + ESTIMATED ${est:.4f}"

@@ -30,6 +30,19 @@ class BudgetStatus(BaseModel):
 
     unresolved_spend_count: int = 0  # billed-or-not requests with unknown cost; live runs are blocked while > 0
     spend_by_basis: Dict[str, Decimal] = Field(default_factory=dict)
+
+    # The ledger holds two spellings of the same provenance: the OpenRouter adapter's PROVIDER_REPORTED /
+    # ESTIMATED_FROM_CATALOG (older rows) and the fixed vocabulary ACTUAL / ESTIMATED that GenericRunner books.
+    @property
+    def actual_spend_usd(self) -> Decimal:
+        by = self.spend_by_basis
+        return sum((by.get(k, Decimal("0")) for k in ("ACTUAL", "PROVIDER_REPORTED", "RECONCILED")), Decimal("0"))
+
+    @property
+    def estimated_spend_usd(self) -> Decimal:
+        by = self.spend_by_basis
+        return sum((by.get(k, Decimal("0")) for k in ("ESTIMATED", "ESTIMATED_FROM_CATALOG")), Decimal("0"))
+
     simulated_spend_usd: Decimal = Decimal("0")  # dry-run simulations; shown for transparency, never counted against a ceiling
 
     is_pilot_exhausted: bool

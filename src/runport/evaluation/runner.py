@@ -65,157 +65,62 @@ class BenchmarkRunner:
         split: Optional[DatasetSplit] = None,
         live_authorization: Optional[LiveAuthorization] = None,
     ) -> BenchmarkRunReport:
-        """Runs real requests for the specified dataset. Needs a live authorization covering the model; there is no simulated mode."""
+        """Runs real requests for the dataset through GenericRunner (the one guarded executor).
+
+        Needs a live authorization covering the model. Dataset cases are validated (EvaluationCase), the
+        confidentiality gate, budget preflight, persistence and spend booking are GenericRunner's. A response
+        without usable cost is booked UNRESOLVED, the run halts, and UsageUnavailableError is raised.
+        """
+        from runport.connectors.openrouter import OpenRouterTarget
+        from runport.core.approvers import TokenApprover
+        from runport.core.workspace import load_workspace_config
+        from runport.runs.executor import GenericRunner
+        from runport.runs.planner import ExecutionPlan
+        from runport.services.execution import rubric_case_scorer
+
         require_live_authorization(live_authorization, model_id)
-        run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-        now_iso = datetime.now(timezone.utc).isoformat()
-
-        # 1. Load dataset
-        manager = DatasetManager()
-        all_cases = manager.load_jsonl(dataset_path)
-
-        if split and split != DatasetSplit.UNASSIGNED:
-            cases = [c for c in all_cases if c.split == split]
-        else:
-            cases = all_cases
-
+        all_cases = DatasetManager().load_jsonl(dataset_path)
+        cases = [c for c in all_cases if c.split == split] if split and split != DatasetSplit.UNASSIGNED else all_cases
         if not cases:
             raise ValueError(f"No cases found for evaluation in {dataset_path} (split: {split})")
+        for case in cases:
+            OpenRouterAdapter.validate_case_confidentiality(case)  # fail before anything is planned or sent
 
-        # 2. Budget Preflight Estimate
-        estimated_cost = Decimal("0.0003") * Decimal(len(cases))
-        # Checks local policy limit
-        self.budget_service.check_preflight_budget(
-            estimated_cost_usd=estimated_cost,
-            is_pilot=True,
-            model_id=model_id,
+        target = OpenRouterTarget(model_id=model_id, adapter=self.provider)  # type: ignore[arg-type]
+
+        case_dicts = [c.model_dump(mode="json") for c in cases]
+        plan = ExecutionPlan(
+            plan_id=f"benchmark-{uuid.uuid4().hex[:8]}",
+            target_ids=[model_id],
+            dataset_path=str(dataset_path),
+            dataset_hash=DatasetManager.compute_sha256(dataset_path),
+            total_cases=len(case_dicts),
+            budget_cap_usd=self.budget_service.policy.per_run_ceiling_usd,
+            is_live=True,
         )
+        workspace = load_workspace_config()
+        runner = GenericRunner(budget_service=self.budget_service, db=self.db_mgr, workspace=workspace)
+        approver = TokenApprover(token=plan.fingerprint, enabled=True, operator="live_authorization")
+        run = runner.execute_plan(plan, {model_id: target}, case_dicts, approver=approver, case_scorer=rubric_case_scorer)[0]
+        if run.halted_reason:
+            raise UsageUnavailableError(run.halted_reason)
 
-        completed_results: List[Dict[str, Any]] = []
-        failed_count = 0
-        total_run_cost = Decimal("0.0000")
-
-        # 3. Execution Loop
-        for idx, case in enumerate(cases, 1):
-            # Enforce Fail-Closed Confidentiality Gate
-            OpenRouterAdapter.validate_case_confidentiality(case)
-
-            prompt_messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an AI benchmark evaluator. Answer accurately, ground all answers in academic guidelines, and never invent fees or policies."
-                    ),
-                },
-                {"role": "user", "content": case.query},
-            ]
-
-            request = ProviderRequest(
-                model_id=model_id,
-                messages=prompt_messages,
-                live_authorized=True,
-                case_id=case.id,
-            )
-
-            try:
-                response = self.provider.generate(request)
-                try:
-                    require_complete_usage(response)
-                except UsageUnavailableError:
-                    self.budget_service.record_unresolved_spend(
-                        f"tx_{run_id}_{case.id}", model_id, "openrouter", f"Evaluation case {case.id}: response lacked usable cost or token counts", run_id
-                    )
-                    raise
-                exec_id = f"exec_{run_id}_{case.id}"
-                score_id = f"score_{run_id}_{case.id}"
-
-                score = self.evaluator.evaluate(
-                    score_id=score_id,
-                    execution_id=exec_id,
-                    generated_output=response.output_text,
-                    expected_answer=case.expected_answer,
-                )
-
-                self.budget_service.record_spend(
-                    transaction_id=f"tx_{run_id}_{case.id}",
-                    model_id=model_id,
-                    provider="openrouter",
-                    amount_usd=response.cost_usd,
-                    description=f"Evaluation case {case.id}",
-                    run_id=run_id,
-                    is_pilot=True,
-                    is_preflight_estimate=False,
-                    cost_basis=response.cost_basis,
-                )
-                total_run_cost += response.cost_usd
-
-                result_entry = {
-                    "result_id": f"res_{run_id}_{case.id}",
-                    "run_id": run_id,
-                    "case_id": case.id,
-                    "prompt": case.query,
-                    "expected_answer": case.expected_answer or "",
-                    "generated_output": response.output_text,
-                    "latency_ms": response.latency_ms,
-                    "prompt_tokens": response.prompt_tokens,
-                    "completion_tokens": response.completion_tokens,
-                    "cost_usd": str(response.cost_usd),
-                    "accuracy": score.accuracy,
-                    "groundedness": score.groundedness,
-                    "format_adherence": score.format_adherence,
-                    "overall_score": score.overall_score,
-                    "evaluator_notes": score.notes or "",
-                }
-                completed_results.append(result_entry)
-
-            except Exception as e:
-                failed_count += 1
-                if isinstance(e, (BudgetExceededError, UsageUnavailableError, LiveNotAuthorizedError)):
-                    raise
-
-        # 4. Aggregate metrics
-        # Means cover measured values only; unlabelled cases have no accuracy and are left out.
-        n_comp = len(completed_results)
-        mean_lat = mean_or_none((r["latency_ms"] for r in completed_results), ndigits=2)
-        mean_acc = mean_or_none(r["accuracy"] for r in completed_results)
-        mean_grd = mean_or_none(r["groundedness"] for r in completed_results)
-        mean_ovr = mean_or_none(r["overall_score"] for r in completed_results)
-
-        run_summary = {
-            "run_id": run_id,
-            "timestamp": now_iso,
-            "model_id": model_id,
-            "dataset_path": str(dataset_path),
-            "total_cases": len(cases),
-            "completed_cases": n_comp,
-            "failed_cases": failed_count,
-            "total_cost_usd": str(total_run_cost),
-            "mean_latency_ms": mean_lat,
-            "mean_accuracy": mean_acc,
-            "mean_groundedness": mean_grd,
-            "mean_overall_score": mean_ovr,
-            "is_dry_run": False,  # legacy column: this tool no longer produces simulated runs
-            "notes": f"Evaluation over {dataset_path.name} (split: {split or 'ALL'})",
-        }
-
-        # 5. Persist to SQLite
-        self.db_mgr.save_evaluation_run(run_summary)
-        if completed_results:
-            self.db_mgr.save_evaluation_results(completed_results)
-
+        rows = self.db_mgr.get_evaluation_results_for_run(run.run_id)
+        completed = [r for r in rows if r.get("generated_output")]
+        saved = self.db_mgr.get_evaluation_run(run.run_id) or {}
         return BenchmarkRunReport(
-            run_id=run_id,
-            timestamp=now_iso,
+            run_id=run.run_id,
+            timestamp=str(saved.get("timestamp") or datetime.now(timezone.utc).isoformat()),
             model_id=model_id,
             dataset_path=str(dataset_path),
-            total_cases=len(cases),
-            completed_cases=n_comp,
-            failed_cases=failed_count,
-            total_cost_usd=total_run_cost,
-            mean_latency_ms=mean_lat,
-            mean_accuracy=mean_acc,
-            mean_groundedness=mean_grd,
-            mean_overall_score=mean_ovr,
-            results=completed_results,
-            notes=run_summary["notes"],
+            total_cases=len(case_dicts),
+            completed_cases=run.successful_cases,
+            failed_cases=run.failed_cases + run.invalid_cases + run.skipped_cases,
+            total_cost_usd=run.total_spend_usd,
+            mean_latency_ms=mean_or_none((r["latency_ms"] for r in completed), ndigits=2),
+            mean_accuracy=mean_or_none(r["accuracy"] for r in completed),
+            mean_groundedness=mean_or_none(r["groundedness"] for r in completed),
+            mean_overall_score=mean_or_none(r["overall_score"] for r in completed),
+            results=completed,
+            notes=f"Evaluation over {Path(dataset_path).name} (split: {split or 'ALL'}) via GenericRunner",
         )
