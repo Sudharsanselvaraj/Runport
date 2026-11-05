@@ -209,7 +209,7 @@ class ConnectorInfo:
     tool_calls: str
     structured_output: str
     per_step_trace: str
-    token_reporting: str
+    usage_reporting: str
     cost_reporting: str
     error_timeout_handling: str
     via: Optional[str] = None
@@ -229,7 +229,7 @@ def _c(id: str, name: str, module: Optional[str], status: str, integration: str,
         tool_calls=tool_calls,
         structured_output=structured,
         per_step_trace=per_step,
-        token_reporting=tokens,
+        usage_reporting=tokens,
         cost_reporting=cost,
         error_timeout_handling=errors,
         via=via,

@@ -49,6 +49,8 @@ dev = [
     "pandas>=2.1",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    # Official MCP SDK, used only by tests as an independent client against the Runport MCP server.
+    "mcp>=2.3.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -113,7 +115,7 @@ disallow_incomplete_defs = false
 warn_unused_ignores = true
 warn_redundant_casts = true
 ignore_missing_imports = true
-files = ["src/runport/core", "src/runport/runs", "src/runport/connectors", "src/runport/scorers", "src/runport/workloads", "src/runport/services", "src/runport/traces", "src/runport/sdk.py"]
+files = ["src/runport/core", "src/runport/runs", "src/runport/connectors", "src/runport/scorers", "src/runport/workloads", "src/runport/services", "src/runport/traces", "src/runport/sdk.py", "src/runport/mcp_server"]
 
 [dependency-groups]
 dev = [

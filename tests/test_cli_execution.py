@@ -96,3 +96,22 @@ def test_cli_live_benchmark_blocks_unclassified_cases_before_sending(tmp_path, m
     result = CliRunner().invoke(app, ["benchmark", "--target", "support-agent", "--dataset", str(ds), "--split", "TEST", "--live"])
     assert result.exit_code == 1
     assert workspace_target == []
+
+
+def test_cli_approve_refuses_without_a_terminal_and_approves_with_one(tmp_path, monkeypatch):
+    from runport.connectors.python_target import PythonCallableTarget
+    from runport.core.live_guard import LiveAuthorization
+    from runport.services.execution import ExecutionService
+
+    service = ExecutionService(workspace=WorkspaceConfig())
+    t = PythonCallableTarget("echo", "echo", func=lambda c: "ok")
+    plan = service.plan({"echo": t}, {"echo": {"type": "python", "callable": "x:y"}}, [{"id": "a"}], dataset_label="d", requested_by="mcp")
+
+    refused = CliRunner().invoke(app, ["approve", plan.plan_id], input=plan.confirmation_phrase + "\n")
+    assert refused.exit_code == 1 and service.get_plan(plan.plan_id).status == "PENDING"
+
+    monkeypatch.setattr("runport.core.live_guard.confirm_live_run", lambda models, summary, **kw: LiveAuthorization(models=tuple(models)))
+    ok = CliRunner().invoke(app, ["approve", plan.plan_id])
+    assert ok.exit_code == 0, ok.output
+    approved = service.get_plan(plan.plan_id)
+    assert approved.status == "APPROVED" and approved.approved_by.startswith("cli_interactive:")

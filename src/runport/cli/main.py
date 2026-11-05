@@ -130,6 +130,7 @@ from runport.cli.commands.datasets import register_dataset_commands
 from runport.cli.commands.traces import register_trace_commands
 from runport.cli.commands.ui import register_ui_commands
 from runport.cli.commands.benchmarks import register_benchmark_commands
+from runport.cli.commands.plans import register_plan_commands
 
 register_init_command(app)
 register_models_commands(models_app)
@@ -138,3 +139,4 @@ register_dataset_commands(app)
 register_trace_commands(app)
 register_ui_commands(app)
 register_benchmark_commands(app)
+register_plan_commands(app)

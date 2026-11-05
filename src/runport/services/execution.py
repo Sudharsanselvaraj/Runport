@@ -48,6 +48,7 @@ class PlanSummary:
     requested_by: str
     confirmation_phrase: str
     approved_by: Optional[str] = None
+    source: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_permitted(self) -> bool:
@@ -91,6 +92,17 @@ def load_dataset_cases(path: Path, sample_size: Optional[int] = None) -> List[Di
             if line and not line.startswith("#"):
                 cases.append(json.loads(line))
     return cases[:sample_size] if sample_size else cases
+
+
+def resolve_dataset(name: str, root: Optional[Path] = None) -> Path:
+    """A dataset file inside <workspace>/data/evaluation, by file name. Refuses anything outside that directory."""
+    d_dir = ((root or settings.workspace_root) / "data" / "evaluation").resolve()
+    path = (d_dir / name).resolve()
+    if d_dir not in path.parents:
+        raise ValueError("Dataset name must refer to a file inside data/evaluation.")
+    if not path.is_file():
+        raise FileNotFoundError(f"Dataset '{name}' not found")
+    return path
 
 
 class ExecutionService:
@@ -149,7 +161,10 @@ class ExecutionService:
         *,
         dataset_label: str,
         requested_by: str,
+        source: Optional[Dict[str, Any]] = None,
     ) -> PlanSummary:
+        """`source` records how to reload the cases later (e.g. dataset name and sample size); it is not trusted:
+        execution re-derives the fingerprint from whatever cases it is given."""
         if not cases:
             raise ValueError("A plan needs at least one case.")
         if set(targets) != set(specs):
@@ -205,6 +220,7 @@ class ExecutionService:
             "projected_max_cost_usd": str(total) if total is not None else None,
             "per_target": per_target,
             "blockers": blockers,
+            "source": source or {},
         }
         rec = self.approvals.register(plan.fingerprint, summary, requested_by=requested_by)
         return self._summary(rec)
@@ -225,6 +241,7 @@ class ExecutionService:
             requested_by=rec.requested_by,
             confirmation_phrase=f"RUN LIVE {', '.join(s['target_ids'])} PLAN {rec.fingerprint}",
             approved_by=rec.approved_by,
+            source=dict(s.get("source") or {}),
         )
 
     def get_plan(self, plan_id: str) -> Optional[PlanSummary]:
