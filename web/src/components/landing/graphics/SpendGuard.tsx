@@ -1,63 +1,54 @@
 import React, { useRef } from 'react'
-import { BUDGET_DEFAULTS, formatUsd } from '../../../data/sampleRun'
-import { SampleChip } from '../SampleChip'
+import { formatUsd } from '../../../data/sampleRun'
 import { useLoopClock, useLoopWhenVisible } from '../motionKit'
-import { budgetFrame, budgetPlan } from './frames'
+import { spendFrame } from './frames'
 
-// Card 3 (tall): a cool-gray beam falls onto a metallic Runport emblem with
-// circuit lines running left and right. Below it, a ring fills as sample
-// requests are booked against the per-run ceiling; the request that would cross
-// the cap is blocked before it is sent, the ring turns to a hard stop, holds,
-// then resets. Unpriced requests show an em dash and add nothing. Reduced
-// motion: the final blocked state.
+// Card 3: a small emblem under a very faint beam, a 150 px ring and exactly
+// three request rows. The ring fills over 8 s (ease-in-out) to the per-run cap,
+// the third request shows "blocked before sent", the frame holds 1.5 s, then the
+// loop resets. An unpriced request would show an em dash. Reduced motion: the
+// final, blocked frame.
 
-const R = 46
+const R = 66
 const C = 2 * Math.PI * R
+const STATE = { queued: 'queued', booked: 'booked', unpriced: 'unpriced', blocked: 'blocked before sent' } as const
 
 export const SpendGuard: React.FC = () => {
   const ref = useRef<HTMLDivElement>(null)
   const { active, reduced } = useLoopWhenVisible(ref)
-  const t = useLoopClock(active, 0.2)
-  const f = budgetFrame(t, reduced)
-  const fill = Math.min(1, f.spentUsd / f.capUsd)
-  const total = budgetPlan().rows.length
+  const t = useLoopClock(active, 0.1)
+  const f = spendFrame(t, reduced)
+  const fill = Math.min(1, f.valueUsd / f.capUsd)
 
   return (
-    <div ref={ref} className={`rp-g-spend${active ? ' is-live' : ''}${f.blocked ? ' is-blocked' : ''}`}>
-      <SampleChip className="rp-g-sample" />
-      <div className="rp-g-beam" aria-hidden="true" />
-      <div className="rp-g-emblem-wrap" aria-hidden="true">
-        <svg className="rp-g-circuit" viewBox="0 0 400 120" preserveAspectRatio="none">
-          <path d="M0 70 H120 L140 54 H170" />
-          <path d="M400 70 H280 L260 54 H230" />
-          <path d="M0 92 H90 L112 72 H160" className="is-faint" />
-          <path d="M400 92 H310 L288 72 H240" className="is-faint" />
-        </svg>
+    <div ref={ref} className={`rp-g-spend${f.blocked ? ' is-blocked' : ''}`}>
+      <div className="rp-g-spend-top" aria-hidden="true">
+        <span className="rp-g-beam" />
         <span className="rp-g-emblem" />
       </div>
-
-      <div className="rp-g-ring" role="img" aria-label={`Per-run ceiling ${formatUsd(f.capUsd, 2)}. Booked ${formatUsd(f.spentUsd)}.${f.blocked ? ' The next request was blocked before it was sent.' : ''}`}>
-        <svg viewBox="0 0 120 120" aria-hidden="true">
-          <circle cx="60" cy="60" r={R} className="rp-g-ring-track" />
-          <circle cx="60" cy="60" r={R} className="rp-g-ring-fill" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} transform="rotate(-90 60 60)" />
+      <div
+        className="rp-g-ring"
+        role="img"
+        aria-label={`${formatUsd(f.valueUsd, 2)} of the ${formatUsd(f.capUsd, 2)} per-run ceiling booked.${f.blocked ? ' The next request was blocked before it was sent.' : ''}`}
+      >
+        <svg viewBox="0 0 150 150" aria-hidden="true">
+          <circle cx="75" cy="75" r={R} className="rp-g-ring-track" />
+          <circle cx="75" cy="75" r={R} className="rp-g-ring-fill" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} transform="rotate(-90 75 75)" />
         </svg>
         <div className="rp-g-ring-label" aria-hidden="true">
-          <strong>{formatUsd(f.spentUsd, 2)}</strong>
-          <span>of {formatUsd(BUDGET_DEFAULTS.perRunUsd, 2)} per run</span>
+          <strong>{formatUsd(f.valueUsd, 2)}</strong>
+          <span>of {formatUsd(f.capUsd, 2)} per run</span>
         </div>
       </div>
-
-      <ol className="rp-g-requests" aria-label="Sample requests checked against the cap">
-        {Array.from({ length: total }, (_, i) => {
-          const r = f.rows[i]
-          return (
-            <li key={i} className={r ? (r.blocked ? 'is-blocked' : r.counted ? 'is-booked' : 'is-dash') : 'is-pending'}>
-              <span className="rp-g-req-id">{r ? r.id : '·'}</span>
-              <span className="rp-g-req-amt">{r ? r.label : ''}</span>
-              <span className="rp-g-req-state">{r ? (r.blocked ? 'blocked before sent' : r.counted ? 'booked' : 'unpriced') : ''}</span>
-            </li>
-          )
-        })}
+      <ol className="rp-g-requests" aria-label="Requests checked against the ceiling">
+        {f.rows.map((r) => (
+          <li key={r.id} className={`is-${r.state}`}>
+            <i className="rp-g-dot" aria-hidden="true" />
+            <span className="rp-g-req-id">{r.id}</span>
+            <span className="rp-g-req-amt">{r.label}</span>
+            <span className="rp-g-req-state">{STATE[r.state]}</span>
+          </li>
+        ))}
       </ol>
     </div>
   )

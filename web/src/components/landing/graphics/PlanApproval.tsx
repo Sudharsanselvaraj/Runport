@@ -1,56 +1,44 @@
 import React, { useRef } from 'react'
-import { Check, Fingerprint, X } from 'lucide-react'
 import { PLAN } from '../../../data/sampleRun'
-import { SampleChip } from '../SampleChip'
-import { PointerParallax, useLoopClock, useLoopWhenVisible } from '../motionKit'
+import { useLoopClock, useLoopWhenVisible } from '../motionKit'
 import { planFrame } from './frames'
 
-// Card 2: three slightly rotated glass panels (plan, approval, stale) that
-// float and follow the pointer. Every 3 seconds the demo either changes the
-// plan (new fingerprint, so the old approval is rejected) or records a new
-// approval for it. frames.planFrame guarantees "approved" only ever appears when
-// the approval matches the current fingerprint. Reduced motion shows the
-// rejected state, which carries both fingerprints.
+// Card 2: one glass card with the plan name, the first 12 characters of its
+// SHA-256 fingerprint and a status pill. 10 s loop: Approved for A; the plan
+// changes and the fingerprint morphs to B character by character (600 ms) while
+// the pill reads Checking; then Rejected, with a one-line reason; then reset.
+// frames.planFrame never pairs Approved with a changed fingerprint (tested).
+// Reduced motion: the rejected frame.
 
-const sha = (fp: string) => `sha256:${fp}…`
+const LABEL = { approved: 'Approved', checking: 'Checking', rejected: 'Rejected' } as const
 
 export const PlanApproval: React.FC = () => {
   const ref = useRef<HTMLDivElement>(null)
   const { active, reduced } = useLoopWhenVisible(ref)
-  const t = useLoopClock(active, 0.25)
+  const t = useLoopClock(active, 0.05)
   const f = planFrame(t, reduced)
-  const ok = f.status === 'approved'
 
   return (
-    <div ref={ref} className={`rp-g-plan${active ? ' is-live' : ''}`}>
-      <SampleChip className="rp-g-sample" />
-      <PointerParallax className="rp-g-plan-stack">
-        <div className="rp-g-panel is-stale" style={{ '--d': 0.4, '--r': '-7deg' } as React.CSSProperties}>
-          <span className="rp-g-panel-kicker">Superseded plan</span>
-          <code>{sha(f.stale)}</code>
+    <div ref={ref} className="rp-g-plan">
+      <div className="rp-g-glass">
+        <div className="rp-g-glass-row">
+          <span className="rp-g-mono-label">Plan</span>
+          <span className={`rp-g-pill is-${f.status}`}>{LABEL[f.status]}</span>
         </div>
-        <div className="rp-g-panel is-plan" style={{ '--d': 0.8, '--r': '4deg' } as React.CSSProperties}>
-          <span className="rp-g-panel-kicker">
-            <Fingerprint size={12} aria-hidden="true" /> Plan · {PLAN.name} {PLAN.version}
-          </span>
-          <code key={f.fingerprint} className="rp-g-fp">
-            {sha(f.fingerprint)}
-          </code>
-          <span className="rp-g-panel-meta">models · routes · dataset · template · caps</span>
-        </div>
-        <div className={`rp-g-panel is-approval ${ok ? 'is-ok' : 'is-bad'}`} style={{ '--d': 1.3, '--r': '-2deg' } as React.CSSProperties}>
-          <div key={`${f.status}-${f.approvedFor}-${f.fingerprint}`} className="rp-g-flip">
-            <span className="rp-g-panel-kicker">
-              {ok ? <Check size={12} aria-hidden="true" /> : <X size={12} aria-hidden="true" />}
-              {ok ? 'Approved' : 'Rejected'}
+        <p className="rp-g-planname">
+          {PLAN.name} {PLAN.version}
+        </p>
+        <code className="rp-g-fp" aria-label={`Fingerprint sha256 ${f.shown}`}>
+          <span className="rp-g-fp-pre">sha256:</span>
+          {f.shown.split('').map((ch, i) => (
+            <span key={i} className={f.changed && ch !== f.approvedFor[i] ? 'is-new' : undefined}>
+              {ch}
             </span>
-            <span className="rp-g-panel-body">{ok ? `Typed approval for ${sha(f.approvedFor)}` : `Approval was for ${sha(f.approvedFor)}; the plan is now ${sha(f.fingerprint)}`}</span>
-          </div>
-        </div>
-      </PointerParallax>
-      <p className="rp-sr-only" aria-live="off">
-        Approval is bound to the plan fingerprint. When the plan changes, the earlier approval is rejected until a new one is given.
-      </p>
+          ))}
+        </code>
+        <p className={`rp-g-change${f.changed ? ' is-on' : ''}`}>Plan changed</p>
+        <p className={`rp-g-reason${f.reason ? ' is-on' : ''}`}>{f.reason ?? ' '}</p>
+      </div>
     </div>
   )
 }

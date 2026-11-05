@@ -212,6 +212,15 @@ export const TRACE = {
 
 export const CLASSES = ['billing', 'tech_support', 'account', 'shipping', 'other'] as const
 
+/** Short display names, used everywhere a class is labelled (bars, matrix rows and columns). */
+export const CLASS_LABELS: Record<(typeof CLASSES)[number], string> = {
+  billing: 'billing',
+  tech_support: 'tech',
+  account: 'account',
+  shipping: 'shipping',
+  other: 'other',
+}
+
 export const CONFUSION: number[][] = [
   [60, 2, 1, 1, 0],
   [2, 55, 2, 0, 1],
@@ -232,19 +241,17 @@ export const confusionTotals = (m: number[][] = CONFUSION) => ({
 
 /**
  * Estimated cost of each request in a sample run, in order. null = the target
- * reports no price (shown as an em dash, not counted). The ceiling is
- * BUDGET_DEFAULTS.perRunUsd; the last request would cross it and is blocked
- * before it is sent.
+ * reports no price (shown as an em dash, never counted). The ceiling is
+ * BUDGET_DEFAULTS.perRunUsd: the first two requests book exactly up to it, so the
+ * third would cross it and is blocked before it is sent.
  */
 export const SPEND_STEPS: { id: string; usd: number | null }[] = [
-  { id: 'req-01', usd: 0.21 },
-  { id: 'req-02', usd: 0.18 },
-  { id: 'req-03', usd: null },
-  { id: 'req-04', usd: 0.24 },
-  { id: 'req-05', usd: 0.19 },
-  { id: 'req-06', usd: 0.22 },
+  { id: 'req-01', usd: 0.55 },
+  { id: 'req-02', usd: 0.45 },
+  { id: 'req-03', usd: 0.12 },
 ]
 
 // ---------- plan card: fingerprints the approval demo cycles through ----------
 
-export const PLAN_FINGERPRINTS = ['9f2c41d0', 'b71e09a4', '3c58d2f7'] as const
+/** First 12 hex characters of the plan fingerprint before (A) and after (B) the plan changes. */
+export const PLAN_FINGERPRINTS = ['9f2c41d07be3', 'b71e09a45c1f'] as const
