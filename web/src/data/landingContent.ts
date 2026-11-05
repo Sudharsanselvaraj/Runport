@@ -44,14 +44,6 @@ export interface PricingPlan {
   image: string
 }
 
-export interface WayItem {
-  kind: 'cli' | 'tui' | 'web'
-  title: string
-  body: string
-  image: string
-  action: { type: 'copy'; text: string } | { type: 'link'; label: string; href: string }
-}
-
 export interface PillarTab {
   key: 'spend' | 'truth' | 'local'
   label: string
@@ -92,7 +84,7 @@ export const LANDING_CONTENT = {
     links: [
       { label: 'Product', href: '#product' },
       { label: 'Features', href: '#features' },
-      { label: 'Install', href: '#ways' },
+      { label: 'Install', href: `${DOCS}#/installation` },
       { label: 'Docs', href: DOCS },
     ] as NavItem[],
     ctaSecondary: 'GitHub',
@@ -306,37 +298,6 @@ export const LANDING_CONTENT = {
     footnote: 'Apache-2.0 · No account · No telemetry.',
   },
 
-  // "Three ways to run": the three local interfaces. Window contents mirror real
-  // command output (validate-dataset on the bundled seed dataset, default ceilings).
-  waysToRun: {
-    titleA: 'Benchmark',
-    titleB: 'your way.',
-    subheading: 'Three ways to run Runport, with the same guards in every one.',
-    items: [
-      {
-        kind: 'cli',
-        title: 'Command line',
-        body: 'Validate datasets, run benchmarks and reconcile spend straight from your terminal.',
-        image: '/assets/landing/pricing-1.jpg',
-        action: { type: 'copy', text: 'uv run runport' },
-      },
-      {
-        kind: 'tui',
-        title: 'Terminal UI',
-        body: 'A full-screen dashboard for spend, ceilings, model readiness and error rates.',
-        image: '/assets/landing/pricing-2.png',
-        action: { type: 'link', label: 'Read the quickstart', href: `${DOCS}#/quickstart` },
-      },
-      {
-        kind: 'web',
-        title: 'Web dashboard',
-        body: 'A local FastAPI and React dashboard on 127.0.0.1. Nothing leaves your machine.',
-        image: '/assets/landing/pricing-3.jpg',
-        action: { type: 'link', label: 'View on GitHub', href: REPO },
-      },
-    ] as WayItem[],
-  },
-
   // Tabbed pillars (spend, truth, local). Every row maps to shipped behaviour;
   // mockup numbers are illustrative and labelled "Sample" on the page.
   // Four illustrated cards under "Why Runport". Every claim maps to shipped code:
@@ -505,7 +466,7 @@ export const LANDING_CONTENT = {
         icon: 'monitor' as FeatureIcon,
         links: [
           { label: 'Features', href: '#features' },
-          { label: 'Install', href: '#ways' },
+          { label: 'Install', href: `${DOCS}#/installation` },
         ],
       },
       {
