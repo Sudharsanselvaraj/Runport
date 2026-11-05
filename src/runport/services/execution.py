@@ -243,6 +243,8 @@ class ExecutionService:
             raise ApprovalError(f"No plan '{plan_id}'.")
         if rec.summary.get("blockers"):
             raise ApprovalError("Plan has blockers and cannot be approved: " + "; ".join(rec.summary["blockers"]))
+        if channel == "local_only" and any(t.get("billing") != BillingMode.LOCAL.value for t in rec.summary.get("per_target", [])):
+            raise ApprovalError("local_only approval is only for plans whose every target runs locally; a person must approve this plan.")
         return self._summary(self.approvals.approve(plan_id, fingerprint, channel=channel, approver=approver))
 
     # -- execution -------------------------------------------------------------------------------

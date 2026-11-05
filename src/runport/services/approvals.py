@@ -27,7 +27,9 @@ APPROVED = "APPROVED"
 CONSUMED = "CONSUMED"
 
 # Channels through which a person (or an operator-held CI secret) approves spend. "mcp" and "sdk" are absent on purpose.
-APPROVAL_CHANNELS = frozenset({"cli_interactive", "web_ui", "ci_token"})
+# "local_only" approves only plans whose every target is LOCAL (nothing leaves the machine, nothing can bill);
+# ExecutionService enforces that condition before using it.
+APPROVAL_CHANNELS = frozenset({"cli_interactive", "web_ui", "ci_token", "local_only"})
 
 DEFAULT_PENDING_TTL_S = 15 * 60
 DEFAULT_APPROVED_TTL_S = 15 * 60
@@ -106,6 +108,11 @@ class ApprovalStore:
     def approve(self, plan_id: str, fingerprint: str, channel: str, approver: str, ttl_s: float = DEFAULT_APPROVED_TTL_S) -> ApprovalRecord:
         if channel not in APPROVAL_CHANNELS:
             raise ApprovalError(f"Channel '{channel}' cannot approve live spend; a person must approve through the CLI, the Web UI or a CI token.")
+        if channel == "local_only":
+            rec = self.get(plan_id)
+            targets = (rec.summary.get("per_target") if rec else None) or []
+            if not targets or any(t.get("billing") != "local" for t in targets):
+                raise ApprovalError("local_only approval is only for plans whose every target runs locally.")
         now = self._clock()
         with self.db.get_connection() as conn:
             cur = conn.execute(
