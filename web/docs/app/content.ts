@@ -14,7 +14,7 @@ export const NAV: NavGroup[] = [
   { title: 'Benchmarking', pages: ['creating-benchmarks', 'executing-runs', 'rag-benchmarks', 'reproducibility'] },
   { title: 'Evaluation', pages: ['scorers', 'classification', 'generation', 'extraction', 'rag-evaluation', 'ground-truth'] },
   { title: 'Metrics and analysis', pages: ['latency', 'token-usage', 'cost-analysis', 'quality-metrics'] },
-  { title: 'Integrations', pages: ['dify', 'langgraph', 'n8n', 'flowise', 'langflow', 'python-integrations', 'plugins'] },
+  { title: 'Integrations', pages: ['dify', 'langgraph', 'n8n', 'flowise', 'langflow', 'mcp', 'python-integrations', 'plugins'] },
   { title: 'CLI reference', pages: ['cli-overview', 'cli-commands', 'cli-budget', 'cli-examples'] },
   { title: 'Configuration', pages: ['workspace-file', 'environment-variables', 'budget-guardrails', 'approval-policies', 'provider-configuration'] },
   { title: 'Results and reports', pages: ['understanding-results', 'comparing-runs', 'exporting-traces', 'dashboards'] },

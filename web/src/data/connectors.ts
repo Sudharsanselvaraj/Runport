@@ -29,6 +29,7 @@ export const CONNECTORS: Connector[] = [
   { id: 'langflow', name: 'Langflow', status: 'experimental', module: 'connectors/langflow.py', logo: `${L}langflow.svg` },
   { id: 'n8n', name: 'n8n', status: 'experimental', module: 'connectors/n8n.py', logo: `${L}n8n.svg` },
   { id: 'langgraph', name: 'LangGraph', status: 'experimental', module: 'connectors/langgraph.py', logo: `${L}langgraph.svg` },
+  { id: 'mcp', name: 'MCP server', status: 'experimental', module: 'connectors/mcp.py', icon: 'terminal' },
 ]
 
 export const CONNECTOR_COUNTS = {
