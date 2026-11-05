@@ -110,7 +110,7 @@ interface PlanData {
   plan_fingerprint: string
   dataset_name: string
   projected_cases: number
-  projected_cost_usd: number
+  projected_cost_usd: number | null
   targets: any[]
   is_permitted: boolean
   blockers: string[]
@@ -215,10 +215,11 @@ export default function App() {
   // A target probe sends a real, possibly billed request, so the API asks for approval of an exact plan first.
   const [testApproval, setTestApproval] = useState<{
     plan_fingerprint: string
-    plan_nonce: string
+    plan_id: string
     expected_confirmation_phrase: string
     message: string
-    per_case_cap_usd: string
+    projected_cost_usd: number | null
+    blockers: string[]
   } | null>(null)
 
   // Screen 4: Dataset preview & upload
@@ -388,7 +389,7 @@ export default function App() {
   }
 
   // Target Tester
-  const handleTestTarget = async (approval?: { plan_fingerprint: string; plan_nonce: string }) => {
+  const handleTestTarget = async (approval?: { plan_fingerprint: string; plan_id: string }) => {
     setTestingRunning(true)
     setTestResult(null)
     try {
@@ -405,7 +406,7 @@ export default function App() {
           },
           input_payload: { query: testPrompt },
           approve_token: approval?.plan_fingerprint,
-          plan_nonce: approval?.plan_nonce,
+          plan_id: approval?.plan_id,
         }),
       })
       const body = await res.json()
@@ -998,11 +999,14 @@ export default function App() {
                       <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Approval required</div>
                       <div style={{ marginBottom: '0.5rem' }}>{testApproval.message}</div>
                       <div style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                        Spend cap for this request: ${testApproval.per_case_cap_usd}. Plan{' '}
+                        Worst-case spend: {testApproval.projected_cost_usd != null ? `$${testApproval.projected_cost_usd.toFixed(4)}` : 'none expected (local or declared free)'}. Plan{' '}
                         <code>{testApproval.plan_fingerprint.slice(0, 16)}</code>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button className="btn btn-primary" onClick={() => handleTestTarget(testApproval)} disabled={testingRunning}>
+                        {testApproval.blockers?.length > 0 && (
+                          <div style={{ color: 'var(--accent-red, #d33)' }}>Blocked: {testApproval.blockers.join(' ')}</div>
+                        )}
+                        <button className="btn btn-primary" onClick={() => handleTestTarget(testApproval)} disabled={testingRunning || testApproval.blockers?.length > 0}>
                           Approve and send
                         </button>
                         <button className="btn" onClick={() => setTestApproval(null)} disabled={testingRunning}>
@@ -1291,7 +1295,7 @@ export default function App() {
 
                 <div className="grid-3" style={{ marginBottom: '1rem' }}>
                   <div>Projected Cases: <strong>{planData.projected_cases}</strong></div>
-                  <div>Projected Upper Spend: <strong>${planData.projected_cost_usd.toFixed(4)}</strong></div>
+                  <div>Projected Upper Spend: <strong>{planData.projected_cost_usd != null ? `$${planData.projected_cost_usd.toFixed(4)}` : 'unknown'}</strong></div>
                   <div>Dataset: <strong>{planData.dataset_name}</strong></div>
                 </div>
 
@@ -1311,7 +1315,7 @@ export default function App() {
                           <td><strong>{t.display_name}</strong></td>
                           <td>{t.input_price_per_1m ? `$${t.input_price_per_1m.toFixed(4)}` : 'None'}</td>
                           <td>{t.output_price_per_1m ? `$${t.output_price_per_1m.toFixed(4)}` : 'None'}</td>
-                          <td style={{ fontFamily: 'monospace' }}>${t.projected_cost_usd.toFixed(4)}</td>
+                          <td style={{ fontFamily: 'monospace' }}>{t.projected_cost_usd != null ? `$${t.projected_cost_usd.toFixed(4)}` : 'none expected'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1380,13 +1384,30 @@ export default function App() {
 
                 {runResult && (
                   <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <strong>Execution Complete</strong>
-                      <span className="badge badge-success">Provenance: {runResult.provenance}</span>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                      Run ID: {runResult.run_id} | Total Cases: {runResult.cases_evaluated || runResult.cases_planned} | Spend: ${runResult.total_spend_usd || '0.0000'}
-                    </div>
+                    {runResult.detail ? (
+                      <div style={{ fontSize: '0.8rem' }}>
+                        <strong>Not executed:</strong> {typeof runResult.detail === 'string' ? runResult.detail : JSON.stringify(runResult.detail)}
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <strong>{runResult.status === 'halted' ? 'Execution halted' : 'Execution complete'}</strong>
+                          <span className={`badge ${runResult.status === 'halted' ? 'badge-danger' : 'badge-success'}`}>Provenance: {runResult.provenance}</span>
+                        </div>
+                        {Array.isArray(runResult.runs) ? (
+                          runResult.runs.map((r: any) => (
+                            <div key={r.run_id} style={{ fontSize: '0.8rem', fontFamily: 'monospace', marginBottom: '0.25rem' }}>
+                              {r.target_id}: run {r.run_id} | ok {r.successful_cases}/{r.total_cases} | skipped {r.skipped_cases} | booked ${r.total_spend_usd}
+                              {r.halted_reason && <div style={{ color: 'var(--accent-red, #d33)' }}>{r.halted_reason}</div>}
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                            Run ID: {runResult.run_id} | Total Cases: {runResult.cases_evaluated} | Spend: ${runResult.total_spend_usd}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1982,7 +2003,7 @@ export default function App() {
             <div style={{ background: 'var(--bg-input)', padding: '0.85rem', borderRadius: 6, marginBottom: '1rem', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
               <div>Plan Fingerprint: <strong style={{ color: 'var(--accent-blue)', fontFamily: 'monospace' }}>{planData.plan_fingerprint}</strong></div>
               <div>Projected Cases: <strong>{planData.projected_cases}</strong></div>
-              <div>Projected Max Spend: <strong>${planData.projected_cost_usd.toFixed(4)}</strong></div>
+              <div>Projected Max Spend: <strong>{planData.projected_cost_usd != null ? `$${planData.projected_cost_usd.toFixed(4)}` : 'unknown'}</strong></div>
             </div>
 
             <div className="form-group">

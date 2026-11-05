@@ -85,25 +85,30 @@ def _plan(client, body):
     res = client.post("/api/targets/test", json=body)
     assert res.status_code == 428, res.text
     d = res.json()["detail"]
-    return d["plan_fingerprint"], d["plan_nonce"]
+    return d["plan_fingerprint"], d["plan_id"]
+
+
+def _send(client, body, fp, plan_id):
+    return client.post("/api/targets/test", json={**body, "approve_token": fp, "plan_id": plan_id})
 
 
 def test_test_target_without_approval_sends_nothing(client, fake_workflow):
     res = client.post("/api/targets/test", json=_http_target_payload())
     assert res.status_code == 428
     detail = res.json()["detail"]
-    assert detail["status"] == "approval_required"
+    assert detail["status"] == "PENDING"
     assert len(detail["plan_fingerprint"]) == 64
+    assert detail["plan_id"].startswith("plan-")
     assert detail["expected_confirmation_phrase"].endswith(detail["plan_fingerprint"])
     assert fake_workflow == []
     assert _ledger() == []
 
 
 def test_test_target_http_runs_through_guarded_runner(client, fake_workflow):
-    fp, nonce = _plan(client, _http_target_payload())
+    fp, plan_id = _plan(client, _http_target_payload())
 
-    res = client.post("/api/targets/test", json={**_http_target_payload(), "approve_token": fp, "plan_nonce": nonce})
-    assert res.status_code == 200
+    res = _send(client, _http_target_payload(), fp, plan_id)
+    assert res.status_code == 200, res.text
     data = res.json()
     assert data["is_success"] is True
     assert data["output_text"] == "Workflow response from test"
@@ -115,33 +120,57 @@ def test_test_target_http_runs_through_guarded_runner(client, fake_workflow):
     assert len(ledger) == 1 and ledger[0]["run_id"] == data["run_id"]
     assert client.get(f"/api/runs/{data['run_id']}").status_code == 200
 
-    reuse = client.post("/api/targets/test", json={**_http_target_payload(), "approve_token": fp, "plan_nonce": nonce})
-    assert reuse.status_code == 428  # the nonce was redeemed; a fresh plan is issued instead
+    reuse = _send(client, _http_target_payload(), fp, plan_id)
+    assert reuse.status_code == 403  # approval already consumed
     assert len(fake_workflow) == 1
 
-    # The same target and prompt can be tested again with a new approval.
-    fp2, nonce2 = _plan(client, _http_target_payload())
+    # The same target and prompt can be tested again with a new plan and approval.
+    fp2, plan2 = _plan(client, _http_target_payload())
     assert fp2 != fp
-    again = client.post("/api/targets/test", json={**_http_target_payload(), "approve_token": fp2, "plan_nonce": nonce2})
-    assert again.status_code == 200 and len(fake_workflow) == 2
+    assert _send(client, _http_target_payload(), fp2, plan2).status_code == 200 and len(fake_workflow) == 2
 
 
-def test_test_target_accepts_ui_approval_token(client, fake_workflow):
-    fp, nonce = _plan(client, _http_target_payload("ui"))
-    token = client.post("/api/runs/approve", json={"plan_fingerprint": fp, "timestamp": "2026-11-05T00:00:00Z"}).json()["approval_token"]
-    res = client.post("/api/targets/test", json={**_http_target_payload("ui"), "approve_token": token, "plan_nonce": nonce})
-    assert res.status_code == 200
-    assert len(fake_workflow) == 1
+def test_test_target_unpriced_remote_is_unresolved_not_zero(client, fake_workflow):
+    body = _http_target_payload()
+    body["target"].pop("pricing")
+    fp, plan_id = _plan(client, body)
+    data = _send(client, body, fp, plan_id).json()
+    assert data["cost_basis"] == "UNRESOLVED" and data["cost_usd"] is None
+    assert data["halted_reason"]
+    ledger = _ledger()
+    assert len(ledger) == 1 and ledger[0]["is_unresolved"] == 1
+
+
+def test_test_target_localhost_unpriced_books_unavailable(client, fake_workflow):
+    body = _http_target_payload(url="http://127.0.0.1:9/agent")
+    body["target"].pop("pricing")
+    from runport.api.routes import targets as targets_route
+
+    orig = targets_route._build_connector
+
+    def local_ok(t, pricing):
+        from runport.connectors.http_workflow import HttpWorkflowConnector
+
+        return HttpWorkflowConnector(target_id=t.target_id, name=t.name, url=t.url, pricing=pricing, allow_localhost=True)
+
+    targets_route._build_connector = local_ok
+    try:
+        fp, plan_id = _plan(client, body)
+        data = _send(client, body, fp, plan_id).json()
+    finally:
+        targets_route._build_connector = orig
+    assert data["cost_basis"] == "UNAVAILABLE" and data["cost_usd"] is None
+    assert _ledger()[0]["is_unresolved"] == 0
 
 
 def test_test_target_approval_is_bound_to_target_and_payload(client, fake_workflow):
-    fp, nonce = _plan(client, _http_target_payload("first"))
-    other_payload = client.post("/api/targets/test", json={**_http_target_payload("second"), "approve_token": fp, "plan_nonce": nonce})
-    other_url = client.post(
-        "/api/targets/test", json={**_http_target_payload("first", url="https://other.example.com/x"), "approve_token": fp, "plan_nonce": nonce}
-    )
-    forged_nonce = client.post("/api/targets/test", json={**_http_target_payload("first"), "approve_token": fp, "plan_nonce": "made-up"})
-    assert other_payload.status_code == 428 and other_url.status_code == 428 and forged_nonce.status_code == 428
+    fp, plan_id = _plan(client, _http_target_payload("first"))
+    other_payload = _send(client, _http_target_payload("second"), fp, plan_id)
+    other_url = _send(client, _http_target_payload("first", url="https://other.example.com/x"), fp, plan_id)
+    wrong_fp = _send(client, _http_target_payload("first"), "0" * 64, plan_id)
+    unknown_plan = _send(client, _http_target_payload("first"), fp, "plan-doesnotexist")
+    for r in (other_payload, other_url, wrong_fp, unknown_plan):
+        assert r.status_code == 403, r.text
     assert fake_workflow == []
 
 
@@ -151,10 +180,12 @@ def test_test_target_blocked_by_unresolved_spend(client, fake_workflow):
     from runport.storage.db import DatabaseManager
 
     BudgetService(db=DatabaseManager(settings.db_path), policy=settings.budget).record_unresolved_spend("tx-open", "m", "p", "unreconciled")
-    fp, nonce = _plan(client, _http_target_payload())
-    res = client.post("/api/targets/test", json={**_http_target_payload(), "approve_token": fp, "plan_nonce": nonce})
-    assert res.status_code == 403
-    assert "Unresolved spend" in res.json()["detail"]
+    res = client.post("/api/targets/test", json=_http_target_payload())
+    detail = res.json()["detail"]
+    assert any("unresolved" in b.lower() for b in detail["blockers"])
+    approve = _send(client, _http_target_payload(), detail["plan_fingerprint"], detail["plan_id"])
+    assert approve.status_code == 403
+    assert "blockers" in approve.json()["detail"]
     assert fake_workflow == []
 
 
@@ -213,9 +244,10 @@ def test_create_plan_and_fingerprint(client):
     assert res.status_code == 200
     plan = res.json()
     assert "plan_fingerprint" in plan
-    assert len(plan["plan_fingerprint"]) == 16
+    assert len(plan["plan_fingerprint"]) == 64
+    assert plan["plan_id"].startswith("plan-") and plan["status"] == "PENDING"
     assert plan["projected_cases"] == 5
-    assert plan["projected_cost_usd"] >= 0.0
+    assert plan["projected_cost_usd"] > 0.0
     assert "RUN LIVE" in plan["expected_confirmation_phrase"]
 
 
@@ -261,3 +293,51 @@ def test_execute_run_live_rejects_mismatched_token(client):
     res = client.post("/api/runs", json=payload)
     # Fail closed: mismatched token
     assert res.status_code == 403
+
+
+def test_approving_an_unknown_fingerprint_is_refused(client):
+    res = client.post("/api/runs/approve", json={"plan_fingerprint": "abcd" * 16, "user": "Tester", "timestamp": "2026-11-05T00:00:00Z"})
+    assert res.status_code == 404
+
+
+def test_live_api_run_executes_through_execution_service(client, fake_workflow, monkeypatch):
+    """POST /api/plan -> /api/runs/approve -> /api/runs executes a workspace target via GenericRunner and books spend."""
+    from runport.core.workspace import BudgetConfig, TargetConfig, WorkspaceConfig
+
+    ws = WorkspaceConfig(
+        budget=BudgetConfig(),
+        targets=[
+            TargetConfig(
+                id="support-agent",
+                type="http_workflow",
+                endpoint="https://agent.example.com/chat",
+                options={"pricing": {"fixed_usd_per_request": "0.002"}},
+            )
+        ],
+    )
+    monkeypatch.setattr("runport.services.execution.load_workspace_config", lambda: ws)
+
+    plan = client.post("/api/plan", json={"target_ids": ["support-agent"], "dataset_name": "synthetic_seed_eval.jsonl", "sample_size": 2}).json()
+    assert plan["is_permitted"] and fake_workflow == []
+
+    body = {
+        "target_ids": ["support-agent"],
+        "dataset_name": "synthetic_seed_eval.jsonl",
+        "sample_size": 2,
+        "plan_fingerprint": plan["plan_fingerprint"],
+        "is_replay": False,
+    }
+    unapproved = client.post("/api/runs", json={**body, "approve_token": plan["plan_id"]})
+    assert unapproved.status_code == 403 and fake_workflow == []
+
+    token = client.post("/api/runs/approve", json={"plan_fingerprint": plan["plan_fingerprint"], "user": "Tester", "timestamp": "t"}).json()["approval_token"]
+    res = client.post("/api/runs", json={**body, "approve_token": token})
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "completed" and data["provenance"] == "LIVE"
+    assert data["runs"][0]["successful_cases"] == 2
+    assert len(fake_workflow) == 2
+    assert len(_ledger()) == 2
+
+    again = client.post("/api/runs", json={**body, "approve_token": token})
+    assert again.status_code == 403 and len(fake_workflow) == 2
