@@ -14,7 +14,7 @@ Sections 1 to 9 below are the original audit and design; this section records wh
 
 | Item | Status | Where |
 |---|---|---|
-| F1 targets unreachable from interfaces | **Done.** CLI (`benchmark --target`), Web API (`/api/plan`, `/api/runs`), SDK and MCP server all run through `ExecutionService` → `GenericRunner` | `services/execution.py`, `cli/commands/benchmarks.py`, `api/routes/`, `sdk.py`, `mcp_server/` |
+| F1 targets unreachable from interfaces | **Done.** CLI (`benchmark --target`, `benchmark-rag`), Web API (`/api/plan`, `/api/runs`), SDK and MCP server all run through `ExecutionService` → `GenericRunner` | `services/execution.py`, `cli/commands/benchmarks.py`, `api/routes/`, `sdk.py`, `mcp_server/` |
 | F2 `/api/targets/test` bypass | **Done** (plan → approve → execute) | `api/routes/targets.py` |
 | F3 trace zeros | **Done** | `traces/models.py`, `traces/importer.py`, `traces/analyzer.py` |
 | F4 overclaimed capabilities | **Done**; claims are now generated from one registry and checked by tests | `connectors/registry.py`, `tests/test_capability_registry.py` |
@@ -27,7 +27,7 @@ Sections 1 to 9 below are the original audit and design; this section records wh
 | `/api/runs` live returned "queued" without running | **Done**: executes | `api/routes/runs.py` |
 | MCP server (4.2) | **Done** (stdio, hand-written JSON-RPC; tested with the official SDK client) | `mcp_server/server.py`, `tests/test_mcp_server.py` |
 | Workspace `targets:` (5.1) | **Done** using the existing `TargetConfig` list, `$NAME`/`${NAME}` secrets | `core/workspace.py`, `connectors/registry.py` |
-| RAG and classification runners on GenericRunner | **Not done**: they keep their own guarded loops (live authorization, preflight, confidentiality gate, unresolved booking) | `rag/runner.py`, `classification/runner.py` |
+| RAG and classification runners on GenericRunner | **Done.** `RagPipelineTarget` (retrieval + generation) and the classification runner execute via `GenericRunner`; `benchmark-rag --live` plans and approves through `ExecutionService` (one plan for `--compare-with`). The only `provider.generate()` call left is inside `OpenRouterTarget` | `rag/target.py`, `rag/runner.py`, `classification/runner.py`, `cli/commands/benchmarks.py` |
 | `runport smoke-test --live` | Approves but sends nothing (unchanged); not an execution path | `cli/commands/benchmarks.py` |
 | TypeScript SDK, OTel ingestion, framework adapters, JUnit, CI action | Not started (M4–M6) | — |
 
