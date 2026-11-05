@@ -16,14 +16,6 @@ export interface ShowcaseStep {
   mockup: MockupKind
 }
 
-export interface CarouselCard {
-  icon: 'cpu' | 'database' | 'workflow' | 'wallet' | 'activity' | 'git-compare'
-  title: string
-  body: string
-  mockup: MockupKind
-  tint: 'olive' | 'teal'
-}
-
 export interface Stat {
   value: number
   prefix?: string
@@ -196,18 +188,40 @@ export const LANDING_CONTENT = {
     ] as ShowcaseStep[],
   },
 
-  carousel: {
-    titleA: 'Everything a benchmark needs.',
-    titleB: 'Nothing it doesn’t.',
-    cards: [
-      { icon: 'cpu', title: 'Models', body: 'Compare providers and local models side by side with catalog rates you can verify.', mockup: 'models', tint: 'olive' },
-      { icon: 'workflow', title: 'Workflows', body: 'Benchmark Dify, Flowise, n8n, LangGraph or any HTTP endpoint as a first-class target.', mockup: 'connectors', tint: 'teal' },
-      { icon: 'database', title: 'Datasets', body: 'Validate schemas, catch split leakage, and hash sources before and after every run.', mockup: 'datasets', tint: 'olive' },
-      { icon: 'wallet', title: 'Budgets', body: 'Total, per-run and per-case ceilings that halt execution before a request can overspend.', mockup: 'ledger', tint: 'olive' },
-      { icon: 'activity', title: 'Traces', body: 'Inspect every request and response with secrets scrubbed, then export sanitized ZIPs.', mockup: 'traces', tint: 'teal' },
-      { icon: 'git-compare', title: 'Compare', body: 'Put two runs next to each other: accuracy, latency percentiles, tokens and cost.', mockup: 'compare', tint: 'teal' },
-    ] as CarouselCard[],
+  // Bento feature section. The headline options considered are logged in
+  // docs/PROGRESS_LANDING.md. Card graphics live in components/landing/graphics/.
+  bento: {
+    eyebrow: 'What Runport does',
+    titleA: 'From plan to proof.',
+    titleB: 'Nothing skipped, nothing guessed.',
+    subheading: 'Targets, approvals, spend limits and scores are wired together, so every result can show how it was produced.',
+    cards: {
+      targets: {
+        title: 'Targets',
+        body: 'Models, prompts and workflows run behind one target interface.',
+      },
+      plan: {
+        title: 'Plan and approval',
+        body: 'Approval is bound to a SHA-256 fingerprint of the plan. Change the plan and the old approval is rejected.',
+      },
+      spend: {
+        title: 'Spend guard',
+        body: 'Ceilings are checked before every live request. A request that would cross the cap is blocked before it is sent.',
+      },
+      results: {
+        title: 'Results',
+        body: 'Scores come only from human-approved labels, with intervals. Agreement between models is reported as agreement, not accuracy.',
+      },
+    },
   },
+
+  // Product window under the hero; the dashboard `runport web` serves locally (127.0.0.1:8000).
+  productWindow: {
+    eyebrow: 'Workbench',
+    title: 'One local window for the whole run.',
+    subheading: 'Plan, watch and score a benchmark in the dashboard that runport web serves on your machine.',
+  },
+
 
   metrics: {
     stats: [
