@@ -72,6 +72,8 @@ interface TargetItem {
   input_price_per_1m_usd?: number
   output_price_per_1m_usd?: number
   verification_status?: string
+  billing?: string
+  source?: 'catalog' | 'workspace'
 }
 
 interface DatasetSummary {
@@ -1214,6 +1216,9 @@ export default function App() {
                         }}
                       />
                       {t.name}
+                      {t.source === 'workspace' && (
+                        <span style={{ color: 'var(--text-muted)' }}>({t.target_type}, {t.billing})</span>
+                      )}
                     </label>
                   ))}
                 </div>
@@ -1303,18 +1308,18 @@ export default function App() {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Target Model / Endpoint</th>
-                        <th>Input / 1M</th>
-                        <th>Output / 1M</th>
+                        <th>Target</th>
+                        <th>Type / billing</th>
+                        <th>Cost basis</th>
                         <th>Projected Upper Spend</th>
                       </tr>
                     </thead>
                     <tbody>
                       {planData.targets.map((t, idx) => (
                         <tr key={idx}>
-                          <td><strong>{t.display_name}</strong></td>
-                          <td>{t.input_price_per_1m ? `$${t.input_price_per_1m.toFixed(4)}` : 'None'}</td>
-                          <td>{t.output_price_per_1m ? `$${t.output_price_per_1m.toFixed(4)}` : 'None'}</td>
+                          <td><strong>{t.target_id}</strong></td>
+                          <td>{t.type} / {t.billing}</td>
+                          <td>{t.cost_note}</td>
                           <td style={{ fontFamily: 'monospace' }}>{t.projected_cost_usd != null ? `$${t.projected_cost_usd.toFixed(4)}` : 'none expected'}</td>
                         </tr>
                       ))}

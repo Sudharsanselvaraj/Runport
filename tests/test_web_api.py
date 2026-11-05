@@ -341,3 +341,21 @@ def test_live_api_run_executes_through_execution_service(client, fake_workflow, 
 
     again = client.post("/api/runs", json={**body, "approve_token": token})
     assert again.status_code == 403 and len(fake_workflow) == 2
+
+
+def test_list_targets_includes_workspace_targets_without_secrets(client, monkeypatch):
+    from runport.core.workspace import TargetConfig, WorkspaceConfig
+
+    ws = WorkspaceConfig(
+        targets=[
+            TargetConfig(id="agent", type="http_workflow", endpoint="https://agent.example.com/x", headers={"Authorization": "Bearer ${AGENT_TOKEN}"}),
+            TargetConfig(id="local", type="http_workflow", endpoint="http://127.0.0.1:9/x"),
+        ]
+    )
+    monkeypatch.setattr("runport.services.execution.load_workspace_config", lambda: ws)
+    monkeypatch.setenv("AGENT_TOKEN", "very-secret-agent-token")
+    data = client.get("/api/targets").json()
+    by_id = {t["target_id"]: t for t in data if t.get("source") == "workspace"}
+    assert by_id["agent"]["billing"] == "billable" and by_id["agent"]["header_names"] == ["Authorization"]
+    assert by_id["local"]["billing"] == "local"
+    assert "very-secret-agent-token" not in json.dumps(data) and "AGENT_TOKEN" not in json.dumps(data)

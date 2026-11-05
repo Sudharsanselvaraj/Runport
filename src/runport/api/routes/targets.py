@@ -71,6 +71,25 @@ def list_targets() -> List[Dict[str, Any]]:
                 "input_price_per_1m_usd": float(m.input_price_per_1m_usd),
                 "output_price_per_1m_usd": float(m.output_price_per_1m_usd),
                 "verification_status": m.verification_status,
+                "billing": "billable",
+                "source": "catalog",
+            }
+        )
+    # Targets declared in runport.yaml: type and billing mode only, never header or key values.
+    from runport.targets.base import billing_for_url
+
+    for tid, spec in ExecutionService().workspace_target_specs().items():
+        url = spec.get("url") or spec.get("base_url")
+        targets.append(
+            {
+                "target_id": tid,
+                "name": tid,
+                "target_type": spec.get("type"),
+                "provider": "workspace",
+                "billing": spec.get("billing") or (billing_for_url(url).value if url else "local"),
+                "priced": bool(spec.get("pricing")),
+                "header_names": sorted((spec.get("headers") or {}).keys()),
+                "source": "workspace",
             }
         )
     return targets
