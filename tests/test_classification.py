@@ -109,12 +109,21 @@ def test_classification_runner_offline_execution(tmp_path):
         ClassificationCase(case_id="c3", input_text="Random text here"),
     ]
 
+    # Every batch is a set of provider requests: it needs a live authorization covering the target.
+    with pytest.raises(LiveNotAuthorizedError, match="live authorization required"):
+        runner.run_batch(cases=cases, target_id="mock-model", allowed_labels=["QUERY", "GREETING"])
+    assert provider.recorded_requests == []
+
     summary = runner.run_batch(
         cases=cases,
         target_id="mock-model",
         run_id="run-test-01",
+        live_auth=LiveAuthorization(models=("mock-model",)),
         allowed_labels=["QUERY", "GREETING"],
     )
+    # Spend now reaches the ledger through GenericRunner, with ACTUAL provenance.
+    ledger = budget.db.get_recent_transactions(10)
+    assert len(ledger) == 3 and all(t["cost_basis"] == "ACTUAL" for t in ledger)
 
     assert summary.n_cases == 3
     assert summary.n_ok == 2
@@ -284,7 +293,7 @@ def test_runner_strict_guard_order(tmp_path):
     # 3. Preflight Budget Check (Step 3)
     # Valid auth, public data, but zero remaining budget fails before transport
     good_auth = LiveAuthorization(models=("mock-target",))
-    with pytest.raises(BudgetExceededError, match="Budget limit exhausted"):
+    with pytest.raises(BudgetExceededError, match="Preflight budget check failed"):
         runner.run_batch(
             cases=[ClassificationCase(case_id="c1", input_text="Public text")],
             target_id="mock-target",
