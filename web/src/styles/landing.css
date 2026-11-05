@@ -810,3 +810,5 @@
   .rp-sc-arc, .rp-sc-frame { stroke-dashoffset: 0; }
   .rp-sc-node-face, .rp-sc-panel, .rp-sc-local-item { opacity: 1; scale: 1; translate: 0 0; }
 }
+
+.rp-sf-head .rp-body { max-width: 460px; margin-left: auto; margin-right: auto; }

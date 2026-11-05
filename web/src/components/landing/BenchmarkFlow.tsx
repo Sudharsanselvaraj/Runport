@@ -240,14 +240,14 @@ export const BenchmarkFlowSection: React.FC = () => (
     <div className="rp-sf-head">
       <Reveal>
         <p className="rp-eyebrow">Integrations</p>
-        <h2 id="rp-sf-title" className="rp-sf-title">
+        <h2 id="rp-sf-title" className="rp-h2 rp-fade-heading">
           {c.titleA}
           <br />
           {c.titleB}
         </h2>
       </Reveal>
       <Reveal delay={0.08}>
-        <p className="rp-sf-sub">{c.description}</p>
+        <p className="rp-body">{c.description}</p>
       </Reveal>
       <Reveal delay={0.14}>
         <a className="rp-pill rp-pill-sm rp-pill-glass rp-sf-cta" href={c.ctaHref} target="_blank" rel="noopener noreferrer">
