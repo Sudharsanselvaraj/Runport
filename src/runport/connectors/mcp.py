@@ -34,7 +34,7 @@ from typing import IO, Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from runport.core.security import validate_safe_url
 from runport.providers.base import scrub_secrets
-from runport.targets.base import CostBasis, Target, TargetResult, TargetStatus, TargetType
+from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus, TargetType, billing_for_url
 
 LATEST_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -660,6 +660,7 @@ class McpToolTarget(Target):
         allow_private: bool = False,
         allow_localhost: bool = False,
         host_allowlist: Optional[List[str]] = None,
+        billing: Optional[BillingMode] = None,
     ) -> None:
         if (command is None) == (url is None):
             raise ValueError("McpToolTarget needs exactly one of 'command' (stdio) or 'url' (Streamable HTTP)")
@@ -678,6 +679,8 @@ class McpToolTarget(Target):
         )
         self.url = validate_safe_url(url, allow_private=allow_private, allow_localhost=allow_localhost, host_allowlist=host_allowlist) if url else None
         self.command = list(command) if command else None
+        # A stdio server is a local process; an HTTP server is billable unless it is on loopback or declared free.
+        self.billing = BillingMode(billing) if billing is not None else (BillingMode.LOCAL if command else billing_for_url(self.url))
         self._env = env
         self._cwd = cwd
         self._headers = dict(headers or {})

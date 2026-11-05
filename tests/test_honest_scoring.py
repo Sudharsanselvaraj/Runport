@@ -69,10 +69,10 @@ def test_mean_or_none_ignores_missing_and_never_returns_zero_for_nothing():
 
 def test_replay_scores_recorded_outputs_and_leaves_missing_cases_empty():
     cases = [
-        {"id": "c1", "query": "Capital of France?", "expected_answer": "Paris is the capital of France."},
+        {"id": "c1", "classification": "SYNTHETIC", "query": "Capital of France?", "expected_answer": "Paris is the capital of France."},
         {"id": "c2", "query": "Capital of Italy?", "expected_answer": "Rome is the capital of Italy."},
     ]
-    runner = ReplayRunner(fixtures=[{"id": "c1", "output_text": "Paris is the capital of France.", "latency_ms": 120.0}])
+    runner = ReplayRunner(fixtures=[{"id": "c1", "classification": "SYNTHETIC", "output_text": "Paris is the capital of France.", "latency_ms": 120.0}])
     rows, agg = score_replay_results("run-t", cases, runner.replay_dataset(cases))
 
     recorded, missing = rows
@@ -84,7 +84,7 @@ def test_replay_scores_recorded_outputs_and_leaves_missing_cases_empty():
 
 
 def test_fixture_without_output_is_a_failed_replay_with_no_latency():
-    res = ReplayRunner(fixtures=[{"id": "c1", "query": "q"}]).replay_case("c1")
+    res = ReplayRunner(fixtures=[{"id": "c1", "classification": "SYNTHETIC", "query": "q"}]).replay_case("c1")
     assert res.is_success is False and res.output_text is None and res.latency_ms is None
     assert "no recorded output" in (res.error_message or "")
 
@@ -94,12 +94,12 @@ def test_fixture_without_output_is_a_failed_replay_with_no_latency():
 
 def test_generic_runner_does_not_store_completion_as_accuracy(tmp_path: Path):
     ds = tmp_path / "eval.jsonl"
-    ds.write_text(json.dumps({"id": "c1", "query": "hello", "expected_answer": "HELLO"}) + "\n")
+    ds.write_text(json.dumps({"id": "c1", "classification": "SYNTHETIC", "query": "hello", "expected_answer": "HELLO"}) + "\n")
     db = DatabaseManager(tmp_path / "g.db")
     db.init_db()
     target = PythonCallableTarget(target_id="upper", name="upper", func=lambda c: {"output": c["query"].upper()})
     plan = create_execution_plan(["upper"], ds, is_live=False)
-    run = GenericRunner(db=db).execute_plan(plan, {"upper": target}, [{"id": "c1", "query": "hello"}])[0]
+    run = GenericRunner(db=db).execute_plan(plan, {"upper": target}, [{"id": "c1", "classification": "SYNTHETIC", "query": "hello"}])[0]
 
     stored_run = db.get_evaluation_run(run.run_id)
     assert stored_run["completed_cases"] == 1
@@ -146,9 +146,9 @@ def test_cli_replay_scores_recorded_fixtures(tmp_path, monkeypatch):
     ds = _seed_dataset(tmp_path / "ds.jsonl")
     fx = tmp_path / "fixtures.jsonl"
     fx.write_text(
-        json.dumps({"id": "case-0", "output_text": "Answer number 0 explains the policy.", "latency_ms": 200.0})
+        json.dumps({"id": "case-0", "classification": "SYNTHETIC", "output_text": "Answer number 0 explains the policy.", "latency_ms": 200.0})
         + "\n"
-        + json.dumps({"id": "case-1", "output_text": "Something unrelated entirely.", "latency_ms": 400.0})
+        + json.dumps({"id": "case-1", "classification": "SYNTHETIC", "output_text": "Something unrelated entirely.", "latency_ms": 400.0})
         + "\n"
     )
     r = CliRunner(env={"COLUMNS": "250"}).invoke(app, ["benchmark", "--replay", "--dataset", str(ds), "--fixtures", str(fx)])

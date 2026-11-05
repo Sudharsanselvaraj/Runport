@@ -80,10 +80,10 @@ def test_e2e_generic_runner_full_lifecycle(tmp_path):
     # 2. Create synthetic dataset file
     dataset_file = tmp_path / "dataset.jsonl"
     cases = [
-        {"id": "case-1", "input": "Claim your free prize today!", "expected": "SPAM"},
-        {"id": "case-2", "input": "Hello team, let's meet tomorrow at 10am.", "expected": "HAM"},
-        {"id": "case-3", "input": "You are our lucky winner!", "expected": "SPAM"},
-        {"id": "case-4", "input": "Weekly project update and slide deck.", "expected": "HAM"},
+        {"id": "case-1", "classification": "SYNTHETIC", "input": "Claim your free prize today!", "expected": "SPAM"},
+        {"id": "case-2", "classification": "SYNTHETIC", "input": "Hello team, let's meet tomorrow at 10am.", "expected": "HAM"},
+        {"id": "case-3", "classification": "SYNTHETIC", "input": "You are our lucky winner!", "expected": "SPAM"},
+        {"id": "case-4", "classification": "SYNTHETIC", "input": "Weekly project update and slide deck.", "expected": "HAM"},
     ]
     with dataset_file.open("w", encoding="utf-8") as f:
         for c in cases:

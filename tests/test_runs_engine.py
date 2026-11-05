@@ -123,7 +123,7 @@ def test_runner_offline_execution_and_persistence(tmp_path: Path, test_db: Datab
     target = MockTestTarget()
     runner = GenericRunner(db=test_db)
 
-    cases = [{"id": "c1", "query": "how are you"}]
+    cases = [{"id": "c1", "classification": "SYNTHETIC", "query": "how are you"}]
     results = runner.execute_plan(plan, {"mock-target": target}, cases)
 
     assert len(results) == 1

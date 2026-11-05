@@ -1,6 +1,7 @@
 """Target abstractions and registry for Runport."""
 
 from runport.targets.base import (
+    BillingMode,
     CostBasis,
     Target,
     TargetChunk,
@@ -8,9 +9,11 @@ from runport.targets.base import (
     TargetResult,
     TargetStatus,
     TargetType,
+    billing_for_url,
 )
 
 __all__ = [
+    "BillingMode",
     "CostBasis",
     "Target",
     "TargetChunk",
@@ -18,4 +21,5 @@ __all__ = [
     "TargetResult",
     "TargetStatus",
     "TargetType",
+    "billing_for_url",
 ]
