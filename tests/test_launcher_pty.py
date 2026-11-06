@@ -1,18 +1,20 @@
 """Run the real launcher in a pseudo-terminal and check that moving through the menu redraws in place (no piled-up frames)."""
 
-import fcntl
 import os
-import pty
 import re
 import select
 import struct
 import subprocess
 import sys
-import termios
 import time
 from pathlib import Path
 
 import pytest
+
+# POSIX-only modules: skip the whole module on Windows instead of failing at import.
+fcntl = pytest.importorskip("fcntl")
+pty = pytest.importorskip("pty")
+termios = pytest.importorskip("termios")
 
 ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="needs a POSIX pty")
@@ -43,15 +45,21 @@ def run_launcher(keys, rows=55, cols=207, settle=0.6):
                     return
                 out += chunk
 
-    drain(settle * 3)
+    # Wait for the first menu frame before typing. Keys sent earlier can land while the terminal is still in line mode,
+    # so a final "q" waits for a newline that never comes and the launcher never exits (slow CI runners hit this).
+    deadline = time.time() + 30
+    while b"\x1b[?1049h" not in out and time.time() < deadline:
+        drain(0.1)
+    drain(settle)
     for k in keys:
         os.write(master, k)
         drain(settle)
     drain(settle)
     try:
-        proc.wait(timeout=10)
+        proc.wait(timeout=30)
     except subprocess.TimeoutExpired:
         proc.kill()
+        proc.wait()
     os.close(master)
     return out.decode("utf-8", errors="replace"), proc.returncode
 
