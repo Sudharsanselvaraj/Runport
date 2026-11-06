@@ -39,7 +39,9 @@ class KeyReader:
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
-            tty.setraw(fd)
+            # TCSANOW, not setraw's default TCSAFLUSH: a key typed while the terminal was between two polls
+            # must be read, not discarded (slow machines lost menu digits and the final "q" this way).
+            tty.setraw(fd, termios.TCSANOW)
             # Check timeout if specified
             if timeout is not None:
                 r, _, _ = select.select([fd], [], [], timeout)
