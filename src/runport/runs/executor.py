@@ -60,10 +60,23 @@ class GenericRunner:
         budget_service: Optional[BudgetService] = None,
         db: Optional[DatabaseManager] = None,
         workspace: Optional[WorkspaceConfig] = None,
+        events: Optional[Any] = None,
     ):
         self.db = db or DatabaseManager()
         self.budget_service = budget_service or BudgetService(db=self.db)
         self.workspace = workspace or WorkspaceConfig()
+        # Live request telemetry (observability/events.py). Defaults to the workspace event log; tests can inject a store.
+        self._events = events
+
+    def _emit(self, **fields: Any) -> None:
+        """Append one LIVE RequestEvent. Telemetry must never break or alter a run, so failures are swallowed."""
+        try:
+            from runport.observability.events import EventStore, RequestEvent
+
+            store = self._events if self._events is not None else EventStore()
+            store.append(RequestEvent(**fields))
+        except Exception:
+            pass
 
     def execute_plan(
         self,
@@ -166,6 +179,9 @@ class GenericRunner:
                             break
 
                 # --- Guard 4: Transport Execution ---
+                request_id = uuid.uuid4().hex
+                if plan.is_live:
+                    self._emit(kind="REQUEST_STARTED", request_id=request_id, run_id=run_id, case_id=case_id, model_key=target_id)
                 t0 = time.perf_counter()
                 try:
                     res = target.execute(case)
@@ -269,6 +285,26 @@ class GenericRunner:
                         halt = True
 
                 self.budget_service.release(reservation_id)
+                if plan.is_live:
+                    basis_out = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
+                    ok = res.status in (TargetStatus.SUCCESS, TargetStatus.INVALID_OUTPUT)
+                    self._emit(
+                        kind="REQUEST_SUCCEEDED" if ok else "REQUEST_FAILED",
+                        request_id=request_id,
+                        run_id=run_id,
+                        case_id=case_id,
+                        model_key=target_id,
+                        status="OK" if res.status == TargetStatus.SUCCESS else "INVALID_OUTPUT" if ok else "ERROR",
+                        error_type=None if ok else (res.error_code or res.status.value),
+                        timed_out=res.status == TargetStatus.TIMEOUT,
+                        attempts=res.metadata.get("attempts") if isinstance(res.metadata.get("attempts"), int) else None,
+                        latency_ms=res.latency_ms,
+                        prompt_tokens=res.tokens_in,
+                        completion_tokens=res.tokens_out,
+                        cost_basis=basis_out,
+                        actual_cost_usd=res.cost_usd if basis_out == CostBasis.ACTUAL.value else None,
+                        estimated_cost_usd=res.cost_usd if basis_out == CostBasis.ESTIMATED.value else None,
+                    )
                 run_res.case_results.append(res)
                 if halt:
                     run_res.halt_kind = "unresolved_spend"

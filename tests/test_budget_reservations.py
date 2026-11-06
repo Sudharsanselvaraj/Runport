@@ -117,3 +117,48 @@ def test_expired_reservations_do_not_hold_budget(tmp_path):
     rid = svc.reserve("r1", Decimal("0.001"))
     svc.release(rid)
     assert db.get_open_reservations()[1] == 0
+
+
+# --------------------------------------------------------------------------- telemetry events
+
+
+def test_live_cases_emit_start_and_finish_events_and_aggregate(tmp_path):
+    import time as _t
+
+    from runport.observability.aggregate import aggregate
+    from runport.observability.events import EventStore
+
+    db = DatabaseManager(tmp_path / "g.db")
+    store = EventStore(tmp_path / "events.jsonl")
+    policy = BudgetPolicy(total_budget_usd=Decimal("1"), pilot_budget_usd=Decimal("1"), per_run_ceiling_usd=Decimal("1"), per_case_ceiling_usd=Decimal("0.05"))
+    runner = GenericRunner(budget_service=BudgetService(db=db, policy=policy), db=db, workspace=WorkspaceConfig(budget=BudgetConfig()), events=store)
+    run = _run(runner, Priced(), 3)
+    events = store.read_all()
+    kinds = [e.kind for e in events]
+    assert kinds.count("REQUEST_STARTED") == 3 and kinds.count("REQUEST_SUCCEEDED") == 3
+    done = [e for e in events if e.kind == "REQUEST_SUCCEEDED"]
+    assert all(e.run_id == run.run_id and e.cost_basis == "ESTIMATED" and e.estimated_cost_usd == Decimal("0.001") for e in done)
+    assert all(e.prompt_tokens is None for e in done)  # not reported -> not invented
+    agg = aggregate(events, _t.time())
+    assert agg.overall.n_terminal == 3 and agg.overall.n_ok == 3
+    assert agg.overall.n_estimated_cost == 3 and agg.overall.estimated_cost == Decimal("0.003")
+    assert agg.overall.n_token_unknown == 3 and agg.overall.n_token_known == 0
+
+
+def test_unknown_cost_events_count_as_unresolved_and_replays_emit_nothing(tmp_path):
+    from runport.observability.events import EventStore
+
+    db = DatabaseManager(tmp_path / "h.db")
+    store = EventStore(tmp_path / "events.jsonl")
+    runner = GenericRunner(budget_service=BudgetService(db=db), db=db, workspace=WorkspaceConfig(budget=BudgetConfig()), events=store)
+    unpriced = Priced(actual=None)
+    unpriced.pricing = None
+    _run(runner, unpriced, 2)
+    finished = [e for e in store.read_all() if e.kind != "REQUEST_STARTED"]
+    assert len(finished) == 1 and finished[0].cost_basis == "UNRESOLVED"
+
+    replay_store = EventStore(tmp_path / "replay.jsonl")
+    replay = GenericRunner(budget_service=BudgetService(db=db), db=db, workspace=WorkspaceConfig(budget=BudgetConfig()), events=replay_store)
+    plan = ExecutionPlan(plan_id="r", target_ids=["t"], dataset_path="d", dataset_hash="h", total_cases=1, budget_cap_usd=Decimal("1"), is_live=False)
+    replay.execute_plan(plan, {"t": Priced(billing=BillingMode.LOCAL)}, [{"id": "c", "query": "q"}])
+    assert replay_store.read_all() == []

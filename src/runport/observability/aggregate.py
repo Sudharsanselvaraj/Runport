@@ -148,7 +148,7 @@ def _apply_terminal(g: GroupStats, ev: RequestEvent) -> None:
     if ev.native_cost is not None:
         g.native_cost += ev.native_cost
         g.n_native_cost += 1
-    if ev.cost_basis == "UNAVAILABLE":
+    if ev.cost_basis in ("UNAVAILABLE", "UNRESOLVED"):  # unknown cost, whichever vocabulary wrote the event
         g.n_cost_unresolved += 1
 
 
@@ -238,7 +238,7 @@ def aggregate(
                 else None,
             )
         )
-        cost_u.append((lo, float(sum(1 for e in in_b if e.cost_basis == "UNAVAILABLE")) if in_b else None))
+        cost_u.append((lo, float(sum(1 for e in in_b if e.cost_basis in ("UNAVAILABLE", "UNRESOLVED"))) if in_b else None))
     agg.series = {
         "latency_e2e": lat,
         "latency_model": mlat,
