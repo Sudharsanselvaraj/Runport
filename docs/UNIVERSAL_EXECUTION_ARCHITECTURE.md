@@ -50,11 +50,11 @@ Library runners keep their public APIs and execute through `GenericRunner` with 
 
 ### 2.2 Known gaps in the current path
 
-1. **Per-run ceiling is not cumulative at runtime.** Guard 3 compares one case's worst case with the per-run ceiling; it never adds the run's spend so far.
-2. **Check-then-book race.** Preflight and booking are separate; concurrent runs can overspend together.
-3. **No events.** `GenericRunner` writes no `RequestEvent` (`observability/events.py`), so the live telemetry stream is empty.
+1. ~~Per-run ceiling not cumulative~~ — fixed in #14 (`BudgetService.reserve`).
+2. ~~Check-then-book race~~ — fixed in #14 (one `BEGIN IMMEDIATE` reservation transaction).
+3. ~~No events~~ — fixed in #14 (`GenericRunner` emits `RequestEvent`s).
 4. **No spans.** Step-level data lives in untyped `TargetResult.metadata`.
-5. **Score provenance dropped.** `case_scorer` output is persisted to columns named `accuracy`/`groundedness` without the evaluator type.
+5. ~~Score provenance dropped~~ — fixed in #14 (`score_kind`, `evaluator`); no scorer writes `ground_truth` yet.
 6. **Synchronous API runs.** `POST /api/runs` executes inside the request.
 7. **Process-global settings.** `core/config.settings` (paths, policy) is shared by every request.
 
