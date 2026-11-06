@@ -1,268 +1,96 @@
-# Public SDK API Contract Specification (Python & TypeScript)
+# SDK and API Contract
 
-> **Status**: Approved Architectural Standard  
-> **Target Release**: v0.3.0 Client Libraries → v1.0.0 General Availability  
-> **Document Ref**: `RUNPORT-SPEC-003`  
-> **Author**: Runport Architecture & Engineering Team  
+Two layers: the **in-process Python SDK** that exists today, and a **versioned REST v1 contract** (design) that a remote Python
+client and the TypeScript SDK will wrap. Both sit on `ExecutionService`; neither has its own execution logic.
 
 ---
 
-## 1. Executive Summary
+## 1. Existing: in-process Python SDK (`src/runport/sdk.py`)
 
-Runport v0.1.0 exposes execution capabilities through Typer CLI commands and an internal FastAPI service consumed by the React web dashboard. External automation currently requires either invoking subprocesses (`uv run runport ...`) or making unvalidated HTTP requests against undocumented REST routes.
+| Function | Behaviour (verified by `tests/test_sdk.py`) |
+|:---|:---|
+| `plan(target, dataset, *, target_id=None, sample_size=None, service=None) -> SdkPlan` | `target` is a `runport.yaml` target id or catalog model id, a `Target`, or a plain callable (wrapped in `PythonCallableTarget`). `dataset` is a JSONL path or a list of dicts. Stores a `PENDING` plan; sends nothing. |
+| `approve_interactively(plan)` | Typed `RUN LIVE … PLAN <fingerprint>` in a terminal; refused without a TTY. Channel `cli_interactive`. |
+| `approve_with_ci_token(plan, token)` | Requires `approver.token_approver_enabled: true`; `token` must equal the fingerprint. Channel `ci_token`. |
+| `execute(plan, *, score=True) -> ExecutionOutcome` | Runs once through `GenericRunner`; a second call is refused. |
+| `benchmark(target, dataset, …)` | Plan + approve + execute. All-local plans use the `local_only` channel; anything else asks for the typed phrase. |
 
-This specification defines the public, typed client SDK contracts for **Python** (`runport`) and **TypeScript** (`@runport/sdk`). Both SDKs provide:
-- Idiomatic synchronous and asynchronous client interfaces.
-- Strict typing mapped directly from Pydantic v2 schemas and OpenAPI 3.1 definitions.
-- Automatic plan fingerprint verification and budget preflight handling.
-- Connection pooling, exponential backoff with jitter, and SSE event streaming.
-- Comprehensive exception hierarchies reflecting fail-closed spend boundaries.
+**Not stable yet:** return types are internal (`ExecutionOutcome`, `GenericRunResult`, `TargetResult`). v0.2 must introduce
+public result models (section 3) and keep the internal types private.
 
 ---
 
-## 2. Python SDK Contract (`runport`)
+## 2. Design: REST v1
 
-### 2.1. Module Hierarchy
+Base path `/api/v1`. JSON only. All responses typed (Pydantic models exported to OpenAPI; the TypeScript SDK is generated from that schema).
+Current unversioned `/api/*` routes stay for the bundled dashboard until it moves to v1, then are removed in a minor release with notice.
+
+### 2.1 Auth
+
+`Authorization: Bearer rp_<key_id>_<secret>`. Keys belong to a principal and a project and carry scopes:
+`targets:read`, `datasets:read`, `datasets:write`, `plans:create`, `plans:approve`, `runs:execute`, `runs:read`, `traces:write`
+(ingestion), `budget:read`, `budget:reconcile`. Agents' and CI keys never get `plans:approve` unless an operator grants it on purpose.
+Until multi-user hosting exists (`docs/MULTI_USER_SECURITY_MODEL.md`), the single `RUNPORT_API_TOKEN` maps to all scopes.
+
+### 2.2 Resources
+
+| Method and path | Purpose | Scope |
+|:---|:---|:---|
+| `GET /targets`, `GET /targets/{id}` | Workspace targets and catalog models; type, billing, header names only | `targets:read` |
+| `GET /datasets`, `POST /datasets` | List, upload (validated, hashed) | `datasets:*` |
+| `POST /plans` | Body: `target_ids`, `dataset` (name or inline cases), `sample_size`. Returns `Plan` (`PENDING`, fingerprint, worst-case spend, blockers, expires_at) | `plans:create` |
+| `GET /plans/{plan_id}` | Plan status | `runs:read` |
+| `POST /plans/{plan_id}/approve` | Body: `fingerprint`. Human channel | `plans:approve` |
+| `POST /plans/{plan_id}/runs` | Submit an approved plan. Returns `202` with `Run` (`queued`) | `runs:execute` |
+| `GET /runs/{run_id}` | Status: `queued`, `running`, `completed`, `halted`, `failed`, `cancelled` | `runs:read` |
+| `POST /runs/{run_id}/cancel` | Stops after the current case | `runs:execute` |
+| `GET /runs/{run_id}/results?cursor=` | Per-case results with typed scores | `runs:read` |
+| `GET /runs/{run_id}/traces/{case_id}` | Canonical trace | `runs:read` |
+| `GET /runs/{run_id}/events` | Server-sent events: case start/finish, halts | `runs:read` |
+| `POST /traces` (OTLP/JSON or Runport `Trace`) | Ingestion | `traces:write` |
+| `GET /budget` | Ceilings, spend by provenance, unresolved entries | `budget:read` |
+
+### 2.3 Models (abridged)
+
 ```text
-runport/
-├── __init__.py           # Exports Client, AsyncClient, and Core Models
-├── client.py             # Sync Runport Client
-├── async_client.py       # Async Runport Client
-├── exceptions.py         # Exception Hierarchy
-├── models/               # Pydantic v2 API Schemas
-│   ├── benchmark.py
-│   ├── budget.py
-│   ├── dataset.py
-│   ├── run.py
-│   └── trace.py
-└── resources/            # Domain Resource Managers
-    ├── benchmarks.py
-    ├── budget.py
-    ├── datasets.py
-    ├── runs.py
-    └── traces.py
+Plan     { plan_id, fingerprint, status, expires_at, target_ids[], case_count, projected_max_cost_usd|null,
+           per_target[{target_id, type, billing, priced, projected_cost_usd|null}], blockers[], requested_by, approved_by|null }
+Run      { run_id, plan_id, target_id, status, total_cases, successful, failed, skipped,
+           booked_spend_usd, unresolved_cases, mean_latency_ms|null, halted_reason|null, created_at, finished_at|null }
+Result   { case_id, status, output_text|null, latency_ms|null, tokens_in|null, tokens_out|null,
+           cost_usd|null, cost_basis, scores[{name, kind, value|null, evaluator}], error_code|null }
 ```
 
-### 2.2. Client Initialization & Configuration
-```python
-from runport import Client, AsyncClient
+Rules: unmeasured numbers are `null`; costs are strings (decimal); `cost_basis` uses the fixed vocabulary.
 
-# Synchronous Client
-client = Client(
-    base_url="http://127.0.0.1:8000",
-    api_key="rp_live_abc123...",       # Optional for local, required for multi-tenant
-    timeout=30.0,
-    max_retries=3,
-)
+### 2.4 Errors
 
-# Asynchronous Client
-async_client = AsyncClient(
-    base_url="http://127.0.0.1:8000",
-    api_key="rp_live_abc123...",
-)
-```
+`{ "error": { "code": "...", "message": "...", "details": {...} } }` with stable codes:
+`approval_required` (428), `approval_invalid` (403), `plan_blocked` (409), `budget_exceeded` (402), `unresolved_spend` (409),
+`confidentiality_violation` (400), `invalid_target_spec` (400), `not_found` (404), `unauthorized` (401), `forbidden` (403).
 
-### 2.3. Exception Hierarchy
-```python
-class RunportError(Exception):
-    """Base exception for all Runport client errors."""
-    pass
+### 2.5 Idempotency and versioning
 
-class AuthenticationError(RunportError):
-    """Raised on 401 Unauthorized or invalid API key."""
-    pass
-
-class ValidationError(RunportError):
-    """Raised on 422 Unprocessable Entity or invalid schema."""
-    pass
-
-class BudgetExceededError(RunportError):
-    """Raised when an execution breaches spend cap without approval."""
-    def __init__(self, message: str, fingerprint: str, estimated_usd: float, cap_usd: float):
-        super().__init__(message)
-        self.fingerprint = fingerprint
-        self.estimated_usd = estimated_usd
-        self.cap_usd = cap_usd
-
-class ApprovalRequiredError(RunportError):
-    """Raised when plan requires explicit human approval token."""
-    def __init__(self, fingerprint: str, required_cap_usd: float):
-        super().__init__(f"Plan {fingerprint} requires approval.")
-        self.fingerprint = fingerprint
-        self.required_cap_usd = required_cap_usd
-```
-
-### 2.4. Python Usage Example: Full Lifecycle
-```python
-import asyncio
-from runport import AsyncClient, BudgetExceededError
-
-async def main():
-    async with AsyncClient() as client:
-        # 1. Validate and upload evaluation dataset
-        dataset = await client.datasets.upload(
-            file_path="data/classification_dev.jsonl",
-            name="customer_intent_v1",
-        )
-        print(f"Dataset uploaded: {dataset.id} (SHA256: {dataset.sha256})")
-
-        # 2. Generate execution plan with preflight budget
-        try:
-            plan = await client.benchmarks.create_plan(
-                candidate_models=["openrouter/anthropic/claude-3.5-sonnet", "ollama/llama3.2:latest"],
-                dataset_id=dataset.id,
-                prompt_template="Classify the intent of: {text}",
-                budget_cap_usd=5.00,
-            )
-            print(f"Plan created: {plan.fingerprint} (Est: ${plan.estimated_cost_usd:.4f})")
-            
-            # 3. Execute plan
-            run = await client.runs.execute(plan.fingerprint)
-            
-        except BudgetExceededError as e:
-            print(f"Budget cap exceeded! Estimated: ${e.estimated_usd}, Cap: ${e.cap_usd}")
-            # Request approval override
-            approval = await client.budget.approve(
-                fingerprint=e.fingerprint,
-                max_spend_usd=10.00,
-            )
-            run = await client.runs.execute(
-                fingerprint=e.fingerprint,
-                approval_token=approval.token,
-            )
-
-        # 4. Stream real-time progress events
-        async for event in client.runs.stream_events(run.id):
-            print(f"[{event.timestamp}] Step {event.completed}/{event.total}: {event.message}")
-
-        # 5. Fetch final evaluation metrics
-        summary = await client.runs.get_summary(run.id)
-        print(f"Run completed in {summary.duration_seconds:.2f}s")
-        print(f"Accuracy: {summary.metrics['accuracy']:.3f} | Booked Spend: ${summary.total_spend_usd:.4f}")
-
-asyncio.run(main())
-```
+`POST /plans/{id}/runs` accepts `Idempotency-Key`; a plan executes at most once regardless (`ApprovalStore.consume`).
+Breaking changes go to `/api/v2`. The SDKs follow semantic versioning and declare the API version they target.
 
 ---
 
-## 3. TypeScript SDK Contract (`@runport/sdk`)
+## 3. Remote clients (design)
 
-### 3.1. Package Structure
-```text
-packages/sdk-ts/
-├── package.json          # "@runport/sdk"
-├── tsconfig.json
-├── src/
-│   ├── index.ts          # Main package export
-│   ├── client.ts         # RunportClient implementation
-│   ├── errors.ts         # Typed Error classes
-│   ├── types.ts          # API request and response interfaces
-│   └── resources/
-│       ├── benchmarks.ts
-│       ├── budget.ts
-│       ├── datasets.ts
-│       ├── runs.ts
-│       └── traces.ts
-└── tests/
-    └── client.test.ts
-```
+**Python** (`runport.client.Client`): wraps REST v1 with the same verbs as the in-process SDK (`plan`, `approve`, `execute`,
+`get_run`, `results`, `trace`), plus `wait(run_id)`. Uses `httpx` (already a dev dependency; would become a `client` extra).
 
-### 3.2. TypeScript API Definitions
-```typescript
-export interface RunportConfig {
-  baseUrl?: string;         // Defaults to "http://127.0.0.1:8000"
-  apiKey?: string;          // Optional for localhost
-  timeoutMs?: number;       // Defaults to 30000ms
-  fetchFn?: typeof fetch;   // Custom fetch implementation
-}
+**TypeScript** (`@runport/sdk`): generated types from OpenAPI plus a small hand-written client; `fetch`-based; no approval helper
+that can approve without an explicit call by the caller.
 
-export interface ExecutionPlan {
-  planId: string;
-  fingerprint: string;
-  candidateModels: string[];
-  datasetSha256: string;
-  promptTemplateSha256: string;
-  estimatedCostUsd: number;
-  budgetCapUsd: number;
-  approvalRequired: boolean;
-}
-
-export interface RunProgressEvent {
-  runId: string;
-  completed: number;
-  total: number;
-  currentModel: string;
-  currentCostUsd: number;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-}
-
-export interface BenchmarkMetrics {
-  accuracy?: number;
-  f1Score?: number;
-  precision?: number;
-  recall?: number;
-  wilsonCiLower?: number;
-  wilsonCiUpper?: number;
-  cohensKappa?: number;
-}
-```
-
-### 3.3. TypeScript Usage Example
-```typescript
-import { RunportClient, BudgetExceededError } from '@runport/sdk';
-
-const client = new RunportClient({
-  baseUrl: 'http://127.0.0.1:8000',
-  apiKey: process.env.RUNPORT_API_KEY,
-});
-
-async function runBenchmark() {
-  try {
-    // 1. Create plan
-    const plan = await client.benchmarks.createPlan({
-      candidateModels: ['openrouter/google/gemini-2.0-flash-001'],
-      datasetId: 'dataset-123',
-      promptTemplate: 'Extract entities from: {{text}}',
-      budgetCapUsd: 2.00,
-    });
-
-    console.log(`Plan generated: ${plan.fingerprint}`);
-
-    // 2. Execute plan
-    const run = await client.runs.execute({
-      planFingerprint: plan.fingerprint,
-    });
-
-    // 3. Listen to SSE live events
-    const subscription = client.runs.subscribeEvents(run.id, (event) => {
-      console.log(`Progress: ${event.completed} / ${event.total} items evaluated`);
-    });
-
-    await subscription.untilComplete();
-
-    // 4. Retrieve metrics
-    const results = await client.runs.getResults(run.id);
-    console.log('Run Complete:', results.metrics);
-  } catch (error) {
-    if (error instanceof BudgetExceededError) {
-      console.error(`Spend cap exceeded: requires $${error.estimatedUsd}`);
-    } else {
-      console.error('Benchmark failed:', error);
-    }
-  }
-}
-
-runBenchmark();
-```
+**Instrumentation (later):** `runport.instrument` context managers / decorators that emit canonical spans (or OTel spans with
+GenAI attributes) for code that is not run by Runport's executor.
 
 ---
 
-## 4. Error Handling & Transport Resiliency
+## 4. Acceptance criteria for v0.2
 
-Both client SDKs enforce bounded retry policies:
-- **Retryable Status Codes**: HTTP 429 (Rate Limit), 502 (Bad Gateway), 503 (Service Unavailable), 504 (Gateway Timeout).
-- **Non-Retryable Status Codes**: HTTP 400 (Bad Request), 401 (Unauthorized), 402 (Budget Exceeded), 404 (Not Found), 422 (Validation Error).
-- **Backoff Algorithm**:
-  $$t_{\text{wait}} = \min(t_{\text{max}},\, t_{\text{base}} \times 2^{\text{attempt}}) \pm \text{jitter}$$
-- **Fail-Closed Budget**: HTTP 402 responses are immediately translated into `BudgetExceededError` without retrying.
-
+- OpenAPI schema for v1 generated in CI and diffed against the committed one.
+- Contract tests run the same scenarios against the in-process SDK, the Python client and the TypeScript client (against a test server).
+- No SDK path can approve a billable plan without `plans:approve` or a human channel (tests per client).

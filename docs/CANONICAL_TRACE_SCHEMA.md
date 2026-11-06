@@ -1,322 +1,169 @@
-# Canonical Trace & Trajectory Schema Specification
+# Canonical Trace Schema
 
-> **Status**: Approved Architectural Standard  
-> **Target Release**: v0.2.0 Trace Consolidation → v1.0.0 General Availability  
-> **Document Ref**: `RUNPORT-SPEC-002`  
-> **Author**: Runport Architecture & Engineering Team  
+**Status: design.** Nothing in this document exists in code yet, except where marked "existing". It is the prerequisite (F1) for
+per-step tracing, trajectory evaluation, OpenTelemetry ingestion, Langfuse export and framework instrumentation.
 
 ---
 
-## 1. Executive Summary
+## 1. Why one schema
 
-Runport v0.1.0 introduced the foundational models `ObservationSpan` and `TraceRecord` (`src/runport/traces/models.py`), supporting basic RAG retrieval diagnostics and sanitized trace exports. However, modern AI workloads—particularly multi-turn autonomous agents, orchestrated graphs (LangGraph, CrewAI), and complex tool-use loops—require granular step-level telemetry that distinguishes reasoning, tool dispatch, external observations, and state transitions.
+Runport currently has four unlinked shapes for "what happened":
 
-This specification formalizes Runport's **Canonical Trace Schema v2**, introducing:
-1. First-class **Agent Trajectory** and **Agent Step** data structures.
-2. Step-level attribution for token consumption, latency, and cost.
-3. Strict enforcement of the **"Null is not 0"** architectural invariant.
-4. Bidirectional mapping to the industry-standard **OpenInference** semantic conventions.
-5. Export formatting for **OpenTelemetry (OTel)** and **Langfuse v2**.
+| Existing shape | File | Linked to runs? |
+|:---|:---|:---|
+| `evaluation_runs` / `evaluation_results` rows | `storage/db.py` | Yes (the run) |
+| `TargetResult.metadata` (Dify nodes, MCP tool data, RAG retrieval) | `targets/base.py` | Only as untyped JSON in memory |
+| `PredictionRecord` JSONL | `classification/records.py` | Own store |
+| `RequestEvent` JSONL | `observability/events.py` | Not written by any executor |
+| `TraceRecord` / `ObservationSpan` (imported) | `traces/models.py` | No |
 
----
-
-## 2. Core Architectural Invariant: "Null is Not 0"
-
-Runport strictly forbids fabricating telemetry values. In downstream evaluation, treating missing telemetry as zero skews statistical distributions, deflates cost averages, and conceals provider failures.
-
-| Telemetry Field | Valid Value | Unreported / Missing Provider Value | Prohibited Replacement |
-| :--- | :--- | :--- | :--- |
-| **Token Usage** | Integer $\ge 0$ | `None` | `0` |
-| **Latency** | Float $> 0.0$ (ms) | `None` | `0.0` or synthetic estimate |
-| **Confidence Score** | Float $\in [0.0, 1.0]$ | `None` | `0.0` or `0.5` |
-| **Cost (USD)** | Float $\ge 0.0$ | `None` (Provenance: `UNRESOLVED` / `UNAVAILABLE`) | `\$0.00` |
-
-If a provider omits token or cost data, the span records `tokens: None` and books spend as `UNRESOLVED`, triggering fail-closed execution caps.
+The canonical model replaces none of the run tables. It adds spans that hang off a run case, and it is the single target for
+native connectors, instrumentation, OTel ingestion and exports.
 
 ---
 
-## 3. Canonical Data Models
+## 2. Model (Pydantic v2, `src/runport/traces/schema.py`)
 
-```mermaid
-classDiagram
-    class TraceRecord {
-        +str trace_id
-        +str run_id
-        +str session_id
-        +datetime start_time
-        +datetime end_time
-        +Optional[float] total_cost_usd
-        +List[ObservationSpan] spans
-        +Optional[AgentTrajectory] trajectory
-    }
-
-    class AgentTrajectory {
-        +str trajectory_id
-        +str task_prompt
-        +List[AgentStep] steps
-        +Optional[str] final_outcome
-        +bool goal_achieved
-        +Dict[str, Any] ground_truth
-    }
-
-    class AgentStep {
-        +str step_id
-        +int step_index
-        +StepKind step_kind
-        +Optional[str] thought
-        +List[ToolCallRecord] tool_calls
-        +Optional[str] observation
-        +Dict[str, Any] state_delta
-        +StepAttribution attribution
-    }
-
-    class ToolCallRecord {
-        +str call_id
-        +str tool_name
-        +Dict[str, Any] arguments
-        +Optional[Any] result
-        +Optional[str] error
-        +Optional[float] latency_ms
-        +ToolExecutionStatus status
-    }
-
-    class StepAttribution {
-        +Optional[int] prompt_tokens
-        +Optional[int] completion_tokens
-        +Optional[float] latency_ms
-        +Optional[float] cost_usd
-        +CostProvenance provenance
-    }
-
-    class ObservationSpan {
-        +str span_id
-        +Optional[str] parent_span_id
-        +str name
-        +SpanKind span_kind
-        +datetime start_time
-        +datetime end_time
-        +Dict[str, Any] attributes
-        +List[Dict] events
-    }
-
-    TraceRecord *-- ObservationSpan
-    TraceRecord *-- AgentTrajectory
-    AgentTrajectory *-- AgentStep
-    AgentStep *-- ToolCallRecord
-    AgentStep *-- StepAttribution
-```
-
-### 3.1. Python / Pydantic v2 Definitions
+Rules for every field: telemetry that was not reported is `None`, never `0`; text and attributes are scrubbed before storage.
 
 ```python
-from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, model_validator
-
-
-class CostProvenance(str, Enum):
-    ACTUAL = "ACTUAL"          # Exact provider-reported USD spend
-    ESTIMATED = "ESTIMATED"    # Verified catalog rate × reported tokens
-    UNRESOLVED = "UNRESOLVED"  # Billed request with missing cost
-    UNAVAILABLE = "UNAVAILABLE"# Zero-cost local execution
-    REPLAYED = "REPLAYED"      # Offline replay execution ($0.00)
-
-
 class SpanKind(str, Enum):
-    CHAIN = "chain"
-    LLM = "llm"
-    TOOL = "tool"
-    RETRIEVER = "retriever"
-    AGENT = "agent"
+    AGENT = "agent"  # an agent or sub-agent invocation
+    LLM = "llm"  # one model call
+    TOOL = "tool"  # one tool call (MCP or framework tool)
+    RETRIEVAL = "retrieval"
+    RERANK = "rerank"
+    HANDOFF = "handoff"  # control passes between agents
+    ROUTER = "router"  # a routing decision
+    WORKFLOW_STEP = "workflow_step"  # a node in Dify, LangGraph, n8n…
+    OTHER = "other"
 
 
-class StepKind(str, Enum):
-    REASONING = "reasoning"
-    ACTION = "action"
-    OBSERVATION = "observation"
-    ROUTING = "routing"
-    FINAL_ANSWER = "final_answer"
-
-
-class ToolExecutionStatus(str, Enum):
-    SUCCESS = "success"
+class SpanStatus(str, Enum):
+    OK = "ok"
     ERROR = "error"
     TIMEOUT = "timeout"
-    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
+    UNSET = "unset"
 
 
-class ToolCallRecord(BaseModel):
-    call_id: str = Field(..., description="Unique tool call invocation ID")
-    tool_name: str = Field(..., description="Name of the invoked tool")
-    arguments: Dict[str, Any] = Field(default_factory=dict, description="Input arguments passed to tool")
-    result: Optional[Any] = Field(default=None, description="Serialized return value from tool")
-    error: Optional[str] = Field(default=None, description="Error message if execution failed")
-    latency_ms: Optional[float] = Field(default=None, description="Tool execution duration in milliseconds")
-    status: ToolExecutionStatus = Field(default=ToolExecutionStatus.SUCCESS)
-
-
-class StepAttribution(BaseModel):
-    prompt_tokens: Optional[int] = Field(default=None, description="Input tokens consumed in this step")
-    completion_tokens: Optional[int] = Field(default=None, description="Generated tokens in this step")
-    latency_ms: Optional[float] = Field(default=None, description="Step duration in milliseconds")
-    cost_usd: Optional[float] = Field(default=None, description="USD cost incurred during step")
-    provenance: CostProvenance = Field(default=CostProvenance.UNAVAILABLE)
-
-    @model_validator(mode="after")
-    def validate_invariants(self) -> "StepAttribution":
-        # Strict enforcement: missing cost cannot be marked ACTUAL
-        if self.cost_usd is None and self.provenance == CostProvenance.ACTUAL:
-            raise ValueError("cost_usd cannot be None when provenance is ACTUAL")
-        return self
-
-
-class AgentStep(BaseModel):
-    step_id: str = Field(..., description="Unique step identifier")
-    step_index: int = Field(..., description="Zero-based sequence index within trajectory")
-    step_kind: StepKind = Field(..., description="Primary classification of step")
-    thought: Optional[str] = Field(default=None, description="Internal model reasoning or chain-of-thought")
-    tool_calls: List[ToolCallRecord] = Field(default_factory=list, description="Tools invoked during this step")
-    observation: Optional[str] = Field(default=None, description="Environment or tool output observed by agent")
-    state_delta: Dict[str, Any] = Field(default_factory=dict, description="State changes applied in this step")
-    attribution: StepAttribution = Field(default_factory=StepAttribution)
-
-
-class AgentTrajectory(BaseModel):
-    trajectory_id: str = Field(..., description="Unique trajectory identifier")
-    task_prompt: str = Field(..., description="Original user prompt or task goal")
-    steps: List[AgentStep] = Field(default_factory=list, description="Ordered sequence of agent steps")
-    final_outcome: Optional[str] = Field(default=None, description="Agent's final response or completion text")
-    goal_achieved: Optional[bool] = Field(default=None, description="Supervised ground truth completion flag")
-    ground_truth: Dict[str, Any] = Field(default_factory=dict, description="Expected human annotations")
-
-
-class ObservationSpan(BaseModel):
-    span_id: str = Field(...)
+class Span(BaseModel):
+    span_id: str
     parent_span_id: Optional[str] = None
-    name: str = Field(...)
-    span_kind: SpanKind = Field(...)
-    start_time: datetime = Field(...)
-    end_time: datetime = Field(...)
-    attributes: Dict[str, Any] = Field(default_factory=dict)
-    events: List[Dict[str, Any]] = Field(default_factory=list)
+    trace_id: str
+    kind: SpanKind
+    name: str
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    latency_ms: Optional[float] = None  # measured or reported; None if neither
+    status: SpanStatus = SpanStatus.UNSET
+    error: Optional[str] = None  # scrubbed
+    attempt: int = 1  # retries are separate spans with attempt > 1
+    attributes: Dict[str, Any] = {}  # kind-specific, see section 3
+    source: Literal["native", "instrumented", "otel", "openinference", "langfuse_import", "replay"]
 
 
-class TraceRecord(BaseModel):
-    trace_id: str = Field(...)
-    run_id: str = Field(...)
+class Trace(BaseModel):
+    trace_id: str
+    run_id: Optional[str] = None  # set for traces produced by a Runport run
+    case_id: Optional[str] = None
     session_id: Optional[str] = None
-    start_time: datetime = Field(...)
-    end_time: Optional[datetime] = None
-    total_cost_usd: Optional[float] = None
-    cost_provenance: CostProvenance = CostProvenance.UNAVAILABLE
-    spans: List[ObservationSpan] = Field(default_factory=list)
-    trajectory: Optional[AgentTrajectory] = None
+    source: str  # same vocabulary as Span.source
+    source_ref: Optional[str] = None  # e.g. the OTel trace id or Langfuse trace id
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    spans: List[Span]
+    final_output: Optional[str] = None
 ```
 
 ---
 
-## 4. OpenInference Semantic Conventions Mapping
+## 3. Kind-specific attributes
 
-Runport standardizes its span attributes against the OpenInference semantic specification:
+Names follow the OpenTelemetry GenAI semantic conventions where one exists, so OTel spans map without renaming.
 
-| Runport Field | OpenInference Attribute Key | Type | Description |
-| :--- | :--- | :--- | :--- |
-| `span_kind = "llm"` | `openinference.span.kind` | `string` | Fixed to `"LLM"` |
-| `span_kind = "tool"` | `openinference.span.kind` | `string` | Fixed to `"TOOL"` |
-| `span_kind = "retriever"` | `openinference.span.kind` | `string` | Fixed to `"RETRIEVER"` |
-| `step.thought` | `llm.thought` | `string` | Model internal chain-of-thought |
-| `attribution.prompt_tokens`| `llm.token_count.prompt` | `int` | Prompt tokens |
-| `attribution.completion_tokens` | `llm.token_count.completion` | `int` | Generated tokens |
-| `attribution.cost_usd` | `llm.cost.total_usd` | `float` | Calculated spend |
-| `tool_call.tool_name` | `tool.name` | `string` | Name of tool |
-| `tool_call.arguments` | `tool.parameters` | `json_string` | JSON-encoded parameters |
-| `tool_call.result` | `tool.output` | `string` | Serialized tool output |
-| `retrieval_documents` | `retrieval.documents` | `list[json]` | List of retrieved document nodes |
+| Kind | Attributes |
+|:---|:---|
+| `llm` | `gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `runport.cost_usd`, `runport.cost_basis` (`ACTUAL`/`ESTIMATED`/`UNRESOLVED`/`UNAVAILABLE`), `gen_ai.response.finish_reasons` |
+| `tool` | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `runport.tool.arguments` (scrubbed, size-capped), `runport.tool.result` (scrubbed, size-capped), `runport.tool.schema_valid`, `runport.tool.server` (e.g. MCP server id) |
+| `agent` | `gen_ai.agent.name`, `gen_ai.agent.id` |
+| `handoff` | `runport.handoff.from_agent`, `runport.handoff.to_agent`, `runport.handoff.reason` |
+| `router` | `runport.route.options`, `runport.route.chosen` |
+| `retrieval` | `runport.retrieval.query`, `runport.retrieval.doc_ids`, `runport.retrieval.scores`, `runport.retrieval.k` |
+
+Cost lives only on `llm` spans (and tools that report a price). A trace's cost is the sum of known span costs **plus** a count of
+spans whose cost is unknown; it is never reported as a total that silently treats unknown as zero.
 
 ---
 
-## 5. OpenTelemetry (OTel) Export Conversion
+## 4. Storage
 
-Runport translates internal traces into standard OTLP JSON / ResourceSpans for integration with OpenTelemetry collectors:
+Two tables in the existing SQLite database (and the future Postgres schema):
 
-```json
-{
-  "resourceSpans": [
-    {
-      "resource": {
-        "attributes": [
-          {"key": "service.name", "value": {"stringValue": "runport"}},
-          {"key": "service.version", "value": {"stringValue": "0.2.0"}},
-          {"key": "runport.run_id", "value": {"stringValue": "run-abc-123"}}
-        ]
-      },
-      "scopeSpans": [
-        {
-          "scope": {"name": "runport.traces", "version": "2.0.0"},
-          "spans": [
-            {
-              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
-              "spanId": "00f067aa0ba902b7",
-              "parentSpanId": "",
-              "name": "AgentExecution",
-              "kind": 1,
-              "startTimeUnixNano": "1699000000000000000",
-              "endTimeUnixNano": "1699000002500000000",
-              "attributes": [
-                {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
-                {"key": "runport.cost_provenance", "value": {"stringValue": "ESTIMATED"}},
-                {"key": "runport.cost_usd", "value": {"doubleValue": 0.0042}}
-              ],
-              "status": {"code": 1}
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
+```sql
+CREATE TABLE traces (
+  trace_id TEXT PRIMARY KEY, run_id TEXT REFERENCES evaluation_runs(run_id), case_id TEXT,
+  session_id TEXT, source TEXT NOT NULL, source_ref TEXT,
+  started_at TEXT, ended_at TEXT, final_output TEXT
+);
+CREATE TABLE spans (
+  trace_id TEXT NOT NULL REFERENCES traces(trace_id), span_id TEXT NOT NULL, parent_span_id TEXT,
+  kind TEXT NOT NULL, name TEXT NOT NULL, started_at TEXT, ended_at TEXT, latency_ms REAL,
+  status TEXT NOT NULL, error TEXT, attempt INTEGER NOT NULL DEFAULT 1,
+  attributes_json TEXT NOT NULL, source TEXT NOT NULL,
+  PRIMARY KEY (trace_id, span_id)
+);
+CREATE INDEX idx_spans_kind ON spans(trace_id, kind);
 ```
 
+Spend stays in `budget_ledger`. Span costs are informational and must reconcile to the ledger for native runs (test).
+
 ---
 
-## 6. Langfuse v2 Ingestion & Export Schema
-
-To provide full bi-directional interoperability with Langfuse, Runport implements direct export mapping matching Langfuse API v2:
+## 5. Scores linked to traces
 
 ```python
-def to_langfuse_v2(trace: TraceRecord) -> Dict[str, Any]:
-    """Serializes a Runport TraceRecord into Langfuse v2 ingest payload."""
-    observations = []
-    
-    for span in trace.spans:
-        observations.append({
-            "id": span.span_id,
-            "traceId": trace.trace_id,
-            "parentObservationId": span.parent_span_id,
-            "type": "GENERATION" if span.span_kind == SpanKind.LLM else "SPAN",
-            "name": span.name,
-            "startTime": span.start_time.isoformat(),
-            "endTime": span.end_time.isoformat(),
-            "input": span.attributes.get("input"),
-            "output": span.attributes.get("output"),
-            "usage": {
-                "promptTokens": span.attributes.get("prompt_tokens"),
-                "completionTokens": span.attributes.get("completion_tokens"),
-                "totalTokens": span.attributes.get("total_tokens"),
-            },
-            "calculatedTotalCost": span.attributes.get("cost_usd"),
-            "metadata": {
-                "provenance": span.attributes.get("provenance"),
-                "runport_run_id": trace.run_id,
-            }
-        })
-        
-    return {
-        "id": trace.trace_id,
-        "name": f"runport-{trace.run_id}",
-        "timestamp": trace.start_time.isoformat(),
-        "observations": observations,
-    }
+class ScoreKind(str, Enum):
+    GROUND_TRUTH = "ground_truth"  # compared with a human-approved reference
+    JUDGE = "judge"  # LLM-as-judge; records judge model and rubric hash
+    HEURISTIC = "heuristic"  # lexical overlap, regex, length, etc.
+
+
+class Score(BaseModel):
+    score_id: str
+    name: str  # e.g. "answer_correctness", "tool_selection"
+    kind: ScoreKind
+    value: Optional[float]  # None = not measurable for this case
+    target: Literal["case", "trace", "span"]
+    trace_id: Optional[str] = None
+    span_id: Optional[str] = None
+    evidence: Optional[str] = None
+    evaluator: str  # scorer id and version
 ```
 
+Reports and UIs must label every score with its kind. Model agreement is never stored as `GROUND_TRUTH`.
+
+---
+
+## 6. Producers and mappings
+
+| Producer | How it fills `Trace` |
+|:---|:---|
+| `GenericRunner` (all native runs) | One trace per case; an `llm` or `workflow_step` root span from `TargetResult` |
+| `connectors/dify.py` (workflow mode) | `workflow_step` span per `node_finished` event |
+| `connectors/mcp.py` | `tool` span per `tools/call`, with schema validation result |
+| `rag/target.py` | `retrieval` span, then `llm` span |
+| LangGraph adapter (planned) | `workflow_step` per node from the streaming run events |
+| OTel / OpenInference ingest (planned) | Map GenAI and OpenInference attributes to section 3 |
+| `traces/importer.py` (existing, Langfuse-style files) | `GENERATION` → `llm`, `SPAN` → `other`/`workflow_step`, `latency` seconds → ms |
+| Langfuse export (planned) | Inverse of the import mapping, via the Langfuse public ingestion API |
+
+---
+
+## 7. Acceptance tests
+
+- Round trip: build → store → load returns an equal `Trace`.
+- Null semantics: a span with no reported tokens or latency stores `NULL` and reports "unavailable".
+- Redaction: a header token or env secret in tool arguments never reaches `spans.attributes_json`.
+- Cost reconciliation: for native runs, the sum of known span costs equals the ledger's booked amount for that run.
+- OTel fixture: a recorded GenAI OTLP payload maps to the expected spans.
