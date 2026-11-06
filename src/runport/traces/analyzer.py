@@ -13,7 +13,7 @@ from runport.traces.models import (
 
 
 def _fmt_ms(value: Optional[float]) -> str:
-    return f"{value:.1f}ms" if value is not None else "unavailable"
+    return f"{value:.1f}ms" if value is not None else "UNAVAILABLE"
 
 
 class TraceDiagnosticAnalyzer:
@@ -89,7 +89,7 @@ class TraceDiagnosticAnalyzer:
             category=FailureCategory.NO_FAILURE_DETECTED,
             confidence=0.85,
             hypothesis="Trace response appears grounded, coherent, and within normal operational bounds.",
-            evidence=[f"Latency: {_fmt_ms(trace.latency_ms)}", f"Tokens: {trace.total_tokens if trace.total_tokens is not None else 'unavailable'}"],
+            evidence=[f"Latency: {_fmt_ms(trace.latency_ms)}", f"Tokens: {trace.total_tokens if trace.total_tokens is not None else 'UNAVAILABLE'}"],
             suggested_action="No remediation necessary.",
         )
 

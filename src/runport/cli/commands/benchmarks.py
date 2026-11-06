@@ -554,7 +554,7 @@ def benchmark_rag(
         "Abstention Accuracy", f"[bold yellow]{report_a.abstention_accuracy * 100:.1f}%[/bold yellow]", "Model successfully abstained on unsupported queries"
     )
     summary_table.add_row("Retrieval Latency", f"{report_a.mean_retrieval_latency_ms:.1f} ms", "Isolated context search turnaround")
-    summary_table.add_row("Answer Correctness", f"{report_a.mean_answer_correctness * 100:.1f}%", "Factual overlap against reference answer")
+    summary_table.add_row("Answer Correctness", _fmt_pct(report_a.mean_answer_correctness), "Factual overlap against reference answer (labelled cases only)")
     summary_table.add_row("Groundedness (Faithfulness)", f"{report_a.mean_groundedness * 100:.1f}%", "Supported by context (hallucination check)")
     summary_table.add_row("Diagnostic Keyword Hit Rate", f"{report_a.diagnostic_keyword_hit_rate * 100:.1f}%", "Secondary exact keyword-substring match")
     summary_table.add_row("Generation Latency", f"{report_a.mean_generation_latency_ms:.1f} ms", "Isolated LLM inference turnaround")
@@ -636,9 +636,11 @@ def benchmark_rag(
 
         comp_table.add_row(
             "Answer Correctness",
-            f"{report_a.mean_answer_correctness * 100:.1f}%",
-            f"{report_b.mean_answer_correctness * 100:.1f}%",
-            _fmt_delta(report_b.mean_answer_correctness - report_a.mean_answer_correctness, is_pct=True),
+            _fmt_pct(report_a.mean_answer_correctness),
+            _fmt_pct(report_b.mean_answer_correctness),
+            _fmt_delta(report_b.mean_answer_correctness - report_a.mean_answer_correctness, is_pct=True)
+            if report_a.mean_answer_correctness is not None and report_b.mean_answer_correctness is not None
+            else "—",
         )
         comp_table.add_row(
             "Groundedness",

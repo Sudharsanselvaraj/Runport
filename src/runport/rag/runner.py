@@ -253,7 +253,8 @@ class RAGBenchmarkRunner:
         diag_kw_prec = round(sum(c.retrieval_precision for c in case_results) / n, 4) if n else 0.0
         mean_ret_lat = round(sum(c.retrieval_latency_ms for c in case_results) / n, 2) if n else 0.0
 
-        mean_ans_corr = round(sum(c.answer_correctness for c in case_results) / n, 4) if n else 0.0
+        measured_corr = [c.answer_correctness for c in case_results if c.answer_correctness is not None]
+        mean_ans_corr: Optional[float] = round(sum(measured_corr) / len(measured_corr), 4) if measured_corr else None
         mean_grd = round(sum(c.groundedness for c in case_results) / n, 4) if n else 0.0
         mean_gen_lat = round(sum(c.generation_latency_ms for c in case_results) / n, 2) if n else 0.0
         mean_e2e_lat = round(sum(c.e2e_latency_ms for c in case_results) / n, 2) if n else 0.0
