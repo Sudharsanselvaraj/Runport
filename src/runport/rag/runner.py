@@ -189,7 +189,7 @@ class RAGBenchmarkRunner:
             if case.abstention_expected:
                 attribution = "ABSTENTION_SUCCESS" if abstention_corr == 1.0 else "OVERCONFIDENT_HALLUCINATION"
             elif rel_set:
-                if ret_hit and ans_corr >= 0.70 and groundedness >= 0.40:
+                if ret_hit and (ans_corr is not None and ans_corr >= 0.70) and groundedness >= 0.40:
                     attribution = "SYSTEM_SUCCESS"
                 elif not ret_hit:
                     attribution = "RETRIEVAL_FAILURE"

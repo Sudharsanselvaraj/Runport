@@ -17,11 +17,12 @@ class RAGSystemEvaluator:
         generated_output: str,
         retrieved_chunks: List[str],
         expected_answer: Optional[str] = None,
-    ) -> Tuple[float, float]:
+    ) -> Tuple[Optional[float], float]:
         """Calculates answer correctness and faithfulness (groundedness).
 
         Returns:
             (answer_correctness, groundedness)
+            answer_correctness is None if expected_answer is not provided (Null is not 0 / no guessing).
         """
         out_clean = generated_output.strip()
         if not out_clean:
@@ -31,13 +32,13 @@ class RAGSystemEvaluator:
         if not gen_tokens:
             return 0.0, 0.0
 
-        # 1. Answer Correctness (overlap with ground truth)
+        # 1. Answer Correctness (overlap with ground truth; None if no ground truth provided)
         if expected_answer and expected_answer.strip():
             ref_tokens = self._tokenize(expected_answer)
             overlap = len(ref_tokens.intersection(gen_tokens))
-            correctness = min(1.0, overlap / len(ref_tokens)) if ref_tokens else 0.70
+            correctness: Optional[float] = round(min(1.0, overlap / len(ref_tokens)), 4) if ref_tokens else None
         else:
-            correctness = 0.70
+            correctness = None
 
         # 2. Groundedness (faithfulness against retrieved context)
         context_str = " ".join(retrieved_chunks)
@@ -56,17 +57,17 @@ class RAGSystemEvaluator:
             # When retrieval is completely empty, any output claiming facts is ungrounded
             groundedness = 0.20 if len(out_clean) > 20 else 0.80
 
-        return round(correctness, 4), round(groundedness, 4)
+        return correctness, round(groundedness, 4)
 
     def attribute_failure(
         self,
         retrieval_hit_rate: float,
-        answer_correctness: float,
+        answer_correctness: Optional[float],
         groundedness: float,
     ) -> str:
         """Categorizes whether failure originated in the retriever, generator, or both."""
         ret_ok = retrieval_hit_rate >= 0.50
-        gen_ok = answer_correctness >= 0.60 and groundedness >= 0.50
+        gen_ok = (answer_correctness >= 0.60 if answer_correctness is not None else False) and groundedness >= 0.50
 
         if ret_ok and gen_ok:
             return "SYSTEM_SUCCESS"
