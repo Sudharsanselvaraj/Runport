@@ -489,7 +489,9 @@ def test_explorer_table_shows_dashes_not_repeated_unavailable_and_never_shows_er
     vm = tui.get_view()
     out = io.StringIO()
     Console(file=out, width=207, height=60).print(tui.build_layout())
-    text = out.getvalue()
+    # The host-metrics header honestly says LOAD/MEM UNAVAILABLE where the OS gives no load average or psutil is absent
+    # (Windows); this test is about the table cells, so that header line is not counted.
+    text = "\n".join(line for line in out.getvalue().splitlines() if "LOAD/core" not in line)
     assert text.count("UNAVAILABLE") <= 1  # at most the legacy header word; no per-cell noise
     err = next(r for r in vm.rows if r.cells[1] == "C8" and r.cells[4] == "ERROR")
     assert err.cells[5] == "—" and err.cells[7] == "—" and err.cells[8] == "—"  # no prediction, tokens or cost for a failed call

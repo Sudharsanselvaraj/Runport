@@ -177,11 +177,11 @@ def test_reporter_export(tmp_path: Path):
     assert csv_out.exists()
     assert md_out.exists()
 
-    csv_content = csv_out.read_text()
+    csv_content = csv_out.read_text(encoding="utf-8")  # the reporter writes UTF-8; Windows defaults to cp1252
     assert "trace-langfuse-001" in csv_content
     assert "ROUTING_FAILURE" in csv_content
 
-    md_content = md_out.read_text()
+    md_content = md_out.read_text(encoding="utf-8")
     assert "# Runport — Trace Diagnostic Report" in md_content
     assert "trace-langfuse-001" in md_content
 

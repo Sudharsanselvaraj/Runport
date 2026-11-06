@@ -393,7 +393,8 @@ def test_help_modal_toggle():
 
 def test_graceful_handling_small_terminal():
     """Verify small terminal dimensions render a notice without crashing."""
-    console = Console(file=io.StringIO(), force_terminal=True, width=40, height=10)
+    # legacy_windows=False: on Windows runners without VT support Rich would report one column less (39x10).
+    console = Console(file=io.StringIO(), force_terminal=True, width=40, height=10, legacy_windows=False)
     app_tui = WorkbenchTUI(console=console)
     app_tui.refresh_data()
 
