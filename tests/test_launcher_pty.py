@@ -47,8 +47,9 @@ def run_launcher(keys, rows=55, cols=207, settle=0.6):
 
     # Wait for the first menu frame before typing. Keys sent earlier can land while the terminal is still in line mode,
     # so a final "q" waits for a newline that never comes and the launcher never exits (slow CI runners hit this).
+    # The footer is the last part of a menu frame, so once it is on screen the launcher is reading keys in raw mode.
     deadline = time.time() + 30
-    while b"\x1b[?1049h" not in out and time.time() < deadline:
+    while MENU_FOOTER not in out and time.time() < deadline:
         drain(0.1)
     drain(settle)
 
@@ -59,19 +60,29 @@ def run_launcher(keys, rows=55, cols=207, settle=0.6):
             drain(0.1)
 
     for k in keys:
-        frames, menus, prompts = out.count(b"\x1b[H"), out.count(b"\x1b[?1049h"), out.count(RETURN_PROMPT)
+        frames, menus, prompts = out.count(b"\x1b[H"), out.count(MENU_FOOTER), out.count(RETURN_PROMPT)
         os.write(master, k)
         if k in (UP, DOWN):
             wait_for_more(b"\x1b[H", frames, 30)  # the menu redrew
         elif k == ENTER:
-            wait_for_more(b"\x1b[?1049h", menus, 30)  # back on the menu after a workflow
+            wait_for_more(MENU_FOOTER, menus, 30)  # the menu is fully drawn again after a workflow
         elif k != QUIT:
             wait_for_more(RETURN_PROMPT, prompts, 90)  # a workflow ran to its "press Enter" prompt
         drain(settle)
     drain(settle)
-    try:
-        proc.wait(timeout=30)
-    except subprocess.TimeoutExpired:
+    # A "q" that lands while the terminal switches modes can be discarded by the tty; resend it a bounded number of times.
+    for attempt in range(4):
+        try:
+            proc.wait(timeout=10)
+            break
+        except subprocess.TimeoutExpired:
+            if keys and keys[-1] == QUIT and attempt < 3:
+                try:
+                    os.write(master, QUIT)
+                except OSError:
+                    pass
+                drain(settle)
+    else:
         proc.kill()
         proc.wait()
     os.close(master)
@@ -81,6 +92,7 @@ def run_launcher(keys, rows=55, cols=207, settle=0.6):
 DOWN, UP, QUIT = b"\x1b[B", b"\x1b[A", b"q"
 ENTER = b"\r"
 RETURN_PROMPT = b"Press Enter to return to the menu"
+MENU_FOOTER = b"q Exit"
 
 
 def test_moving_through_the_menu_redraws_in_place_on_the_alternate_screen():
