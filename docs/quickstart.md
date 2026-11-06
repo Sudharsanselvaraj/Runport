@@ -124,6 +124,7 @@ import pytest
 from runport.scorers.classification import ClassificationReportScorer
 from runport.scorers.stats import wilson
 
+
 def test_intent_classification():
     predictions = ["SUPPORT", "BILLING", "SUPPORT"]
     ground_truth = ["SUPPORT", "BILLING", "SALES"]
