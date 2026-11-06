@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     format_adherence REAL,
     overall_score REAL,
     evaluator_notes TEXT,
+    score_kind TEXT,
+    evaluator TEXT,
     FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
 );
 
@@ -117,6 +119,7 @@ class DatabaseManager:
             conn.executescript(SCHEMA_SQL)
             self._migrate_ledger(conn)
             self._migrate_evaluation_results(conn)
+            self._migrate_score_provenance(conn)
             conn.commit()
             self._migrate_evaluation_runs(conn)
 
@@ -212,6 +215,15 @@ class DatabaseManager:
                 "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
                 "VALUES (2, datetime('now'), 'Make accuracy, tokens, and cost columns in evaluation_results nullable')"
             )
+
+    @staticmethod
+    def _migrate_score_provenance(conn: sqlite3.Connection) -> None:
+        """Add score provenance columns. Rows written before them keep NULL: their kind is unknown, not ground truth."""
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_results)").fetchall()}
+        if cols and "score_kind" not in cols:
+            conn.execute("ALTER TABLE evaluation_results ADD COLUMN score_kind TEXT")
+        if cols and "evaluator" not in cols:
+            conn.execute("ALTER TABLE evaluation_results ADD COLUMN evaluator TEXT")
 
     @staticmethod
     def _migrate_ledger(conn: sqlite3.Connection) -> None:
@@ -565,8 +577,8 @@ class DatabaseManager:
                     result_id, run_id, case_id, prompt, expected_answer,
                     generated_output, latency_ms, prompt_tokens, completion_tokens,
                     cost_usd, accuracy, groundedness, format_adherence, overall_score,
-                    evaluator_notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    evaluator_notes, score_kind, evaluator
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(result_id) DO NOTHING
                 """,
                 [
@@ -586,6 +598,8 @@ class DatabaseManager:
                         float(r["format_adherence"]) if r.get("format_adherence") is not None else None,
                         float(r["overall_score"]) if r.get("overall_score") is not None else None,
                         r.get("evaluator_notes", ""),
+                        r.get("score_kind"),
+                        r.get("evaluator"),
                     )
                     for r in results
                 ],

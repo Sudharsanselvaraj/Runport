@@ -143,8 +143,17 @@ def get_run_report(run_id: str) -> Dict[str, Any]:
     mean_prompt_tokens = sum(p_tokens) / len(p_tokens) if p_tokens else None
     mean_comp_tokens = sum(c_tokens) / len(c_tokens) if c_tokens else None
 
-    # Accuracy and Wilson CI
-    accuracies = [float(r["accuracy"]) for r in results if r.get("accuracy") is not None]
+    # Supervised accuracy and Wilson CI come only from ground-truth scores. Heuristic and judge scores are reported
+    # separately under their own names and never as accuracy (AGENTS.md invariant 8). Rows written before score kinds
+    # were recorded (score_kind NULL) are treated as unknown, which is not ground truth.
+    kinds: Dict[str, int] = {}
+    for r in results:
+        if r.get("accuracy") is not None:
+            k = r.get("score_kind") or "unknown"
+            kinds[k] = kinds.get(k, 0) + 1
+    accuracies = [float(r["accuracy"]) for r in results if r.get("accuracy") is not None and r.get("score_kind") == "ground_truth"]
+    heuristic = [float(r["accuracy"]) for r in results if r.get("accuracy") is not None and r.get("score_kind") in ("heuristic", None)]
+    judged = [float(r["accuracy"]) for r in results if r.get("accuracy") is not None and r.get("score_kind") == "judge"]
     wilson_ci = None
     mean_acc = None
     if accuracies:
@@ -214,7 +223,11 @@ def get_run_report(run_id: str) -> Dict[str, Any]:
         "total_cases": len(results),
         "completed_cases": sum(1 for r in results if r.get("accuracy") is not None or r.get("generated_output")),
         "accuracy": round(mean_acc, 4) if mean_acc is not None else None,
+        "accuracy_basis": "ground_truth" if accuracies else None,
         "wilson_ci": wilson_ci,
+        "heuristic_overlap_mean": round(sum(heuristic) / len(heuristic), 4) if heuristic else None,
+        "judge_score_mean": round(sum(judged) / len(judged), 4) if judged else None,
+        "score_kinds": kinds,
         "mean_latency_ms": round(mean_lat, 2) if mean_lat is not None else None,
         "latency_p50_ms": round(p50, 2) if p50 is not None else None,
         "latency_p90_ms": round(p90, 2) if p90 is not None else None,

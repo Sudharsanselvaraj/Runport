@@ -67,4 +67,10 @@ def rag_case_scorer(case: Dict[str, Any], result: TargetResult) -> Dict[str, Any
         generated_output=result.output_text or "", retrieved_chunks=chunks, expected_answer=case.get("expected_answer")
     )
     # Without a reference answer there is no correctness, so there is no overall score either (null is not 0).
-    return {"accuracy": ans, "groundedness": grd, "overall_score": round((ans + grd) / 2.0, 4) if ans is not None else None}
+    return {
+        "accuracy": ans,
+        "groundedness": grd,
+        "overall_score": round((ans + grd) / 2.0, 4) if ans is not None else None,
+        "kind": "heuristic",  # lexical overlap, not supervised accuracy
+        "evaluator": "rag_overlap_v1",
+    }

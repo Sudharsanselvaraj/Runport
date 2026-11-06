@@ -141,7 +141,13 @@ def test_replay_run_books_zero_and_persists_results(client):
     assert res_rep.status_code == 200
     rep = res_rep.json()
     assert rep["total_cases"] == 2
-    assert rep["wilson_ci"] is not None
+    # Replay scores are lexical-overlap heuristics: reported as such, never as supervised accuracy with a Wilson CI.
+    assert set(rep["score_kinds"]) == {"heuristic"}
+    assert rep["accuracy"] is None and rep["wilson_ci"] is None
+    assert rep["heuristic_overlap_mean"] is not None
+    for r in detail["results"]:
+        expected_kind = "heuristic" if r["generated_output"] else None  # the rubric ran on every recorded output
+        assert r["score_kind"] == expected_kind
     assert rep["total_cost_usd"] == 0.0
 
 
@@ -178,3 +184,29 @@ def test_replay_without_recordings_scores_nothing(client):
     assert detail["run"]["mean_accuracy"] is None
     assert detail["run"]["mean_latency_ms"] is None
     assert all(r["accuracy"] is None and r["generated_output"] == "" for r in detail["results"])
+
+
+def test_ground_truth_scores_alone_produce_supervised_accuracy(tmp_path):
+    """Only rows marked ground_truth feed accuracy and its Wilson CI; legacy rows with no kind do not."""
+    from fastapi.testclient import TestClient
+
+    from runport.api.app import create_app
+    from runport.core.config import settings
+    from runport.storage.db import DatabaseManager
+
+    db = DatabaseManager(settings.db_path)
+    db.init_db()
+    db.save_evaluation_run(
+        {"run_id": "gt-run", "timestamp": "t", "model_id": "m", "dataset_path": "d", "total_cases": 3, "completed_cases": 3, "failed_cases": 0}
+    )
+    base = {"run_id": "gt-run", "prompt": "q", "expected_answer": "A", "generated_output": "A"}
+    db.save_evaluation_results(
+        [
+            {**base, "result_id": "r1", "case_id": "1", "accuracy": 1.0, "score_kind": "ground_truth", "evaluator": "exact_match"},
+            {**base, "result_id": "r2", "case_id": "2", "accuracy": 0.0, "score_kind": "ground_truth", "evaluator": "exact_match"},
+            {**base, "result_id": "r3", "case_id": "3", "accuracy": 1.0},  # legacy row: kind unknown
+        ]
+    )
+    rep = TestClient(create_app()).get("/api/reports/gt-run").json()
+    assert rep["accuracy"] == 0.5 and rep["accuracy_basis"] == "ground_truth" and rep["wilson_ci"] is not None
+    assert rep["score_kinds"] == {"ground_truth": 2, "unknown": 1}

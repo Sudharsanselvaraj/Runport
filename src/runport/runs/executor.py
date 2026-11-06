@@ -233,6 +233,9 @@ class GenericRunner:
                             "format_adherence", 1.0 if res.status == TargetStatus.SUCCESS else 0.0 if res.status == TargetStatus.INVALID_OUTPUT else None
                         ),
                         "overall_score": scores.get("overall_score"),
+                        # Provenance of the scores above: ground_truth | judge | heuristic (None when unscored).
+                        "score_kind": scores.get("kind") if scores else None,
+                        "evaluator": scores.get("evaluator") if scores else None,
                         "evaluator_notes": res.error_message
                         or scores.get("notes")
                         or ("" if scores else "Not scored: apply a scorer from runport.scorers to case_results."),

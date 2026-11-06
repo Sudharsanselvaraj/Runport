@@ -316,4 +316,7 @@ def rubric_case_scorer(case: Dict[str, Any], result: Any) -> Dict[str, Any]:
         "format_adherence": score.format_adherence,
         "overall_score": score.overall_score,
         "notes": score.notes or "",
+        # Lexical overlap with the reference answer: a heuristic, never supervised accuracy (AGENTS.md invariant 8).
+        "kind": "heuristic",
+        "evaluator": "rubric_overlap_v1",
     }
