@@ -1,31 +1,49 @@
 # Roadmap Implementation Audit
 
-**Audited tree:** branch `claude/charming-wiles-d0e566` at `d99d167`, which contains `main` up to `1179841` (merged in `09d6c54`).
-**Date:** 2026-11-06.
+**Audited tree:** `main` at `b735afc` (2026-11-06), after PRs #13 (unified execution, MCP, SDK, dashboard), #14 (integrity
+hardening) and #15 (cross-platform CI). Section 1 also covers branch `claude/ci-green`, which fixes the last red CI jobs.
 **Scope:** the nine capabilities missing from the v0.1.0 announcement, plus the foundations they depend on.
 
 This document separates **evidence** (what the code does, with file paths) from **recommendations** (what to build). Every
-"verified" statement below was checked against the code or by running a command on this tree. It replaces an earlier version
-of this file written against `main` alone, which predated the shared execution service, the MCP server and the Python SDK and
-contained factual errors (section 7).
+"verified" statement was checked against the code or by running a command. Earlier versions of this file are corrected in
+section 7; the fixes made since the first version are listed in section 9.
 
 ---
 
 ## 1. Verified baseline
 
-Commands run on `d99d167` (macOS, Python 3.12, uv):
+### 1.1 GitHub Actions on `main` at `b735afc` (CI run for the PR #15 merge)
 
-| Check | Result |
+| Job | Result | Cause |
+|:---|:---|:---|
+| Lint & Code Style, Type Check (mypy) | pass | — |
+| Test, ubuntu, Python 3.11 / 3.12 / 3.13 | pass | — |
+| Test, windows, Python 3.11 / 3.12 / 3.13 | pass | — |
+| Test, macos, Python 3.11 / 3.12 | pass | — |
+| Test, macos, Python 3.13 | **fail** | `tests/test_launcher_pty.py`: a quit key sent while the terminal switched modes was discarded; the launcher was killed (`-9`). |
+| Web Build & Wheel Smoke Test | **fail** | `runport api-preflight` exits 1 without `OPENROUTER_API_KEY` (by design); the smoke step treated that as an error. |
+| Security & Legacy Scans | **fail** | Gitleaks passes; the Legacy Pattern Scan matched the generic words `lead` and `intent` in ordinary prose. |
+
+### 1.2 Branch `claude/ci-green` (fixes for the three failures above; not yet run on GitHub Actions)
+
+| Check (run locally, macOS, Python 3.12) | Result |
 |:---|:---|
-| `uv run pytest -q` | **456 passed** |
+| `uv run pytest -q` | **465 passed** |
 | `uv run pytest -q examples/plugins` | 26 passed, 5 skipped |
-| `uv run ruff check .` | All checks passed |
-| `uv run mypy` | No issues (56 files: `core`, `runs`, `connectors`, `scorers`, `workloads`, `services`, `traces`, `sdk.py`, `mcp_server`, and the migrated runners) |
+| `uv run ruff check .`, `uv run ruff format --check .` | pass |
+| `uv run mypy` | no issues in 56 files |
 | `npm test` (web) | 18 passed |
-| `git tag`, `git ls-remote --tags origin` | No tags. **v0.1.0 is described in `CHANGELOG.md` and `pyproject.toml` but has not been tagged**, so `.github/workflows/release.yml` (PyPI publish on `v*` tags) has never run for it. |
+| `gitleaks git` (full history) | no leaks |
+| Legacy Pattern Scan (same command as CI) | clean |
+| Launcher PTY tests, 3 concurrent runs under 4 CPU-bound processes | 5/5 each |
+| Wheel built, installed with the CI command, smoke steps run | pass |
 
-mypy does **not** cover `api/`, `cli/`, `tui/`, `observability/`, `evaluation/replay_scoring.py` or `classification/threshold.py`;
-the latter two have about 20 known type errors.
+### 1.3 Scope limits of these checks
+
+- mypy does **not** cover `api/`, `cli/`, `tui/`, `observability/`, `evaluation/replay_scoring.py` or `classification/threshold.py`; the
+  last two have about 20 known type errors.
+- `git tag` and `git ls-remote --tags origin` show **no tags**. `pyproject.toml` still says `0.1.0` and the README says Alpha.
+  The release workflow (`.github/workflows/release.yml`, PyPI on `v*` tags) has never run, so nothing merged is a published release.
 
 ---
 
@@ -138,18 +156,18 @@ emits steps. **Depends on:** trace schema, an instrumentation API in the SDK, an
 | Question | Answer | Evidence |
 |:---|:---|:---|
 | One shared execution service? | **Yes, for live target runs.** | `services/execution.py` `ExecutionService` → `runs/executor.py` `GenericRunner`, used by CLI `benchmark`/`benchmark-rag`, `/api/plan`, `/api/runs`, `/api/targets/test`, `runport.sdk`, the MCP server. `BenchmarkRunner.run`, `RAGBenchmarkRunner.run` and `ClassificationRunner.run_batch` also execute via `GenericRunner` (with their own plan objects and a `TokenApprover` built from a `LiveAuthorization`). The only `provider.generate(` left is in `connectors/openrouter.py`. |
-| One canonical run and trace schema? | **No.** | Runs: `evaluation_runs`/`evaluation_results`. Classification: `PredictionRecord` JSONL (`classification/records.py`). Events: `RequestEvent` JSONL (`observability/events.py`). Imported traces: `TraceRecord`. Four shapes, none linked. |
+| One canonical run and trace schema? | **No.** | Runs: `evaluation_runs`/`evaluation_results`. Classification: `PredictionRecord` JSONL (`classification/records.py`). Events: `RequestEvent` JSONL (`observability/events.py`), now written by `GenericRunner` and keyed by `run_id`/`case_id`. Imported traces: `TraceRecord`. Tables in `storage/db.py`: `budget_ledger`, `model_portfolio`, `evaluation_runs`, `evaluation_results`, `budget_reservations`, `schema_migrations`, plus `plan_approvals` (`services/approvals.py`). No trace or span table. |
 | One connector contract? | **Yes.** | `Target.execute → TargetResult`; `connectors/registry.py` `build_target` and `CONNECTOR_MATRIX`. |
-| One evaluation interface? | **No.** | `scorers/base.py`, `evaluation/evaluator.py` `RubricEvaluator`, `rag/evaluator.py`, `classification/metrics.py`, `GenericRunner(case_scorer=…)`. Score provenance (`EvaluationScore.evaluator_type`) is **not persisted**: `evaluation_results` stores a heuristic word-overlap score in the `accuracy` column. |
+| One evaluation interface? | **No, but provenance is now persisted.** | `scorers/base.py`, `evaluation/evaluator.py` `RubricEvaluator`, `rag/evaluator.py`, `classification/metrics.py`, `GenericRunner(case_scorer=…)`. Every stored score carries `score_kind` (`ground_truth`/`judge`/`heuristic`) and `evaluator`; reports compute accuracy and Wilson CIs from ground-truth rows only (`api/routes/reports.py`). No scorer yet writes `ground_truth` rows, so supervised accuracy is empty for current runs. |
 | One authentication/authorization model? | **Partly.** | API: shared token or loopback. Approvals: `ApprovalStore` channels. No per-user identity anywhere. |
-| One budget/approval path? | **Yes, with two gaps.** | `GenericRunner` guard order and `ApprovalStore`. Gaps in section 4 (per-run cap, concurrency). The library runners accept a `LiveAuthorization` object directly; it is a capability object, not a persisted approval. |
+| One budget/approval path? | **Yes.** | `GenericRunner` guard order, `ApprovalStore`, and atomic reservations (`BudgetService.reserve` → `DatabaseManager.reserve_budget`, one `BEGIN IMMEDIATE` transaction over booked spend plus open reservations). The library runners accept a `LiveAuthorization` object directly; it is a capability object, not a persisted approval. |
 | Durable persistence? | **Single-node only.** | SQLite WAL; `PRAGMA`-based migrations in `DatabaseManager.init_db`; no migration framework, no Postgres. |
 | Stable public API? | **No.** | `/api/*` unversioned; responses mostly untyped dicts; SDK returns internal dataclasses. |
 
 **Duplicate or divergent paths still present**
 1. `api/routes/runs.py` replay branch builds its own run record; CLI replay uses `runs/replay.py` + `evaluation/replay_scoring.py`. Both are offline, but they persist differently.
 2. `ClassificationRunner` writes `PredictionRecord`s to its own store in addition to `evaluation_results`.
-3. The dashboard's live telemetry stream (`/api/events`, `observability/monitor.py`) reads `request_events.jsonl`, but **no code in `src/` writes `RequestEvent`s**, so it stays empty for every run.
+3. ~~No code wrote `RequestEvent`s~~ — fixed in #14: `GenericRunner` emits start and finish events for every live case.
 
 ---
 
@@ -157,16 +175,16 @@ emits steps. **Depends on:** trace schema, an instrumentation API in the SDK, an
 
 | Area | Status | Evidence / gap |
 |:---|:---|:---|
-| Remote API auth | Fixed on this branch | Fails closed without a token; constant-time compare; DNS-rebinding Host check (`api/app.py`). Dashboard cannot send a token, so token mode is API/CLI-only. |
+| Remote API auth | Fixed (#13) | Fails closed without a token; constant-time compare; DNS-rebinding Host check (`api/app.py`). Dashboard cannot send a token, so token mode is API/CLI-only. |
 | API token handling | Single static secret | No rotation, scopes or per-client identity. |
 | Secret storage | Environment only | `runport.yaml` must use `$NAME`/`${NAME}` (`registry.check_spec_has_no_literal_secrets`, `workspace._check_no_secrets`). No vault, no per-user secrets. |
 | User/org isolation | None | Single tenant. |
-| Approval generation/consumption | Fixed on this branch | Persisted, expiring, fingerprint-bound, atomic single use (`services/approvals.py`; concurrency test in `tests/test_integrity_security.py`). Any API caller can approve via `web_ui`. |
-| Budget enforcement | **Two gaps** | (a) The per-run ceiling is checked against each case's worst case, never against the run's accumulated spend (`GenericRunner.execute_plan`, Guard 3; `BudgetService.check_spend_permitted`). Lifetime and pilot caps are cumulative and hold. (b) Preflight and booking are separate statements: two concurrent runs can both pass preflight and overspend together. |
-| Unknown cost | Fixed on this branch | Billable + no cost → `UNRESOLVED`, run halts (`runs/executor.py` Guard 7; `targets/base.py` `BillingMode`). |
-| Null vs zero | Mostly fixed | Traces, RAG correctness, plan projections. **Remaining:** the Compare page draws 50 ms / 90 ms when latency is missing (`web/src/App.tsx`, `mean_latency_ms || 50`). |
+| Approval generation/consumption | Fixed (#13) | Persisted, expiring, fingerprint-bound, atomic single use (`services/approvals.py`; concurrency test in `tests/test_integrity_security.py`). Any API caller can approve via `web_ui`. |
+| Budget enforcement | Fixed (#14) | Per-run ceiling is cumulative; reservations are atomic and expire (30 min). **Documented limit:** a run can exceed its ceiling by the amount one case's actual cost exceeds its reserved estimate (`tests/test_budget_reservations.py`). |
+| Unknown cost | Fixed (#13) | Billable + no cost → `UNRESOLVED`, run halts (`runs/executor.py` Guard 7; `targets/base.py` `BillingMode`). |
+| Null vs zero | Fixed for known cases | Traces, RAG correctness, plan projections (#13); Compare chart no longer draws invented latency (#14). |
 | Trace redaction | Present | `scrub_secrets` on results, exports, MCP output; PII redaction in `datasets/redaction.py`. |
-| Concurrent execution | Unsafe for spend | See budget gap (b). SQLite serializes writes but not the check-then-book sequence. |
+| Concurrent execution | Safe for spend (single node) | Reservations serialize the check and the hold; a reproduced overspend (4 runs, $0.009 against $0.006) no longer occurs. Still single-process SQLite; no worker isolation. |
 | Transaction boundaries | Per statement | Each ledger write is its own transaction; a run is not atomic. |
 | Background jobs | None | Live API runs block the request; no cancel, no resume. |
 | Audit logging | Partial | The ledger and `plan_approvals` (who approved, when, which fingerprint) are durable; API access is not logged. |
@@ -204,7 +222,7 @@ approvals; billing modes and `UNRESOLVED` handling; the MCP client and server; t
 the capability matrix and its drift test.
 
 **Build first (foundations):**
-1. F0 integrity fixes: cumulative per-run cap, atomic budget reservation, `RequestEvent` emission from `GenericRunner`, persisted score provenance.
+1. ~~F0 integrity fixes~~ — done in #14 (cumulative per-run cap, atomic reservation, request events, score provenance). Remaining F0 item: a scorer that writes `ground_truth` rows (exact match against human-approved labels), so supervised accuracy is populated.
 2. F1 canonical trace schema and span tables, with `TargetResult.trajectory`.
 3. F3 scoped API keys (prerequisite for any remote SDK, MCP over HTTP, or hosting).
 4. F2 versioned REST v1 with asynchronous run jobs.
@@ -231,11 +249,11 @@ The earlier file on `main` (`1179841`) stated, among others:
 
 ## 8. Test results on the audited tree
 
-See section 1. All commands were run on `d99d167`; nothing here is inferred from CI.
+See section 1. CI results come from the GitHub Actions run on `b735afc`; local results are labelled as such.
 
 ---
 
-## 9. Fixed since this audit (branch `claude/integrity-hardening`)
+## 9. Fixed since the first version of this audit
 
 | Finding | Fix | Commit |
 |:---|:---|:---|
@@ -243,7 +261,8 @@ See section 1. All commands were run on `d99d167`; nothing here is inferred from
 | No executor wrote `RequestEvent`s | `GenericRunner` emits start and finish events for every live case | `448e014` |
 | Score provenance not persisted; heuristic shown as accuracy | `score_kind` / `evaluator` columns; reports compute accuracy from ground-truth rows only | `a12b803`, `969d94b` |
 | Compare chart drew 50 / 90 ms for missing latency | Missing values draw no bar | `969d94b` |
-| CI red on main (lint deps, Rollup binary, Gitleaks placeholders, Windows `fcntl`, PTY and example timeouts) | Workflow and test fixes | `f6b3d55` |
+| CI red on main (lint deps, Rollup binary, Gitleaks placeholders, Windows `fcntl`, PTY and example timeouts) | Workflow and test fixes (#14) | `f6b3d55` |
+| Windows test assumptions; wheel install command | #15 | `fcbe993`, `15d5c7f` |
+| Last red jobs on `b735afc`: macOS 3.13 PTY quit race, smoke test vs fail-closed preflight, legacy scan word list | `claude/ci-green` (pending CI) | see branch |
 
-Still open from section 4: the dashboard cannot send an API token; the "Legacy Pattern Scan" CI step matches ordinary words
-(`lead`, `intent`) and fails until its word list is decided by the maintainer.
+Still open from section 4: the dashboard cannot send an API token, so token mode is API/CLI only.

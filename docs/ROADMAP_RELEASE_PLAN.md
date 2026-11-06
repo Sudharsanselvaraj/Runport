@@ -40,6 +40,7 @@ mainly need hardening, while the remote SDKs depend on identity and async jobs, 
 | MCP: protocol `2025-11-25`, version matrix test | `connectors/mcp.py`, `mcp_server/server.py` | Official SDK client against each supported version |
 | Dashboard token support (so token mode works with the UI) | `web/src/App.tsx`, `api/app.py` | Browser test with a token |
 | Extend mypy to `api/`, `cli/`, `observability/`, fix the ~20 known errors | `pyproject.toml` | CI |
+| Green CI on every job (prerequisite for tagging) **(fixes on `claude/ci-green`, pending CI)** | `.github/workflows/ci.yml`, `tests/test_launcher_pty.py` | All CI jobs pass on `main` |
 | Tag and publish | `CHANGELOG.md`, release workflow | Wheel installs and `runport web` serves the bundled UI |
 
 **Acceptance:** all v0.2 tests pass; an agent over stdio MCP plans, a person approves, the agent executes and reads results; the
@@ -60,14 +61,9 @@ SDK benchmarks a plain function and a workspace HTTP target; no interface can sp
 
 ---
 
-## 4. Verified state of this branch
+## 4. Verified state
 
-Run on `claude/charming-wiles-d0e566` at `d99d167` (main merged), 2026-11-06:
-
-| Command | Result |
-|:---|:---|
-| `uv run pytest -q` | **456 passed** |
-| `uv run pytest -q examples/plugins` | 26 passed, 5 skipped |
-| `uv run ruff check .` | passed |
-| `uv run mypy` | no issues in 56 files |
-| `npm test` (web) | 18 passed |
+`main` at `b735afc` (2026-11-06), from the GitHub Actions run of the PR #15 merge: lint, mypy, and the Linux, Windows and
+macOS 3.11/3.12 test jobs pass; macOS 3.13, the wheel smoke test and the legacy scan fail. Branch `claude/ci-green` fixes
+those three and passes locally: 465 tests, plugins 26 passed and 5 skipped, ruff, format, mypy (56 files), web tests (18),
+Gitleaks and the legacy scan. Its CI run is the confirmation still outstanding. Details: `docs/ROADMAP_IMPLEMENTATION_AUDIT.md`, section 1.
