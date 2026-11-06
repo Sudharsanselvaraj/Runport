@@ -76,6 +76,15 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
 );
 
+CREATE TABLE IF NOT EXISTS budget_reservations (
+    reservation_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    amount_micros INTEGER NOT NULL,
+    is_pilot INTEGER NOT NULL DEFAULT 1,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL,
@@ -340,6 +349,83 @@ class DatabaseManager:
             row = conn.execute("SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger WHERE is_simulated = 1").fetchone()
             micros = row[0] if row else 0
             return micros, Decimal(micros) / Decimal("1000000")
+
+    def reserve_budget(
+        self,
+        reservation_id: str,
+        run_id: str,
+        amount_usd: Decimal,
+        *,
+        is_pilot: bool,
+        total_cap_usd: Decimal,
+        pilot_cap_usd: Decimal,
+        run_cap_usd: Decimal,
+        ttl_s: float = 1800.0,
+    ) -> Optional[str]:
+        """Atomically reserve worst-case spend for one case. Returns None on success, or the reason it was refused.
+
+        One `BEGIN IMMEDIATE` transaction reads booked spend plus every open reservation and inserts the new one, so two
+        concurrent runs cannot both pass a ceiling that only one of them fits under. Booked spend excludes simulated rows
+        and pre-run estimates (as everywhere else); reservations expire so a crashed process cannot hold budget forever.
+        """
+        import time as _time
+
+        amount = int((Decimal(amount_usd) * Decimal("1000000")).to_integral_value())
+        now = _time.time()
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
+        try:
+            conn.execute("PRAGMA journal_mode = WAL;") if str(self.db_path) != ":memory:" else None
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DELETE FROM budget_reservations WHERE expires_at <= ?", (now,))
+            if conn.execute("SELECT COUNT(*) FROM budget_ledger WHERE is_unresolved = 1").fetchone()[0]:
+                conn.execute("ROLLBACK")
+                return "Unresolved spend exists; reconcile it with `runport budget reconcile` before any further live request."
+            booked = "SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger WHERE is_simulated = 0 AND is_preflight_estimate = 0"
+            held = "SELECT COALESCE(SUM(amount_micros), 0) FROM budget_reservations"
+            total = conn.execute(booked).fetchone()[0] + conn.execute(held).fetchone()[0]
+            run_total = conn.execute(booked + " AND run_id = ?", (run_id,)).fetchone()[0] + conn.execute(held + " WHERE run_id = ?", (run_id,)).fetchone()[0]
+            pilot_total = conn.execute(booked + " AND is_pilot = 1").fetchone()[0] + conn.execute(held + " WHERE is_pilot = 1").fetchone()[0]
+
+            def usd(m: int) -> str:
+                return f"${Decimal(m) / Decimal('1000000'):.6f}"
+
+            def micros(d: Decimal) -> int:
+                return int((Decimal(d) * Decimal("1000000")).to_integral_value())
+
+            reason = None
+            if run_total + amount > micros(run_cap_usd):
+                reason = f"per-run ceiling {usd(micros(run_cap_usd))} reached (this run has {usd(run_total)} spent or reserved)"
+            elif total + amount > micros(total_cap_usd):
+                reason = f"total ceiling {usd(micros(total_cap_usd))} reached ({usd(total)} spent or reserved)"
+            elif is_pilot and pilot_total + amount > micros(pilot_cap_usd):
+                reason = f"pilot ceiling {usd(micros(pilot_cap_usd))} reached ({usd(pilot_total)} spent or reserved)"
+            if reason:
+                conn.execute("ROLLBACK")
+                return reason
+            conn.execute(
+                "INSERT INTO budget_reservations (reservation_id, run_id, amount_micros, is_pilot, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (reservation_id, run_id, amount, 1 if is_pilot else 0, now, now + ttl_s),
+            )
+            conn.execute("COMMIT")
+            return None
+        except BaseException:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.close()
+
+    def release_reservation(self, reservation_id: str) -> None:
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM budget_reservations WHERE reservation_id = ?", (reservation_id,))
+            conn.commit()
+
+    def get_open_reservations(self) -> tuple[int, Decimal]:
+        import time as _time
+
+        with self.get_connection() as conn:
+            micros = conn.execute("SELECT COALESCE(SUM(amount_micros), 0) FROM budget_reservations WHERE expires_at > ?", (_time.time(),)).fetchone()[0]
+        return micros, Decimal(micros) / Decimal("1000000")
 
     def get_pilot_spend(self, include_estimates: bool = False) -> tuple[int, Decimal]:
         """Returns spend attributed to pilot evaluation as (micros, Decimal)."""

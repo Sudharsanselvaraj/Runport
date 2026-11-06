@@ -136,7 +136,10 @@ class ClassificationRunner:
             if self.store:
                 self.store.append(rec)
         if run.halted_reason:
+            from runport.core.budget import BudgetExceededError
             from runport.providers.base import UsageUnavailableError
 
+            if run.halt_kind == "budget":
+                raise BudgetExceededError(run.halted_reason)
             raise UsageUnavailableError(run.halted_reason)
         return summary

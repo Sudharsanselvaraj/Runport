@@ -137,6 +137,34 @@ class BudgetService:
 
         return True, "Spend is permitted under local experiment policies."
 
+    def reserve(self, run_id: str, worst_case_usd: Decimal, run_cap_usd: Optional[Decimal] = None, is_pilot: bool = True) -> Optional[str]:
+        """Atomically reserve worst-case spend for one case against the per-run, total and pilot ceilings.
+
+        Returns a reservation id, or raises BudgetExceededError with the reason. The per-run ceiling is cumulative: it
+        counts this run's booked spend plus its open reservations. Release the reservation once the case is booked.
+        """
+        import uuid
+
+        self.db.init_db()
+        cap = self.policy.per_run_ceiling_usd if run_cap_usd is None else min(run_cap_usd, self.policy.per_run_ceiling_usd)
+        reservation_id = f"rsv-{uuid.uuid4().hex[:16]}"
+        reason = self.db.reserve_budget(
+            reservation_id,
+            run_id,
+            worst_case_usd,
+            is_pilot=is_pilot,
+            total_cap_usd=self.policy.total_budget_usd,
+            pilot_cap_usd=self.policy.pilot_budget_usd,
+            run_cap_usd=cap,
+        )
+        if reason:
+            raise BudgetExceededError(f"Budget reservation refused: {reason}.")
+        return reservation_id
+
+    def release(self, reservation_id: Optional[str]) -> None:
+        if reservation_id:
+            self.db.release_reservation(reservation_id)
+
     def check_preflight_budget(
         self,
         estimated_cost_usd: Decimal,

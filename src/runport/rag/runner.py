@@ -118,6 +118,8 @@ class RAGBenchmarkRunner:
     ) -> RAGBenchmarkReport:
         """RAG metrics (retrieval vs generation, abstention, failure attribution) from a GenericRunner run."""
         if run.halted_reason:
+            if run.halt_kind == "budget":
+                raise BudgetExceededError(run.halted_reason)
             raise UsageUnavailableError(run.halted_reason)
         run_id = run.run_id
         now_iso = (self.db_mgr.get_evaluation_run(run_id) or {}).get("timestamp") or datetime.now(timezone.utc).isoformat()
