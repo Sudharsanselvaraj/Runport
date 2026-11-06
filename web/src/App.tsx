@@ -676,7 +676,7 @@ export default function App() {
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
       <aside className={`sidebar ${sidebarOpen ? 'is-open' : ''}`} aria-label="Main navigation">
         <div className="sidebar-brand">
-          <img src="/logo.svg" alt="" width={20} height={20} />
+          <span className="sidebar-logo" aria-hidden="true" />
           <span className="sidebar-brand-name">runport</span>
           <span className="sidebar-version">v0.1.0</span>
           <button className="icon-btn sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close navigation">
