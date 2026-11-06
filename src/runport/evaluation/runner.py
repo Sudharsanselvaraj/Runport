@@ -103,6 +103,8 @@ class BenchmarkRunner:
         approver = TokenApprover(token=plan.fingerprint, enabled=True, operator="live_authorization")
         run = runner.execute_plan(plan, {model_id: target}, case_dicts, approver=approver, case_scorer=rubric_case_scorer)[0]
         if run.halted_reason:
+            if run.halt_kind == "budget":
+                raise BudgetExceededError(run.halted_reason)
             raise UsageUnavailableError(run.halted_reason)
 
         rows = self.db_mgr.get_evaluation_results_for_run(run.run_id)

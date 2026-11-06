@@ -232,3 +232,18 @@ The earlier file on `main` (`1179841`) stated, among others:
 ## 8. Test results on the audited tree
 
 See section 1. All commands were run on `d99d167`; nothing here is inferred from CI.
+
+---
+
+## 9. Fixed since this audit (branch `claude/integrity-hardening`)
+
+| Finding | Fix | Commit |
+|:---|:---|:---|
+| Per-run ceiling not cumulative; check-then-book race | Atomic reservation in one `BEGIN IMMEDIATE` transaction against per-run (cumulative), total and pilot ceilings (`BudgetService.reserve`, `DatabaseManager.reserve_budget`). Reproduced before: 4 concurrent runs booked $0.009 against $0.006. | `bf8ee80` |
+| No executor wrote `RequestEvent`s | `GenericRunner` emits start and finish events for every live case | `448e014` |
+| Score provenance not persisted; heuristic shown as accuracy | `score_kind` / `evaluator` columns; reports compute accuracy from ground-truth rows only | `a12b803`, `969d94b` |
+| Compare chart drew 50 / 90 ms for missing latency | Missing values draw no bar | `969d94b` |
+| CI red on main (lint deps, Rollup binary, Gitleaks placeholders, Windows `fcntl`, PTY and example timeouts) | Workflow and test fixes | `f6b3d55` |
+
+Still open from section 4: the dashboard cannot send an API token; the "Legacy Pattern Scan" CI step matches ordinary words
+(`lead`, `intent`) and fails until its word list is decided by the maintainer.

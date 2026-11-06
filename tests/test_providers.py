@@ -191,7 +191,7 @@ def test_benchmark_runner_budget_ceiling_enforced(tmp_path: Path):
             split=DatasetSplit.TEST,
             live_authorization=LiveAuthorization(models=("google/gemini-3.5-flash-lite",)),
         )
-    assert "exceeds the per-run ceiling" in str(exc_info.value)
+    assert "per-run ceiling" in str(exc_info.value)
 
 
 def test_cli_benchmark_never_simulates_and_compare_runs_reads_stored_real_runs(tmp_path: Path, monkeypatch):

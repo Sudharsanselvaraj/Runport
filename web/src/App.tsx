@@ -159,6 +159,10 @@ interface ReportData {
   mean_completion_tokens?: number
   total_cost_usd: number
   cost_per_1k_cases_usd: number
+  accuracy_basis?: string | null
+  heuristic_overlap_mean?: number | null
+  judge_score_mean?: number | null
+  score_kinds?: Record<string, number>
   cohen_kappa?: number
   confusion_matrix?: {
     labels: string[]
@@ -209,6 +213,11 @@ const PAGE_INFO: Record<TabId, { title: string; description: string }> = {
   reports: { title: 'Reports', description: 'Run reports and sanitized trace exports.' },
   budget: { title: 'Budget', description: 'Ledger, ceilings and unresolved spend.' },
 }
+
+// Bar height for a measured value; a missing value draws no bar (null is not 0, and never a stand-in like 50 ms).
+const barHeight = (value: number | null | undefined, scale: number) => (value == null ? 0 : Math.min(120, value * scale))
+
+const SCORE_KIND_LABEL: Record<string, string> = { ground_truth: 'Ground truth', judge: 'Judge', heuristic: 'Heuristic' }
 
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -1560,7 +1569,7 @@ export default function App() {
                           <th>Latency</th>
                           <th>Tokens (In/Out)</th>
                           <th>Cost USD</th>
-                          <th>Accuracy</th>
+                          <th>Score (kind)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1582,9 +1591,15 @@ export default function App() {
                             </td>
                             <td>
                               {res.accuracy !== null && res.accuracy !== undefined ? (
-                                <span className={`badge ${res.accuracy >= 1.0 ? 'badge-success' : 'badge-danger'}`}>
-                                  {res.accuracy >= 1.0 ? 'MATCH' : 'MISMATCH'}
-                                </span>
+                                res.score_kind === 'ground_truth' ? (
+                                  <span className={`badge ${res.accuracy >= 1.0 ? 'badge-success' : 'badge-danger'}`}>
+                                    {res.accuracy >= 1.0 ? 'MATCH' : 'MISMATCH'}
+                                  </span>
+                                ) : (
+                                  <span className="badge" title={res.evaluator || 'evaluator not recorded'}>
+                                    {SCORE_KIND_LABEL[res.score_kind] || 'Unknown kind'} {(res.accuracy * 100).toFixed(0)}%
+                                  </span>
+                                )
                               ) : (
                                 <span className="badge badge-info">UNSCORED</span>
                               )}
@@ -1663,12 +1678,22 @@ export default function App() {
                     </thead>
                     <tbody>
                       <tr>
-                        <td><strong>Supervised Accuracy</strong></td>
+                        <td><strong>Supervised accuracy (ground truth)</strong></td>
                         <td>{compareReportA.accuracy !== null && compareReportA.accuracy !== undefined ? `${(compareReportA.accuracy * 100).toFixed(1)}%` : 'None'}</td>
                         <td>{compareReportB.accuracy !== null && compareReportB.accuracy !== undefined ? `${(compareReportB.accuracy * 100).toFixed(1)}%` : 'None'}</td>
                         <td style={{ color: (compareReportB.accuracy || 0) >= (compareReportA.accuracy || 0) ? 'var(--accent-green)' : 'var(--accent-red)' }}>
                           {compareReportA.accuracy !== null && compareReportA.accuracy !== undefined && compareReportB.accuracy !== null && compareReportB.accuracy !== undefined
                             ? `${((compareReportB.accuracy - compareReportA.accuracy) * 100).toFixed(1)}%`
+                            : '-'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Heuristic overlap (not accuracy)</strong></td>
+                        <td>{compareReportA.heuristic_overlap_mean != null ? `${(compareReportA.heuristic_overlap_mean * 100).toFixed(1)}%` : 'None'}</td>
+                        <td>{compareReportB.heuristic_overlap_mean != null ? `${(compareReportB.heuristic_overlap_mean * 100).toFixed(1)}%` : 'None'}</td>
+                        <td>
+                          {compareReportA.heuristic_overlap_mean != null && compareReportB.heuristic_overlap_mean != null
+                            ? `${((compareReportB.heuristic_overlap_mean - compareReportA.heuristic_overlap_mean) * 100).toFixed(1)}%`
                             : '-'}
                         </td>
                       </tr>
@@ -1711,12 +1736,12 @@ export default function App() {
                     <svg viewBox="0 0 400 160" width="100%" height="160">
                       <rect x="0" y="0" width="400" height="160" fill="transparent" />
                       {/* Bars for Run A */}
-                      <rect x="60" y={140 - Math.min(120, (compareReportA.mean_latency_ms || 50) * 0.4)} width="40" height={Math.min(120, (compareReportA.mean_latency_ms || 50) * 0.4)} fill="var(--accent-blue)" rx="4" />
-                      <rect x="110" y={140 - Math.min(120, (compareReportA.latency_p95_ms || 90) * 0.4)} width="40" height={Math.min(120, (compareReportA.latency_p95_ms || 90) * 0.4)} fill="var(--accent-blue)" fillOpacity={0.55} rx="4" />
+                      <rect x="60" y={140 - barHeight(compareReportA.mean_latency_ms, 0.4)} width="40" height={barHeight(compareReportA.mean_latency_ms, 0.4)} fill="var(--accent-blue)" rx="4" />
+                      <rect x="110" y={140 - barHeight(compareReportA.latency_p95_ms, 0.4)} width="40" height={barHeight(compareReportA.latency_p95_ms, 0.4)} fill="var(--accent-blue)" fillOpacity={0.55} rx="4" />
 
                       {/* Bars for Run B */}
-                      <rect x="230" y={140 - Math.min(120, (compareReportB.mean_latency_ms || 50) * 0.4)} width="40" height={Math.min(120, (compareReportB.mean_latency_ms || 50) * 0.4)} fill="var(--accent-amber)" rx="4" />
-                      <rect x="280" y={140 - Math.min(120, (compareReportB.latency_p95_ms || 90) * 0.4)} width="40" height={Math.min(120, (compareReportB.latency_p95_ms || 90) * 0.4)} fill="var(--accent-amber)" fillOpacity={0.55} rx="4" />
+                      <rect x="230" y={140 - barHeight(compareReportB.mean_latency_ms, 0.4)} width="40" height={barHeight(compareReportB.mean_latency_ms, 0.4)} fill="var(--accent-amber)" rx="4" />
+                      <rect x="280" y={140 - barHeight(compareReportB.latency_p95_ms, 0.4)} width="40" height={barHeight(compareReportB.latency_p95_ms, 0.4)} fill="var(--accent-amber)" fillOpacity={0.55} rx="4" />
 
                       <line x1="20" y1="140" x2="380" y2="140" stroke="var(--border-color)" strokeWidth="1" />
                       <text x="85" y="155" fill="var(--text-secondary)" fontSize="10" textAnchor="middle">Run A (Mean / p95)</text>
@@ -1728,8 +1753,8 @@ export default function App() {
                     <div className="form-label" style={{ marginBottom: '0.75rem' }}>Spend per 1k Inferences ($)</div>
                     <svg viewBox="0 0 400 160" width="100%" height="160">
                       <rect x="0" y="0" width="400" height="160" fill="transparent" />
-                      <rect x="80" y={140 - Math.min(120, compareReportA.cost_per_1k_cases_usd * 200 + 10)} width="60" height={Math.min(120, compareReportA.cost_per_1k_cases_usd * 200 + 10)} fill="var(--accent-blue)" rx="4" />
-                      <rect x="250" y={140 - Math.min(120, compareReportB.cost_per_1k_cases_usd * 200 + 10)} width="60" height={Math.min(120, compareReportB.cost_per_1k_cases_usd * 200 + 10)} fill="var(--accent-amber)" rx="4" />
+                      <rect x="80" y={140 - barHeight(compareReportA.cost_per_1k_cases_usd, 200)} width="60" height={barHeight(compareReportA.cost_per_1k_cases_usd, 200)} fill="var(--accent-blue)" rx="4" />
+                      <rect x="250" y={140 - barHeight(compareReportB.cost_per_1k_cases_usd, 200)} width="60" height={barHeight(compareReportB.cost_per_1k_cases_usd, 200)} fill="var(--accent-amber)" rx="4" />
 
                       <line x1="20" y1="140" x2="380" y2="140" stroke="var(--border-color)" strokeWidth="1" />
                       <text x="110" y="155" fill="var(--text-secondary)" fontSize="10" textAnchor="middle">Run A (${compareReportA.cost_per_1k_cases_usd.toFixed(3)})</text>
@@ -1787,10 +1812,18 @@ export default function App() {
                 <div>
                   <div className="grid-4" style={{ marginBottom: '1.25rem' }}>
                     <div style={{ background: 'var(--bg-input)', padding: '0.85rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
-                      <div className="form-label">Accuracy & Wilson 95% CI</div>
+                      <div className="form-label">Supervised accuracy & Wilson 95% CI</div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
                         {reportData.accuracy !== null && reportData.accuracy !== undefined ? `${(reportData.accuracy * 100).toFixed(1)}%` : 'None'}
                       </div>
+                      {reportData.accuracy == null && (
+                        <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>No ground-truth scores in this run.</div>
+                      )}
+                      {reportData.heuristic_overlap_mean != null && (
+                        <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
+                          Heuristic overlap (not accuracy): {(reportData.heuristic_overlap_mean * 100).toFixed(1)}%
+                        </div>
+                      )}
                       {reportData.wilson_ci && (
                         <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
                           CI: [{(reportData.wilson_ci[0] * 100).toFixed(1)}%, {(reportData.wilson_ci[1] * 100).toFixed(1)}%]

@@ -77,6 +77,8 @@ def score_replay_results(
                 "format_adherence": fmt,
                 "overall_score": overall,
                 "evaluator_notes": notes,
+                "score_kind": "heuristic" if recorded else None,
+                "evaluator": "rubric_overlap_v1" if recorded else None,
                 "_recorded": recorded,
             }
         )

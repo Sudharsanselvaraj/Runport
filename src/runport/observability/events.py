@@ -1,7 +1,7 @@
 """Request lifecycle events: the single authoritative telemetry source for live monitoring.
 
-Events are appended by the classification runner when a real request starts, succeeds, fails (including timeouts) or
-retries. Events never contain prompt text, model output or student text. Nullable means unavailable and is never imputed.
+Events are appended by GenericRunner (runs/executor.py) for every live case: REQUEST_STARTED before the request and
+REQUEST_SUCCEEDED or REQUEST_FAILED after spend is booked. Events never contain prompt text, model output or student text. Nullable means unavailable and is never imputed.
 Only LIVE events are accepted: there is no simulation mode, so a SIMULATED event is refused on write and quarantined on read.
 """
 
@@ -52,7 +52,7 @@ class RequestEvent(BaseModel):
     model_latency_ms: Optional[float] = None  # provider-reported only
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
-    cost_basis: Optional[str] = None  # PROVIDER_REPORTED / ESTIMATED_FROM_CATALOG / UNAVAILABLE
+    cost_basis: Optional[str] = None  # ACTUAL / ESTIMATED / UNRESOLVED / UNAVAILABLE (older logs: PROVIDER_REPORTED / ESTIMATED_FROM_CATALOG)
     actual_cost_usd: Optional[Decimal] = None
     estimated_cost_usd: Optional[Decimal] = None
     native_cost: Optional[Decimal] = None

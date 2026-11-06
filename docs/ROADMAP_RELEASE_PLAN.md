@@ -32,10 +32,10 @@ mainly need hardening, while the remote SDKs depend on identity and async jobs, 
 
 | Task | Files | Tests |
 |:---|:---|:---|
-| Cumulative per-run ceiling and atomic budget reservation | `core/budget.py`, `runs/executor.py`, `storage/db.py` | Concurrent runs vs a cap; actual cost above estimate stops at the per-run ceiling |
-| `RequestEvent` emission from `GenericRunner` | `runs/executor.py`, `observability/events.py` | Every executed case yields start and finish events; dashboard stream shows them |
-| Persist score kind (`ground_truth` / `judge` / `heuristic`) | `runs/executor.py`, `storage/db.py`, UI and reports | Heuristic overlap is never labelled accuracy |
-| Fix Compare chart defaults (`|| 50`, `|| 90`) | `web/src/App.tsx` | Missing latency renders "unavailable" |
+| Cumulative per-run ceiling and atomic budget reservation **(done)** | `core/budget.py`, `runs/executor.py`, `storage/db.py` | Concurrent runs vs a cap; actual cost above estimate stops at the per-run ceiling |
+| `RequestEvent` emission from `GenericRunner` **(done)** | `runs/executor.py`, `observability/events.py` | Every executed case yields start and finish events; dashboard stream shows them |
+| Persist score kind (`ground_truth` / `judge` / `heuristic`) **(done)** | `runs/executor.py`, `storage/db.py`, UI and reports | Heuristic overlap is never labelled accuracy |
+| Fix Compare chart defaults (`|| 50`, `|| 90`) **(done)** | `web/src/App.tsx` | Missing latency renders "unavailable" |
 | Public SDK result models | `sdk.py` | SDK returns only public types |
 | MCP: protocol `2025-11-25`, version matrix test | `connectors/mcp.py`, `mcp_server/server.py` | Official SDK client against each supported version |
 | Dashboard token support (so token mode works with the UI) | `web/src/App.tsx`, `api/app.py` | Browser test with a token |

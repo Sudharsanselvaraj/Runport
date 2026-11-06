@@ -301,6 +301,7 @@ class RunportMcpServer:
                     "booked_spend_usd": str(r.total_spend_usd),
                     "mean_latency_ms": r.mean_latency_ms,
                     "halted_reason": r.halted_reason,
+                    "halt_kind": r.halt_kind,
                 }
                 for r in outcome.runs
             ],

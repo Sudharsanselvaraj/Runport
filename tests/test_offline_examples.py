@@ -27,7 +27,7 @@ def test_example_runs_offline(example_script: Path):
         cwd=str(example_script.parent),
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=60,  # cold interpreter start plus imports can exceed 10 s on hosted macOS and Windows runners
     )
 
     assert proc.returncode == 0, f"Example {example_script.parent.name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"

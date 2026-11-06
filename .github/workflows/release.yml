@@ -28,6 +28,8 @@ jobs:
         working-directory: web
         run: |
           npm ci
+          # the lockfile was generated on macOS; add Rollup's Linux binary (npm/cli#4828)
+          npm install --no-save @rollup/rollup-linux-x64-gnu
           npm run build
           mkdir -p ../src/runport/_web
           cp -r dist/* ../src/runport/_web/

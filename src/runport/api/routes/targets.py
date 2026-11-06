@@ -208,6 +208,7 @@ def test_target(req: TestTargetRequest) -> Dict[str, Any]:
         "cost_usd": str(res.cost_usd) if res.cost_usd is not None else None,
         "cost_basis": res.cost_basis.value,
         "halted_reason": run.halted_reason,
+        "halt_kind": run.halt_kind,
         "error_message": scrub_secrets(res.error_message) if res.error_message else None,
         "error_code": res.error_code,
         "metadata": scrub_secrets(res.metadata),

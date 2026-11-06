@@ -47,6 +47,8 @@ class GenericRunResult:
     mean_latency_ms: Optional[float] = None
     skipped_cases: int = 0
     halted_reason: Optional[str] = None
+    # "unresolved_spend": a billable case returned no cost; "budget": a ceiling stopped the run before a case was sent.
+    halt_kind: Optional[str] = None
     case_results: List[TargetResult] = field(default_factory=list)
 
 
@@ -58,10 +60,23 @@ class GenericRunner:
         budget_service: Optional[BudgetService] = None,
         db: Optional[DatabaseManager] = None,
         workspace: Optional[WorkspaceConfig] = None,
+        events: Optional[Any] = None,
     ):
         self.db = db or DatabaseManager()
         self.budget_service = budget_service or BudgetService(db=self.db)
         self.workspace = workspace or WorkspaceConfig()
+        # Live request telemetry (observability/events.py). Defaults to the workspace event log; tests can inject a store.
+        self._events = events
+
+    def _emit(self, **fields: Any) -> None:
+        """Append one LIVE RequestEvent. Telemetry must never break or alter a run, so failures are swallowed."""
+        try:
+            from runport.observability.events import EventStore, RequestEvent
+
+            store = self._events if self._events is not None else EventStore()
+            store.append(RequestEvent(**fields))
+        except Exception:
+            pass
 
     def execute_plan(
         self,
@@ -135,6 +150,9 @@ class GenericRunner:
                 case_id = str(case.get("id") or case.get("case_id") or "case")
 
                 # --- Guard 3: Preflight Budget & Context Check ---
+                # A target that cannot bill reserves nothing; a billable one atomically reserves its worst case against the
+                # cumulative per-run ceiling and the total and pilot ceilings (see BudgetService.reserve).
+                reservation_id: Optional[str] = None
                 if plan.is_live:
                     target_pricing = getattr(target, "pricing", None)
                     is_priced = target_pricing is not None and (target_pricing.input_usd_per_1m is not None or target_pricing.fixed_usd_per_request is not None)
@@ -150,11 +168,20 @@ class GenericRunner:
                         assert target_pricing is not None
                         worst_case_estimate = target_pricing.calculate_cost(1000, 500) or self.workspace.budget.per_case_usd
 
-                    ok, msg = self.budget_service.check_spend_permitted(worst_case_estimate)
-                    if not ok:
-                        raise BudgetExceededError(f"Preflight budget check failed for case '{case_id}': {msg}")
+                    if billable:
+                        try:
+                            reservation_id = self.budget_service.reserve(run_id, worst_case_estimate, run_cap_usd=plan.budget_cap_usd or None)
+                        except BudgetExceededError as e:
+                            if not run_res.case_results:
+                                raise BudgetExceededError(f"Preflight budget check failed for case '{case_id}': {e}") from e
+                            run_res.halted_reason = f"Stopped before case '{case_id}': {e} Remaining cases were not sent."
+                            run_res.halt_kind = "budget"
+                            break
 
                 # --- Guard 4: Transport Execution ---
+                request_id = uuid.uuid4().hex
+                if plan.is_live:
+                    self._emit(kind="REQUEST_STARTED", request_id=request_id, run_id=run_id, case_id=case_id, model_key=target_id)
                 t0 = time.perf_counter()
                 try:
                     res = target.execute(case)
@@ -206,6 +233,9 @@ class GenericRunner:
                             "format_adherence", 1.0 if res.status == TargetStatus.SUCCESS else 0.0 if res.status == TargetStatus.INVALID_OUTPUT else None
                         ),
                         "overall_score": scores.get("overall_score"),
+                        # Provenance of the scores above: ground_truth | judge | heuristic (None when unscored).
+                        "score_kind": scores.get("kind") if scores else None,
+                        "evaluator": scores.get("evaluator") if scores else None,
                         "evaluator_notes": res.error_message
                         or scores.get("notes")
                         or ("" if scores else "Not scored: apply a scorer from runport.scorers to case_results."),
@@ -257,8 +287,30 @@ class GenericRunner:
                         res.cost_basis = CostBasis.UNRESOLVED
                         halt = True
 
+                self.budget_service.release(reservation_id)
+                if plan.is_live:
+                    basis_out = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
+                    ok = res.status in (TargetStatus.SUCCESS, TargetStatus.INVALID_OUTPUT)
+                    self._emit(
+                        kind="REQUEST_SUCCEEDED" if ok else "REQUEST_FAILED",
+                        request_id=request_id,
+                        run_id=run_id,
+                        case_id=case_id,
+                        model_key=target_id,
+                        status="OK" if res.status == TargetStatus.SUCCESS else "INVALID_OUTPUT" if ok else "ERROR",
+                        error_type=None if ok else (res.error_code or res.status.value),
+                        timed_out=res.status == TargetStatus.TIMEOUT,
+                        attempts=res.metadata.get("attempts") if isinstance(res.metadata.get("attempts"), int) else None,
+                        latency_ms=res.latency_ms,
+                        prompt_tokens=res.tokens_in,
+                        completion_tokens=res.tokens_out,
+                        cost_basis=basis_out,
+                        actual_cost_usd=res.cost_usd if basis_out == CostBasis.ACTUAL.value else None,
+                        estimated_cost_usd=res.cost_usd if basis_out == CostBasis.ESTIMATED.value else None,
+                    )
                 run_res.case_results.append(res)
                 if halt:
+                    run_res.halt_kind = "unresolved_spend"
                     run_res.halted_reason = (
                         f"Case '{case_id}' was sent to a billable target and returned no cost; it is booked UNRESOLVED. "
                         "Remaining cases were not sent. Reconcile with 'runport budget reconcile'."
