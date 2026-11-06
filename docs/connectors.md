@@ -2,27 +2,45 @@
 
 Runport evaluates any AI target — raw LLM endpoints, prompt wrappers, local models, or compound multi-step workflow pipelines — through a unified `Target` protocol.
 
-Every connector receives a standard case payload and returns a normalized [`TargetResult`](file:///Users/sudharsan/Downloads/LLM%20Workbench%20lab/src/runport/targets/base.py#L74-L97), abstracting away transport details, authentication, and parsing logic.
+Every connector receives a standard case payload and returns a normalized [`TargetResult`](../src/runport/targets/base.py), abstracting away transport details, authentication, and parsing logic.
 
 ---
 
 ## 1. Connector Status Matrix
 
-| Connector | Type | Status | Key Capabilities | Spend Accounting |
-|:---|:---|:---:|:---|:---:|
-| **`openrouter`** | LLM Gateway | **Stable** | Streaming, logprobs, catalog pricing | `ACTUAL` |
-| **`openai_compat`** | LLM API | **Stable** | Streaming, structured output, vLLM / Groq | `ESTIMATED` |
-| **`ollama`** | Local Engine | **Stable** | Streaming, local open weights, `/api/chat` | `ACTUAL-LOCAL` ($0.00) |
-| **`dify`** | Workflow Platform | **Stable** | Chat & Workflow apps, SSE streaming, traces | `ESTIMATED` / `UNAVAILABLE` |
-| **`http_workflow`** | Custom Webhook | **Stable** | REST JSON, templated payloads, JSONPath extraction | `ESTIMATED` / `UNAVAILABLE` |
-| **`python_target`** | In-Process Code | **Stable** | Direct Python functions, classes, CLI binaries | `UNAVAILABLE` ($0.00) |
-| **`flowise`** | Workflow Platform | *Experimental* | Flowise visual flow runner | `UNAVAILABLE` |
-| **`langflow`** | Workflow Platform | *Experimental* | Langflow multi-agent and RAG flow executions | `UNAVAILABLE` |
-| **`n8n`** | Webhook Automation | *Experimental* | n8n webhook automation nodes | `UNAVAILABLE` |
-| **`langgraph`** | Agent Framework | *Experimental* | LangGraph StateGraph HTTP endpoints, step traces | `UNAVAILABLE` |
+<!-- BEGIN CONNECTOR MATRIX (generated from src/runport/connectors/registry.py; do not edit by hand) -->
+| Connector | Name | Status | Integration | Tested | Streaming | Tool calls | Structured output | Per-step trace | Usage | Cost | Errors / timeouts |
+|:---|:---|:---:|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `openai_compat` | OpenAI / OpenAI-compatible | **Stable** | native | yes | — | — | partial | — | yes | partial | yes |
+| `openrouter` | OpenRouter | **Stable** | native | yes | — | — | — | — | yes | yes | yes |
+| `dify` | Dify | **Stable** | native | yes | yes | — | — | partial | yes | partial | yes |
+| `http_workflow` | Generic HTTP endpoint | **Stable** | generic http | yes | — | — | — | — | partial | partial | yes |
+| `python_target` | Python callable | **Stable** | in process | yes | — | — | partial | — | — | — | yes |
+| `subprocess` | Subprocess (stdin/stdout) | **Stable** | in process | yes | — | — | — | — | — | — | yes |
+| `ollama` | Ollama | **Stable** | native | yes | — | — | partial | — | yes | — | yes |
+| `mcp` | MCP server (tools) | *Experimental* | native | yes | — | yes | yes | — | — | — | yes |
+| `flowise` | Flowise | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `langflow` | Langflow | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `n8n` | n8n | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `langgraph` | LangGraph | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `vllm` | vLLM | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `lm_studio` | LM Studio | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `localai` | LocalAI | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `litellm` | LiteLLM proxy | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `groq` | Groq | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `together` | Together | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `fireworks` | Fireworks | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `deepinfra` | DeepInfra | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `deepseek` | DeepSeek | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `mistral` | Mistral | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `anthropic` | Anthropic | Via | via `openrouter` | — | — | — | — | — | yes | yes | yes |
+| `gemini` | Gemini | Via | via `openrouter` | — | — | — | — | — | yes | yes | yes |
+| `langchain` | LangChain | Planned | none | — | — | — | — | — | — | — | — |
+| `crewai` | CrewAI | Planned | none | — | — | — | — | — | — | — | — |
+| `llamaindex` | LlamaIndex | Planned | none | — | — | — | — | — | — | — | — |
+<!-- END CONNECTOR MATRIX -->
 
-> [!NOTE]
-> Connectors marked **Experimental** (`flowise`, `langflow`, `n8n`, `langgraph`) are community reference adapters and will remain labeled experimental until they complete the formal offline contract test suite.
+See [docs/connectors/README.md](connectors/README.md) for the legend and per-connector notes.
 
 ---
 
@@ -176,7 +194,7 @@ class CustomRegexTarget(Target):
 
 ## 5. Security & SSRF Defense
 
-All HTTP-based connectors pass outbound URLs through [`validate_safe_url`](file:///Users/sudharsan/Downloads/LLM%20Workbench%20lab/src/runport/core/security.py#L69-L137):
+All HTTP-based connectors pass outbound URLs through [`validate_safe_url`](../src/runport/core/security.py):
 - **Metadata Protection**: Requests to cloud metadata (`169.254.169.254`) are strictly blocked fail-closed.
 - **Private Subnets**: Private RFC 1918 subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) are blocked by default.
 - **Loopback**: Local loopback (`127.0.0.1`) requires explicit `allow_localhost` enablement (e.g. for Ollama).

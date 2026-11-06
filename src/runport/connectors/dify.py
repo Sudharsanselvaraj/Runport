@@ -190,12 +190,14 @@ def post_chat_stream(
 
 from runport.core.security import validate_safe_url
 from runport.targets.base import (
+    BillingMode,
     CostBasis,
     Target,
     TargetPricing,
     TargetResult,
     TargetStatus,
     TargetType,
+    billing_for_url,
 )
 
 
@@ -222,6 +224,7 @@ class DifyConnector(Target):
         max_retries: int = 3,
         allow_localhost: bool = False,
         host_allowlist: Optional[List[str]] = None,
+        billing: Optional[BillingMode] = None,
     ) -> None:
         safe_url = validate_safe_url(
             base_url,
@@ -243,6 +246,7 @@ class DifyConnector(Target):
         )
         self.api_key = api_key
         self.base_url = safe_url.rstrip("/")
+        self.billing = billing_for_url(self.base_url, billing)
         self.app_type = app_type.lower()
         self.response_mode = response_mode.lower()
         self.user = user

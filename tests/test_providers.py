@@ -140,7 +140,7 @@ def test_benchmark_runner_flow(tmp_path: Path):
     assert saved_run is not None and saved_run["model_id"] == model and saved_run["completed_cases"] == 3 and not saved_run["is_dry_run"]
     assert len(db_mgr.get_evaluation_results_for_run(report.run_id)) == 3
     txs = db_mgr.get_recent_transactions()
-    assert len(txs) == 3 and all(t["is_simulated"] == 0 and t["cost_basis"] == "ESTIMATED_FROM_CATALOG" for t in txs)
+    assert len(txs) == 3 and all(t["is_simulated"] == 0 and t["cost_basis"] == "ESTIMATED" for t in txs)  # fixed provenance vocabulary
     assert db_mgr.get_cumulative_spend()[1] == Decimal("0.000300")
 
 

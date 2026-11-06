@@ -13,12 +13,14 @@ from typing import Any, Dict, List, Optional
 from runport.core.security import validate_safe_url
 from runport.providers.base import scrub_secrets
 from runport.targets.base import (
+    BillingMode,
     CostBasis,
     Target,
     TargetPricing,
     TargetResult,
     TargetStatus,
     TargetType,
+    billing_for_url,
 )
 
 
@@ -37,6 +39,7 @@ class OllamaConnector(Target):
         timeout_seconds: float = 60.0,
         allow_localhost: bool = True,
         host_allowlist: Optional[List[str]] = None,
+        billing: Optional[BillingMode] = None,
     ) -> None:
         safe_url = validate_safe_url(
             base_url,
@@ -47,13 +50,14 @@ class OllamaConnector(Target):
             target_id=target_id,
             name=name,
             target_type=TargetType.RAW_MODEL,
-            capabilities=["streaming", "structured_output", "usage"],
+            capabilities=["text", "usage", "json_format"],  # non-streaming; see connectors/registry.py
             pricing=None,  # Free / local compute
             timeout_seconds=timeout_seconds,
             max_retries=1,
         )
         self.model = model
         self.base_url = safe_url.rstrip("/")
+        self.billing = billing_for_url(self.base_url, billing)
         self.system_prompt = system_prompt
         self.format = format
         self.options = options or {}

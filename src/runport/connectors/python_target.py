@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from runport.providers.base import scrub_secrets
 from runport.targets.base import (
+    BillingMode,
     CostBasis,
     Target,
     TargetPricing,
@@ -39,6 +40,7 @@ class PythonCallableTarget(Target):
             pricing=pricing,
             timeout_seconds=timeout_seconds,
             max_retries=1,
+            billing=BillingMode.LOCAL,
         )
         if isinstance(func, str):
             module_name, func_name = func.split(":")
@@ -108,6 +110,7 @@ class SubprocessTarget(Target):
             pricing=pricing,
             timeout_seconds=timeout_seconds,
             max_retries=1,
+            billing=BillingMode.LOCAL,
         )
         self.command = command
         self.env = env

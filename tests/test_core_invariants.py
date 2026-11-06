@@ -27,12 +27,15 @@ from runport.targets.base import CostBasis, Target, TargetPricing, TargetResult,
 
 
 class MockUnknownPriceTarget(Target):
-    def __init__(self, target_id: str = "unpriced-model"):
+    def __init__(self, target_id: str = "unpriced-model", billing=None):
+        from runport.targets.base import BillingMode
+
         super().__init__(
             target_id=target_id,
             name="Unpriced Model",
             target_type=TargetType.RAW_MODEL,
             pricing=None,  # Unknown / unpriced
+            billing=billing or BillingMode.BILLABLE,
         )
 
     def execute(self, input_payload, context=None):
@@ -74,7 +77,7 @@ def test_unknown_price_model_runs_with_unavailable_estimate_and_requires_per_cas
     approver = TokenApprover(token=plan.fingerprint, enabled=True)
 
     with pytest.raises(BudgetExceededError, match="unknown pricing and require_priced is enabled"):
-        runner_strict.execute_plan(plan, {"unpriced-model": target}, [{"id": 1, "input": "hi"}], approver=approver)
+        runner_strict.execute_plan(plan, {"unpriced-model": target}, [{"id": 1, "classification": "SYNTHETIC", "input": "hi"}], approver=approver)
 
     # Case 2: require_priced is false but per_case_usd is zero -> fails because unpriced requires max_cost_per_case_usd
     ws_no_cap = WorkspaceConfig(budget=BudgetConfig(require_priced=False, per_case_usd=Decimal("0.00")))
@@ -85,9 +88,11 @@ def test_unknown_price_model_runs_with_unavailable_estimate_and_requires_per_cas
     )
     approver2 = TokenApprover(token=plan.fingerprint, enabled=True)
     with pytest.raises(BudgetExceededError, match="requires a positive per-case spend cap"):
-        runner_no_cap.execute_plan(plan, {"unpriced-model": target}, [{"id": 1, "input": "hi"}], approver=approver2)
+        runner_no_cap.execute_plan(plan, {"unpriced-model": target}, [{"id": 1, "classification": "SYNTHETIC", "input": "hi"}], approver=approver2)
 
-    # Case 3: require_priced is false and positive per_case_usd -> runs with UNAVAILABLE estimate
+    # Case 3: require_priced is false and positive per_case_usd. A LOCAL target with no cost books UNAVAILABLE.
+    from runport.targets.base import BillingMode
+
     ws_ok = WorkspaceConfig(budget=BudgetConfig(require_priced=False, per_case_usd=Decimal("0.05")))
     runner_ok = GenericRunner(
         budget_service=BudgetService(db=db, policy=ws_ok.budget.to_budget_policy()),
@@ -95,11 +100,27 @@ def test_unknown_price_model_runs_with_unavailable_estimate_and_requires_per_cas
         workspace=ws_ok,
     )
     approver3 = TokenApprover(token=plan.fingerprint, enabled=True)
-    results = runner_ok.execute_plan(plan, {"unpriced-model": target}, [{"id": 1, "input": "hi"}], approver=approver3)
+    local = MockUnknownPriceTarget(billing=BillingMode.LOCAL)
+    results = runner_ok.execute_plan(plan, {"unpriced-model": local}, [{"id": 1, "classification": "SYNTHETIC", "input": "hi"}], approver=approver3)
     assert len(results) == 1
     assert results[0].successful_cases == 1
     assert results[0].case_results[0].cost_basis == CostBasis.UNAVAILABLE
     assert results[0].case_results[0].tokens_in is None
+    assert BudgetService(db=db, policy=ws_ok.budget.to_budget_policy()).get_status().unresolved_spend_count == 0
+
+    # Case 4: the same missing cost from a BILLABLE target is never booked as $0.00: it is UNRESOLVED and the run halts.
+    approver4 = TokenApprover(token=plan.fingerprint, enabled=True)
+    cases = [{"id": 1, "classification": "SYNTHETIC", "input": "hi"}, {"id": 2, "classification": "SYNTHETIC", "input": "again"}]
+    halted = runner_ok.execute_plan(plan, {"unpriced-model": target}, cases, approver=approver4)[0]
+    assert halted.case_results[0].cost_basis == CostBasis.UNRESOLVED
+    assert len(halted.case_results) == 1 and halted.skipped_cases == 1
+    assert halted.halted_reason and "UNRESOLVED" in halted.halted_reason
+    assert BudgetService(db=db, policy=ws_ok.budget.to_budget_policy()).get_status().unresolved_spend_count == 1
+
+    # Unresolved spend now blocks the next live run before anything is sent.
+    approver5 = TokenApprover(token=plan.fingerprint, enabled=True)
+    with pytest.raises(LiveNotAuthorizedError, match="Unresolved spend"):
+        runner_ok.execute_plan(plan, {"unpriced-model": local}, [{"id": 3, "classification": "SYNTHETIC", "input": "x"}], approver=approver5)
 
 
 def test_token_approver_mismatched_and_consumed_cannot_be_reused():

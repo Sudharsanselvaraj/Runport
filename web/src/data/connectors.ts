@@ -24,11 +24,13 @@ export const CONNECTORS: Connector[] = [
   { id: 'dify', name: 'Dify', status: 'supported', module: 'connectors/dify.py', logo: `${L}dify.svg` },
   { id: 'http_workflow', name: 'HTTP endpoint', status: 'supported', module: 'connectors/http_workflow.py', icon: 'globe' },
   { id: 'python_target', name: 'Python callable', status: 'supported', module: 'connectors/python_target.py', logo: `${L}python.svg` },
+  { id: 'subprocess', name: 'Subprocess', status: 'supported', module: 'connectors/python_target.py', icon: 'terminal' },
   { id: 'ollama', name: 'Ollama', status: 'supported', module: 'connectors/ollama.py', logo: `${L}ollama.svg` },
   { id: 'flowise', name: 'Flowise', status: 'experimental', module: 'connectors/flowise.py', logo: `${L}flowise.png` },
   { id: 'langflow', name: 'Langflow', status: 'experimental', module: 'connectors/langflow.py', logo: `${L}langflow.svg` },
   { id: 'n8n', name: 'n8n', status: 'experimental', module: 'connectors/n8n.py', logo: `${L}n8n.svg` },
   { id: 'langgraph', name: 'LangGraph', status: 'experimental', module: 'connectors/langgraph.py', logo: `${L}langgraph.svg` },
+  { id: 'mcp', name: 'MCP server', status: 'experimental', module: 'connectors/mcp.py', icon: 'terminal' },
 ]
 
 export const CONNECTOR_COUNTS = {

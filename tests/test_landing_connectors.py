@@ -29,7 +29,7 @@ def _page_connectors() -> dict[str, tuple[str, str]]:
 def test_connector_table_is_parsed_completely():
     matrix = _readme_matrix()
     assert "n8n" in matrix, "connector ids with digits must be read too"
-    assert len(matrix) == 10
+    assert len(matrix) == 12
 
 
 def test_page_connectors_match_the_registry():

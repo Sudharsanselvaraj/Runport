@@ -57,8 +57,8 @@ graph TB
 1. **Any Target with Input and Output**: Benchmarks raw completions, multi-turn dialogues, agent tools, or complex webhook pipelines using a uniform `Target` and `TargetResult` contract.
 2. **Zero Simulation**: There is no mock data or dry-run mode in production. Missing provider telemetry (tokens, latency, confidence) remains `null` / `UNAVAILABLE`.
 3. **Strict Ground-Truth Integrity**: Supervised quality metrics (accuracy, F1, calibration) are computed exclusively from human-approved annotations. Model agreement is never presented as accuracy.
-4. **Fail-Closed Spend Protection**: Hard limits ($18 total, $2 pilot, $0.50 single run, $0.02 single case) checked preflight and at runtime. Unresolved costs lock execution until reconciled.
-5. **Interactive Plan Approval**: Live network requests require explicit human confirmation typing the plan fingerprint in an interactive terminal.
+4. **Fail-Closed Spend Protection**: Workspace ceilings (defaults: $5.00 total, $1.00 pilot, $1.00 per run, $0.05 per case; see `core/workspace.py`) are checked when a plan is made and before every case. A billable target that returns no cost is booked `UNRESOLVED`, the run halts, and live execution stays locked until reconciled.
+5. **One Guarded Execution Path**: The CLI, Web API, Python SDK and MCP server all plan, approve and execute through `services/execution.py` and `runs/executor.py` (`GenericRunner`). Approvals are persisted, expire, bind to the plan fingerprint and are consumed atomically, once. Only a person approves: interactive CLI, the local Web UI, or an enabled CI token.
 6. **Local-First & Data Privacy**: All telemetry, run history, and databases reside locally. Sensitive fields are redacted and pseudonyms use salted SHA-256 hashes.
 
 ---
@@ -67,9 +67,11 @@ graph TB
 
 ### 3.1 Connectors & Workflow Targets (`runport.connectors`)
 - **HTTP Transport**: Bounded-retry poster handling transient 408/429/5xx status codes and honoring `Retry-After`.
-- **OpenRouter & OpenAI Compat**: Unified streaming and non-streaming completion adapters.
-- **Dify Connector**: Chat completions and Server-Sent Events (SSE) streaming with secret scrubbing.
-- **Workflow Connectors**: Flowise, Langflow, n8n, LangGraph, and custom HTTP JSON connectors.
+- **OpenRouter & OpenAI Compat**: Non-streaming chat-completion adapters (OpenRouter as `OpenRouterTarget`).
+- **Dify Connector**: Blocking and Server-Sent Events (SSE) streaming modes with secret scrubbing.
+- **Workflow Connectors**: Flowise, Langflow, n8n and LangGraph as thin HTTP adapters, plus the generic HTTP connector.
+- **MCP**: an MCP client target (`connectors/mcp.py`) and a Runport MCP server (`mcp_server/`).
+- **Capabilities**: the authoritative matrix is `CONNECTOR_MATRIX` in `connectors/registry.py`.
 
 ### 3.2 Spend & Budget Engine (`runport.core.budget`)
 - **Append-Only WAL Ledger**: SQLite database tracking micro-dollar costs by kind (`ACTUAL`, `ESTIMATED`, `UNRESOLVED`).

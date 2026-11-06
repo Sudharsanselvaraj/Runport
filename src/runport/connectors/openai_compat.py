@@ -12,12 +12,14 @@ from runport.core.security import validate_safe_url
 from runport.providers.base import ProviderError, RateLimitError, scrub_secrets
 from runport.providers.http import RetryingPoster
 from runport.targets.base import (
+    BillingMode,
     CostBasis,
     Target,
     TargetPricing,
     TargetResult,
     TargetStatus,
     TargetType,
+    billing_for_url,
 )
 
 
@@ -39,6 +41,7 @@ class OpenAICompatConnector(Target):
         allow_localhost: bool = False,
         allow_private: bool = False,
         host_allowlist: Optional[List[str]] = None,
+        billing: Optional[BillingMode] = None,
     ) -> None:
         safe_url = validate_safe_url(
             base_url,
@@ -50,13 +53,14 @@ class OpenAICompatConnector(Target):
             target_id=target_id,
             name=name,
             target_type=TargetType.RAW_MODEL,
-            capabilities=["streaming", "logprobs", "structured_output", "usage"],
+            capabilities=["text", "usage", "response_format_passthrough"],  # see connectors/registry.py CONNECTOR_MATRIX
             pricing=pricing,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
         )
         self.model = model
         self.base_url = safe_url.rstrip("/")
+        self.billing = billing_for_url(self.base_url, billing)
         self.api_key = api_key
         self.custom_headers = custom_headers or {}
         self.default_params = default_params or {}

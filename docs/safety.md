@@ -33,13 +33,13 @@ flowchart TD
 Every micro-dollar spent is committed to the ledger with an explicit provenance:
 - **`ACTUAL`**: Exact provider-reported USD spend from billing headers.
 - **`ESTIMATED`**: Verified catalog rate $\times$ reported tokens.
-- **`UNRESOLVED`**: Live request completed without cost or token telemetry. Halts subsequent live runs fail-closed until reconciled.
-- **`UNAVAILABLE`**: Zero-cost unpriced / local execution ($0.00 USD).
+- **`UNRESOLVED`**: A request to a target that may bill returned no usable cost. Booked without an amount; the run halts and later live runs stay locked until reconciled.
+- **`UNAVAILABLE`**: Local or operator-declared free execution (in-process, subprocess, MCP stdio, loopback URLs, or `billing: unbilled`). Booked as $0.00.
 - **`REPLAYED`**: Deterministic offline replay execution ($0.00 USD).
 
 ### 1.3 Unresolved Spend Circuit Breaker
 
-If an upstream provider returns a completion but omits token usage or billing metadata:
+Every target has a billing mode: `local`, `unbilled` (declared free by the operator) or `billable` (any non-loopback URL by default). If a `billable` target returns no usable cost, including a failed or timed-out request that may have been billed:
 1. The transaction is booked into `budget_ledger` with `is_unresolved = 1` and `cost_basis = 'UNRESOLVED'`.
 2. All subsequent live runs are immediately locked fail-closed.
 3. The operator must reconcile the transaction with the true cost from the provider dashboard:
@@ -52,27 +52,25 @@ uv run runport budget reconcile
 
 ## 2. Cryptographic Plan Approval
 
-Before any live evaluation run begins, Runport compiles an immutable `ExecutionPlan`. The plan computes a cryptographic SHA-256 fingerprint binding:
-- Target endpoint routes and candidate model IDs
-- Input dataset SHA-256 hash
-- Prompt template SHA-256 hash
-- Configured budget caps and circuit breaker ceilings
+Every live execution, from the CLI, the Web UI, the REST API, the Python SDK or the MCP server, goes through one service
+(`src/runport/services/execution.py`) and one executor (`GenericRunner` in `src/runport/runs/executor.py`).
 
-### 2.1 Interactive Terminal Approval
-In interactive terminals, operators review the projected spend and type the exact confirmation phrase:
-```text
-RUN LIVE google/gemini-2.0-flash PLAN 7f9a2b8c4d...
-```
-Piped, scripted, or non-interactive shells that cannot type this confirmation cannot reach a provider.
+1. **Plan.** A plan binds the target definitions (secret values excluded), the cases, a per-plan nonce and the budget cap into a
+   SHA-256 fingerprint. It is stored as `PENDING` with its worst-case spend and any blockers. Nothing is sent.
+2. **Approve.** A person approves that exact fingerprint. Approvals are stored in SQLite, expire after 15 minutes, and move
+   `PENDING → APPROVED → CONSUMED` in single conditional updates, so one approval runs at most once even across processes.
+3. **Execute.** The fingerprint is recomputed from the current inputs; any change (target, cases, cap) refuses the run.
 
-### 2.2 CI Token Approval
-In automated continuous integration environments, pass single-use tokens:
-```bash
-uv run runport benchmark --live --approve <plan_fingerprint>
-```
-If any prompt, dataset, or cap changes, the fingerprint mismatches and the execution aborts fail-closed.
+### 2.1 Who can approve
 
----
+| Channel | How |
+|:---|:---|
+| Interactive terminal | `runport benchmark --live`, `runport benchmark-rag --live` or `runport approve <plan_id>`: type `RUN LIVE <targets> PLAN <fingerprint>`. Piped or non-interactive input is refused. |
+| Web UI | The approval dialog on the Runs page (local dashboard, see the access policy below). |
+| CI token | `runport.sdk.approve_with_ci_token`, only when `approver.token_approver_enabled: true` in `runport.yaml`. |
+| Local-only plans | Plans whose every target is local can be approved automatically by the SDK; nothing can leave the machine or bill. |
+
+MCP clients and SDK callers cannot approve remote or billable plans: there is no approve tool and the approval store rejects their channels.
 
 ## 3. PII Redaction & Data Governance
 
@@ -105,11 +103,11 @@ print(clean_text)  # "Hello, my name is [NAME], email [EMAIL]"
 
 ## 4. SSRF Network Safeguards
 
-Outbound HTTP connectors pass all target URLs through [`validate_safe_url`](file:///Users/sudharsan/Downloads/LLM%20Workbench%20lab/src/runport/core/security.py#L69-L137):
+Outbound HTTP connectors pass all target URLs through [`validate_safe_url`](../src/runport/core/security.py):
 - **Cloud Metadata Services**: Requests targeting link-local metadata addresses (`169.254.169.254`, `fe80::/10`) are strictly blocked fail-closed.
 - **Private RFC 1918 Subnets**: `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16` are blocked by default.
 - **Loopback Protection**: `127.0.0.1` is blocked unless `allow_localhost = True` is explicitly configured for local engines (e.g., Ollama).
-- **DNS Pinning**: Resolves hostnames prior to connection to defend against DNS rebinding attacks.
+- **DNS check**: Hostnames are resolved before the request and refused if any address is blocked. The HTTP client resolves again when it connects, so this is a pre-flight check, not DNS pinning.
 
 ---
 
@@ -118,4 +116,16 @@ Outbound HTTP connectors pass all target URLs through [`validate_safe_url`](file
 API keys, bearer headers, and authentication tokens are automatically scrubbed from request logs, SQLite tables, and trace exports:
 - Authorization headers (`Bearer sk-...`) are replaced with `[REDACTED]`.
 - Upstream provider request payloads are scrubbed of credentials before serialization.
-- Raw text exports require explicit written [`RawTextAuthorization`](file:///Users/sudharsan/Downloads/LLM%20Workbench%20lab/src/runport/observability/export.py#L41-L52) containing owner, scope, and authorization date.
+- Raw text exports require explicit written [`RawTextAuthorization`](../src/runport/observability/export.py) containing owner, scope, and authorization date.
+
+---
+
+## 6. API Access Policy
+
+**Local development (no `RUNPORT_API_TOKEN`).** The API serves only loopback clients, and only when the `Host` header is a loopback
+name or listed in `RUNPORT_ALLOWED_HOSTS` (DNS-rebinding protection). Remote clients are refused whatever credentials they send.
+
+**Network deployment (`RUNPORT_API_TOKEN` set).** Every API request, local or remote, must present that token
+(`Authorization: Bearer` or `X-Runport-Token`), compared in constant time. `runport web` refuses to bind a non-loopback host without a token.
+
+Anyone who can reach the API can approve plans in the dashboard, so never give the token, or loopback access through a proxy, to an agent.

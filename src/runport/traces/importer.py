@@ -10,6 +10,39 @@ from runport.providers.base import scrub_secrets
 from runport.traces.models import ObservationSpan, TraceRecord
 
 
+def _present(value: Any) -> bool:
+    return value is not None and not (isinstance(value, str) and not value.strip())
+
+
+def _first_int(*values: Any) -> Optional[int]:
+    """First reported, parseable, non-negative integer. A missing or unparseable count stays None (null is not 0)."""
+    for v in values:
+        if _present(v):
+            try:
+                n = int(float(v))
+            except (TypeError, ValueError):
+                continue
+            if n >= 0:
+                return n
+    return None
+
+
+def _latency_ms(src: Dict[str, Any]) -> Optional[float]:
+    """Latency in milliseconds, or None when not reported.
+
+    `latency_ms` is taken as milliseconds. `latency` follows the Langfuse convention and is in seconds. No other
+    key or magnitude heuristic is used, so a genuine 30 ms latency is never rescaled to 30 s.
+    """
+    for key, scale in (("latency_ms", 1.0), ("latency", 1000.0)):
+        if _present(src.get(key)):
+            try:
+                value = float(src[key]) * scale
+            except (TypeError, ValueError):
+                return None
+            return value if value >= 0 else None
+    return None
+
+
 class TraceImporter:
     """Parses, sanitizes, and validates Langfuse trace exports."""
 
@@ -111,37 +144,12 @@ class TraceImporter:
         input_query = cls._anonymize_text(input_query)
         output_response = cls._anonymize_text(output_response)
 
-        raw_lat = scrubbed.get("latency") if scrubbed.get("latency") is not None else scrubbed.get("latency_ms")
-        if raw_lat is None:
-            raw_lat = scrubbed.get("duration")
-        if raw_lat is not None and str(raw_lat).strip():
-            try:
-                latency_ms: Optional[float] = float(raw_lat)
-                if latency_ms is not None and 0.0 < latency_ms < 50.0:
-                    latency_ms = latency_ms * 1000.0
-            except (ValueError, TypeError):
-                latency_ms = None
-        else:
-            latency_ms = None
+        latency_ms = _latency_ms(scrubbed)
 
-        usage = scrubbed.get("usage") or {}
-        raw_tot = scrubbed.get("total_tokens") if scrubbed.get("total_tokens") is not None else usage.get("total")
-        try:
-            total_tokens: Optional[int] = int(raw_tot) if raw_tot is not None and str(raw_tot).strip() else None
-        except (ValueError, TypeError):
-            total_tokens = None
-
-        raw_prompt = scrubbed.get("prompt_tokens") if scrubbed.get("prompt_tokens") is not None else (usage.get("prompt") or usage.get("input"))
-        try:
-            prompt_tokens: Optional[int] = int(raw_prompt) if raw_prompt is not None and str(raw_prompt).strip() else None
-        except (ValueError, TypeError):
-            prompt_tokens = None
-
-        raw_comp = scrubbed.get("completion_tokens") if scrubbed.get("completion_tokens") is not None else (usage.get("completion") or usage.get("output"))
-        try:
-            completion_tokens: Optional[int] = int(raw_comp) if raw_comp is not None and str(raw_comp).strip() else None
-        except (ValueError, TypeError):
-            completion_tokens = None
+        usage = scrubbed.get("usage") if isinstance(scrubbed.get("usage"), dict) else {}
+        total_tokens = _first_int(scrubbed.get("total_tokens"), usage.get("total"))
+        prompt_tokens = _first_int(scrubbed.get("prompt_tokens"), usage.get("prompt"), usage.get("input"))
+        completion_tokens = _first_int(scrubbed.get("completion_tokens"), usage.get("completion"), usage.get("output"))
 
         # Parse subordinate observations / spans
         spans: List[ObservationSpan] = []
@@ -152,16 +160,7 @@ class TraceImporter:
                     obs_id = str(obs.get("id") or obs.get("observationId") or "")
                     obs_name = str(obs.get("name") or obs.get("type") or "unnamed_span")
                     obs_type = str(obs.get("type") or "span")
-                    raw_obs_lat = obs.get("latency") if obs.get("latency") is not None else obs.get("latency_ms")
-                    if raw_obs_lat is not None and str(raw_obs_lat).strip():
-                        try:
-                            obs_lat: Optional[float] = float(raw_obs_lat)
-                            if obs_lat is not None and 0.0 < obs_lat < 50.0:
-                                obs_lat = obs_lat * 1000.0
-                        except (ValueError, TypeError):
-                            obs_lat = None
-                    else:
-                        obs_lat = None
+                    obs_lat = _latency_ms(obs)
                     spans.append(
                         ObservationSpan(
                             id=obs_id,
@@ -205,43 +204,10 @@ class TraceImporter:
         input_query = cls._anonymize_text(row.get("input") or row.get("query") or row.get("prompt") or "")
         output_response = cls._anonymize_text(row.get("output") or row.get("response") or row.get("completion") or "")
 
-        raw_lat = row.get("latency") or row.get("latency_ms")
-        if raw_lat is not None and str(raw_lat).strip():
-            try:
-                latency_ms: Optional[float] = float(raw_lat)
-                if latency_ms is not None and 0.0 < latency_ms < 50.0:
-                    latency_ms = latency_ms * 1000.0
-            except (ValueError, TypeError):
-                latency_ms = None
-        else:
-            latency_ms = None
-
-        raw_tok = row.get("total_tokens") or row.get("tokens")
-        if raw_tok is not None and str(raw_tok).strip():
-            try:
-                total_tokens: Optional[int] = int(raw_tok)
-            except (ValueError, TypeError):
-                total_tokens = None
-        else:
-            total_tokens = None
-
-        raw_prompt = row.get("prompt_tokens")
-        if raw_prompt is not None and str(raw_prompt).strip():
-            try:
-                prompt_tokens: Optional[int] = int(raw_prompt)
-            except (ValueError, TypeError):
-                prompt_tokens = None
-        else:
-            prompt_tokens = None
-
-        raw_comp = row.get("completion_tokens")
-        if raw_comp is not None and str(raw_comp).strip():
-            try:
-                completion_tokens: Optional[int] = int(raw_comp)
-            except (ValueError, TypeError):
-                completion_tokens = None
-        else:
-            completion_tokens = None
+        latency_ms = _latency_ms(row)
+        total_tokens = _first_int(row.get("total_tokens"), row.get("tokens"))
+        prompt_tokens = _first_int(row.get("prompt_tokens"))
+        completion_tokens = _first_int(row.get("completion_tokens"))
 
         raw_tags = row.get("tags") or ""
         tags = [t.strip() for t in raw_tags.split(",") if t.strip()]

@@ -367,8 +367,8 @@ def build_inference_status_panel(status: BudgetStatus, agg=None) -> Panel:
     table.add_row("Mode:", Text(mode, style=f"bold {TEXT_PRIMARY}"))
     table.add_row("API Calls:", Text(calls, style=f"{TEXT_PRIMARY}"))
     by = status.spend_by_basis
-    actual = by.get("PROVIDER_REPORTED", Decimal("0")) + by.get("RECONCILED", Decimal("0"))
-    est = by.get("ESTIMATED_FROM_CATALOG", Decimal("0"))
+    actual = status.actual_spend_usd
+    est = status.estimated_spend_usd
     table.add_row("Counted:", Text(f"${status.cumulative_spend_usd:.4f}", style=f"bold {TEXT_PRIMARY}"))
     table.add_row(" actual:", Text(f"${actual:.4f}", style=f"{TEXT_SECONDARY}"))
     table.add_row(" estimated:", Text(f"${est:.4f}", style=f"{TEXT_SECONDARY}"))
@@ -633,7 +633,7 @@ def build_budget_main_panel(
     by = status.spend_by_basis
     s_table.add_row(
         "Spend by basis (local ledger)",
-        f"ACTUAL ${by.get('PROVIDER_REPORTED', Decimal('0')) + by.get('RECONCILED', Decimal('0')):.4f} / EST ${by.get('ESTIMATED_FROM_CATALOG', Decimal('0')):.4f} / UNRESOLVED {status.unresolved_spend_count}",
+        f"ACTUAL ${status.actual_spend_usd:.4f} / EST ${status.estimated_spend_usd:.4f} / UNRESOLVED {status.unresolved_spend_count}",
         f"Legacy simulated rows (never counted): ${status.simulated_spend_usd:.4f}. No outbound provider synchronization.",
         style=row2_style,
     )
@@ -1010,7 +1010,7 @@ def build_traces_main_panel(
 
             q_text = trace.input_query
             q_snippet = q_text[:42] + "…" if len(q_text) > 42 else q_text
-            lat_str = f"{trace.latency_ms:.0f}ms"
+            lat_str = f"{trace.latency_ms:.0f}ms" if trace.latency_ms is not None else "n/a"
 
             if diag:
                 cat_badge = _format_failure_category(diag.category.value)

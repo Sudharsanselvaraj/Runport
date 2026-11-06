@@ -24,6 +24,13 @@ import {
   HelpCircle,
   ChevronRight,
   ExternalLink,
+  Home,
+  Search,
+  Info,
+  Menu,
+  X,
+  PanelLeft,
+  type LucideIcon,
 } from 'lucide-react'
 
 // --- Types ---
@@ -72,6 +79,8 @@ interface TargetItem {
   input_price_per_1m_usd?: number
   output_price_per_1m_usd?: number
   verification_status?: string
+  billing?: string
+  source?: 'catalog' | 'workspace'
 }
 
 interface DatasetSummary {
@@ -110,7 +119,7 @@ interface PlanData {
   plan_fingerprint: string
   dataset_name: string
   projected_cases: number
-  projected_cost_usd: number
+  projected_cost_usd: number | null
   targets: any[]
   is_permitted: boolean
   blockers: string[]
@@ -158,14 +167,60 @@ interface ReportData {
   classification_report?: Record<string, { precision: number; recall: number; f1: number; support: number }>
 }
 
+type TabId = 'setup' | 'models' | 'targets' | 'datasets' | 'plan' | 'liverun' | 'results' | 'compare' | 'reports' | 'budget'
+
+const NAV_GROUPS: { label: string | null; items: { id: TabId; label: string; icon: LucideIcon }[] }[] = [
+  { label: null, items: [{ id: 'setup', label: 'Overview', icon: Home }] },
+  {
+    label: 'Benchmarks',
+    items: [
+      { id: 'plan', label: 'Plans', icon: FileText },
+      { id: 'liverun', label: 'Runs', icon: Play },
+      { id: 'results', label: 'Results', icon: CheckCircle2 },
+      { id: 'compare', label: 'Compare', icon: GitCompare },
+    ],
+  },
+  {
+    label: 'Configuration',
+    items: [
+      { id: 'targets', label: 'Targets', icon: Layers },
+      { id: 'models', label: 'Models', icon: Cpu },
+      { id: 'datasets', label: 'Datasets', icon: Database },
+    ],
+  },
+  {
+    label: 'Reports and spend',
+    items: [
+      { id: 'reports', label: 'Reports', icon: BarChart2 },
+      { id: 'budget', label: 'Budget', icon: Wallet },
+    ],
+  },
+]
+
+const PAGE_INFO: Record<TabId, { title: string; description: string }> = {
+  setup: { title: 'Overview', description: 'Workspace, storage and the state of local spend controls.' },
+  plan: { title: 'Plans', description: 'Fingerprinted benchmark plans with worst-case spend, checked before anything is sent.' },
+  liverun: { title: 'Runs', description: 'Approve and execute plans, or replay recorded outputs at zero spend.' },
+  results: { title: 'Results', description: 'Per-run and per-case outcomes. Unmeasured metrics show as unavailable, not zero.' },
+  compare: { title: 'Compare', description: 'Two runs side by side.' },
+  targets: { title: 'Targets', description: 'Models, endpoints and workspace targets you can benchmark, plus a guarded probe.' },
+  models: { title: 'Models', description: 'Catalog models with verified pricing.' },
+  datasets: { title: 'Datasets', description: 'Evaluation datasets in data/evaluation.' },
+  reports: { title: 'Reports', description: 'Run reports and sanitized trace exports.' },
+  budget: { title: 'Budget', description: 'Ledger, ceilings and unresolved spend.' },
+}
+
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('runport_theme') as 'dark' | 'light') || 'dark'
+    let stored: string | null = null
+    try {
+      stored = localStorage.getItem('runport_theme')
+    } catch {}
+    if (stored === 'dark' || stored === 'light') return stored
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
   })
 
-  const [activeTab, setActiveTab] = useState<
-    'setup' | 'models' | 'targets' | 'datasets' | 'plan' | 'liverun' | 'results' | 'compare' | 'reports' | 'budget'
-  >(() => {
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
     const h = window.location.hash.replace('#', '')
     if (['setup', 'models', 'targets', 'datasets', 'plan', 'liverun', 'results', 'compare', 'reports', 'budget'].includes(h)) {
       return h as any
@@ -184,10 +239,35 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
-  const handleSelectTab = (tab: 'setup' | 'models' | 'targets' | 'datasets' | 'plan' | 'liverun' | 'results' | 'compare' | 'reports' | 'budget') => {
+  const handleSelectTab = (tab: TabId) => {
     setActiveTab(tab)
     window.location.hash = tab
+    setSidebarOpen(false)
+    setPaletteOpen(false)
   }
+
+  // Sidebar (drawer on narrow screens, collapsible on wide ones) and the "Go to" palette
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false)
+  const [paletteOpen, setPaletteOpen] = useState<boolean>(false)
+  const [paletteQuery, setPaletteQuery] = useState<string>('')
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteQuery('')
+        setPaletteOpen((o) => !o)
+      } else if (e.key === 'Escape') {
+        setPaletteOpen(false)
+        setSidebarOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const paletteItems = NAV_GROUPS.flatMap((g) => g.items).filter((i) =>
+    `${i.label} ${PAGE_INFO[i.id].description}`.toLowerCase().includes(paletteQuery.trim().toLowerCase()),
+  )
 
   // Global states
   const [loading, setLoading] = useState<boolean>(true)
@@ -212,6 +292,15 @@ export default function App() {
   const [testPrompt, setTestPrompt] = useState<string>('Explain strict ground truth validation in two concise sentences.')
   const [testingRunning, setTestingRunning] = useState<boolean>(false)
   const [testResult, setTestResult] = useState<any | null>(null)
+  // A target probe sends a real, possibly billed request, so the API asks for approval of an exact plan first.
+  const [testApproval, setTestApproval] = useState<{
+    plan_fingerprint: string
+    plan_id: string
+    expected_confirmation_phrase: string
+    message: string
+    projected_cost_usd: number | null
+    blockers: string[]
+  } | null>(null)
 
   // Screen 4: Dataset preview & upload
   const [selectedDatasetDetail, setSelectedDatasetDetail] = useState<DatasetDetail | null>(null)
@@ -254,7 +343,9 @@ export default function App() {
   // Theme effect
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('runport_theme', theme)
+    try {
+      localStorage.setItem('runport_theme', theme)
+    } catch {}
   }, [theme])
 
   const toggleTheme = () => {
@@ -380,7 +471,7 @@ export default function App() {
   }
 
   // Target Tester
-  const handleTestTarget = async () => {
+  const handleTestTarget = async (approval?: { plan_fingerprint: string; plan_id: string }) => {
     setTestingRunning(true)
     setTestResult(null)
     try {
@@ -396,9 +487,22 @@ export default function App() {
             api_key: testApiKey || undefined,
           },
           input_payload: { query: testPrompt },
+          approve_token: approval?.plan_fingerprint,
+          plan_id: approval?.plan_id,
         }),
       })
-      setTestResult(await res.json())
+      const body = await res.json()
+      if (res.status === 428) {
+        setTestApproval(body.detail)
+        return
+      }
+      setTestApproval(null)
+      if (!res.ok) {
+        const detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+        setTestResult({ status: 'failed', error_message: detail })
+        return
+      }
+      setTestResult(body)
     } catch (e: any) {
       setTestResult({ status: 'failed', error_message: e.message })
     } finally {
@@ -555,166 +659,113 @@ export default function App() {
     }
   }
 
+  const page = PAGE_INFO[activeTab]
+  const workspaceName: string = (setup as any)?.workspace_name || 'Local workspace'
+
   return (
-    <div>
-      {/* Top Header Bar */}
-      <header className="header-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 800,
-              color: '#0b0f17',
-              fontSize: '1.15rem',
-            }}
-          >
-            R
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              Runport
-              <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>v0.1.0</span>
+    <div className={`app-shell ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+      {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
+      <aside className={`sidebar ${sidebarOpen ? 'is-open' : ''}`} aria-label="Main navigation">
+        <div className="sidebar-brand">
+          <img src="/logo.svg" alt="" width={20} height={20} />
+          <span className="sidebar-brand-name">runport</span>
+          <span className="sidebar-version">v0.1.0</span>
+          <button className="icon-btn sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close navigation">
+            <X size={16} />
+          </button>
+        </div>
+
+        <button
+          className="sidebar-item sidebar-goto"
+          onClick={() => {
+            setPaletteQuery('')
+            setPaletteOpen(true)
+          }}
+        >
+          <Search size={16} />
+          <span>Go to…</span>
+          <kbd className="kbd">⌘ K</kbd>
+        </button>
+
+        <nav className="sidebar-nav">
+          {NAV_GROUPS.map((g, gi) => (
+            <div key={gi} className="sidebar-group">
+              {g.label && <div className="sidebar-group-label">{g.label}</div>}
+              {g.items.map((item) => {
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.id}
+                    className={`sidebar-item ${activeTab === item.id ? 'is-active' : ''}`}
+                    aria-current={activeTab === item.id ? 'page' : undefined}
+                    onClick={() => handleSelectTab(item.id)}
+                  >
+                    <Icon size={16} />
+                    <span>{item.label}</span>
+                  </button>
+                )
+              })}
             </div>
-            <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-              Universal Local-First Benchmarking Platform
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <button className="sidebar-item" onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{theme === 'dark' ? 'Light theme' : 'Dark theme'}</span>
+          </button>
+          <div className="sidebar-account">
+            <div className="avatar">{workspaceName.slice(0, 2).toUpperCase()}</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="sidebar-account-name">{workspaceName}</div>
+              <div className="sidebar-account-sub">Local · SQLite WAL</div>
             </div>
           </div>
         </div>
+      </aside>
 
-        {/* Global Status Badges */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <div className="badge badge-success" style={{ gap: '0.35rem' }}>
-            <ShieldCheck size={13} />
-            Local WAL Active
+      <div className="main">
+        <header className="topbar">
+          <button className="icon-btn topbar-menu" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">
+            <Menu size={16} />
+          </button>
+          <button className="icon-btn topbar-collapse" onClick={() => setSidebarCollapsed((c) => !c)} aria-label="Toggle sidebar">
+            <PanelLeft size={16} />
+          </button>
+          <div className="breadcrumb">
+            <span className="breadcrumb-item">{workspaceName}</span>
+            <span className="chip">Local</span>
+            <span className="breadcrumb-sep">/</span>
+            <span className="breadcrumb-item is-current">{page.title}</span>
           </div>
+          <div className="topbar-actions">
+            {budget && (
+              <span className={`chip ${budget.unresolved_count > 0 ? 'chip-danger' : ''}`} title="Remaining total budget">
+                <Wallet size={13} />${budget.spend.remaining_total_usd.toFixed(2)} left
+              </span>
+            )}
+            <button className="btn btn-secondary btn-sm" onClick={loadInitialData} title="Refresh state">
+              <RefreshCw size={14} />
+              <span className="hide-sm">Refresh</span>
+            </button>
+          </div>
+        </header>
 
-          {budget && (
-            <div
-              className={`badge ${budget.unresolved_count > 0 ? 'badge-danger' : 'badge-info'}`}
-              style={{ gap: '0.35rem' }}
-            >
-              <Wallet size={13} />
-              Remaining: ${budget.spend.remaining_total_usd.toFixed(2)}
-            </div>
-          )}
-
-          <button
-            onClick={toggleTheme}
-            className="btn btn-secondary"
-            style={{ padding: '0.35rem 0.65rem' }}
-            title="Toggle theme"
-          >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
-
-          <button
-            onClick={loadInitialData}
-            className="btn btn-secondary"
-            style={{ padding: '0.35rem 0.65rem' }}
-            title="Refresh state"
-          >
-            <RefreshCw size={15} />
-          </button>
+        <div className="page-header">
+          <h1 className="page-title">{page.title}</h1>
+          <span className="page-info" title={page.description}>
+            <Info size={15} />
+          </span>
+          <span className="page-description">{page.description}</span>
         </div>
-      </header>
 
-      {/* Main Container */}
-      <div className="container">
+        <main className="page-body">
         {apiError && (
-          <div
-            className="card"
-            style={{
-              background: 'rgba(248, 113, 113, 0.1)',
-              borderColor: 'var(--accent-red)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-            }}
-          >
-            <AlertTriangle size={20} color="var(--accent-red)" />
-            <div style={{ color: 'var(--accent-red)', fontSize: '0.875rem' }}>{apiError}</div>
+          <div className="callout callout-danger">
+            <AlertTriangle size={18} />
+            <div>{apiError}</div>
           </div>
         )}
-
-        {/* 10 Navigation Tabs */}
-        <nav className="nav-tabs">
-          <button
-            className={`nav-tab ${activeTab === 'setup' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('setup')}
-          >
-            <Sliders size={16} />
-            Setup
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'models' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('models')}
-          >
-            <Cpu size={16} />
-            Models
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'targets' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('targets')}
-          >
-            <Layers size={16} />
-            Targets
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'datasets' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('datasets')}
-          >
-            <Database size={16} />
-            Datasets
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'plan' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('plan')}
-          >
-            <FileText size={16} />
-            Plan
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'liverun' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('liverun')}
-          >
-            <Play size={16} />
-            Live Run
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'results' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('results')}
-          >
-            <CheckCircle2 size={16} />
-            Results
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'compare' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('compare')}
-          >
-            <GitCompare size={16} />
-            Compare
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'reports' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('reports')}
-          >
-            <BarChart2 size={16} />
-            Reports
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'budget' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('budget')}
-          >
-            <Wallet size={16} />
-            Budget
-          </button>
-        </nav>
 
         {/* ----------------- SCREEN 1: SETUP ----------------- */}
         {activeTab === 'setup' && setup && (
@@ -730,11 +781,11 @@ export default function App() {
               <div className="grid-3">
                 <div style={{ background: 'var(--bg-input)', padding: '0.85rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
                   <div className="form-label">Workspace Root</div>
-                  <div style={{ fontFamily: 'monospace', fontSize: '0.775rem', wordBreak: 'break-all' }}>{setup.workspace_root}</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.775rem', wordBreak: 'break-all' }}>{setup.workspace_root}</div>
                 </div>
                 <div style={{ background: 'var(--bg-input)', padding: '0.85rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
                   <div className="form-label">Database Path (WAL)</div>
-                  <div style={{ fontFamily: 'monospace', fontSize: '0.775rem', wordBreak: 'break-all' }}>{setup.db_path}</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.775rem', wordBreak: 'break-all' }}>{setup.db_path}</div>
                 </div>
                 <div style={{ background: 'var(--bg-input)', padding: '0.85rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
                   <div className="form-label">Execution Mode</div>
@@ -859,12 +910,12 @@ export default function App() {
                       <tr key={m.model_id}>
                         <td>
                           <div style={{ fontWeight: 600 }}>{m.display_name}</div>
-                          <div style={{ fontSize: '0.725rem', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{m.model_id}</div>
+                          <div style={{ fontSize: '0.725rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{m.model_id}</div>
                         </td>
                         <td>{m.provider}</td>
                         <td>{m.context_length ? `${(m.context_length / 1000).toFixed(0)}k tokens` : 'None'}</td>
-                        <td style={{ fontFamily: 'monospace' }}>${m.input_price_per_1m_usd.toFixed(4)}</td>
-                        <td style={{ fontFamily: 'monospace' }}>${m.output_price_per_1m_usd.toFixed(4)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>${m.input_price_per_1m_usd.toFixed(4)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>${m.output_price_per_1m_usd.toFixed(4)}</td>
                         <td>
                           <span
                             className={`badge ${
@@ -965,12 +1016,34 @@ export default function App() {
 
                   <button
                     className="btn btn-primary"
-                    onClick={handleTestTarget}
+                    onClick={() => handleTestTarget()}
                     disabled={testingRunning}
                   >
                     {testingRunning ? <RefreshCw className="animate-spin" size={15} /> : <Play size={15} />}
                     Execute Probe Test
                   </button>
+
+                  {testApproval && (
+                    <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-input)', fontSize: '0.8rem' }}>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Approval required</div>
+                      <div style={{ marginBottom: '0.5rem' }}>{testApproval.message}</div>
+                      <div style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                        Worst-case spend: {testApproval.projected_cost_usd != null ? `$${testApproval.projected_cost_usd.toFixed(4)}` : 'none expected (local or declared free)'}. Plan{' '}
+                        <code>{testApproval.plan_fingerprint.slice(0, 16)}</code>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        {testApproval.blockers?.length > 0 && (
+                          <div style={{ color: 'var(--accent-red)' }}>Blocked: {testApproval.blockers.join(' ')}</div>
+                        )}
+                        <button className="btn btn-primary" onClick={() => handleTestTarget(testApproval)} disabled={testingRunning || testApproval.blockers?.length > 0}>
+                          Approve and send
+                        </button>
+                        <button className="btn" onClick={() => setTestApproval(null)} disabled={testingRunning}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1001,7 +1074,7 @@ export default function App() {
                           padding: '0.75rem',
                           borderRadius: 4,
                           fontSize: '0.825rem',
-                          fontFamily: 'monospace',
+                          fontFamily: 'var(--font-mono)',
                           whiteSpace: 'pre-wrap',
                           maxHeight: 180,
                           overflowY: 'auto',
@@ -1119,7 +1192,7 @@ export default function App() {
                       <tbody>
                         {selectedDatasetDetail.cases_preview.map((c, i) => (
                           <tr key={i}>
-                            <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
                               {c.case_id || c.id || i + 1}
                             </td>
                             <td style={{ fontSize: '0.8rem' }}>{c.query || c.input || '-'}</td>
@@ -1170,6 +1243,9 @@ export default function App() {
                         }}
                       />
                       {t.name}
+                      {t.source === 'workspace' && (
+                        <span style={{ color: 'var(--text-muted)' }}>({t.target_type}, {t.billing})</span>
+                      )}
                     </label>
                   ))}
                 </div>
@@ -1217,7 +1293,7 @@ export default function App() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>SHA-256 Plan Fingerprint</div>
-                    <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
                       {planData.plan_fingerprint}
                     </div>
                   </div>
@@ -1231,7 +1307,7 @@ export default function App() {
                 {!planData.is_permitted && (
                   <div
                     style={{
-                      background: 'rgba(248, 113, 113, 0.15)',
+                      background: 'color-mix(in srgb, var(--accent-red) 10%, transparent)',
                       padding: '0.75rem',
                       borderRadius: 6,
                       border: '1px solid var(--accent-red)',
@@ -1251,7 +1327,7 @@ export default function App() {
 
                 <div className="grid-3" style={{ marginBottom: '1rem' }}>
                   <div>Projected Cases: <strong>{planData.projected_cases}</strong></div>
-                  <div>Projected Upper Spend: <strong>${planData.projected_cost_usd.toFixed(4)}</strong></div>
+                  <div>Projected Upper Spend: <strong>{planData.projected_cost_usd != null ? `$${planData.projected_cost_usd.toFixed(4)}` : 'unknown'}</strong></div>
                   <div>Dataset: <strong>{planData.dataset_name}</strong></div>
                 </div>
 
@@ -1259,19 +1335,19 @@ export default function App() {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Target Model / Endpoint</th>
-                        <th>Input / 1M</th>
-                        <th>Output / 1M</th>
+                        <th>Target</th>
+                        <th>Type / billing</th>
+                        <th>Cost basis</th>
                         <th>Projected Upper Spend</th>
                       </tr>
                     </thead>
                     <tbody>
                       {planData.targets.map((t, idx) => (
                         <tr key={idx}>
-                          <td><strong>{t.display_name}</strong></td>
-                          <td>{t.input_price_per_1m ? `$${t.input_price_per_1m.toFixed(4)}` : 'None'}</td>
-                          <td>{t.output_price_per_1m ? `$${t.output_price_per_1m.toFixed(4)}` : 'None'}</td>
-                          <td style={{ fontFamily: 'monospace' }}>${t.projected_cost_usd.toFixed(4)}</td>
+                          <td><strong>{t.target_id}</strong></td>
+                          <td>{t.type} / {t.billing}</td>
+                          <td>{t.cost_note}</td>
+                          <td style={{ fontFamily: 'var(--font-mono)' }}>{t.projected_cost_usd != null ? `$${t.projected_cost_usd.toFixed(4)}` : 'none expected'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1298,7 +1374,7 @@ export default function App() {
                 {planData ? (
                   <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: 6, marginBottom: '1.25rem', border: '1px solid var(--border-color)' }}>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Active Plan Fingerprint</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-blue)' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-blue)' }}>
                       {planData.plan_fingerprint}
                     </div>
                     <div style={{ fontSize: '0.8rem', marginTop: '0.4rem' }}>
@@ -1340,13 +1416,30 @@ export default function App() {
 
                 {runResult && (
                   <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <strong>Execution Complete</strong>
-                      <span className="badge badge-success">Provenance: {runResult.provenance}</span>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                      Run ID: {runResult.run_id} | Total Cases: {runResult.cases_evaluated || runResult.cases_planned} | Spend: ${runResult.total_spend_usd || '0.0000'}
-                    </div>
+                    {runResult.detail ? (
+                      <div style={{ fontSize: '0.8rem' }}>
+                        <strong>Not executed:</strong> {typeof runResult.detail === 'string' ? runResult.detail : JSON.stringify(runResult.detail)}
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <strong>{runResult.status === 'halted' ? 'Execution halted' : 'Execution complete'}</strong>
+                          <span className={`badge ${runResult.status === 'halted' ? 'badge-danger' : 'badge-success'}`}>Provenance: {runResult.provenance}</span>
+                        </div>
+                        {Array.isArray(runResult.runs) ? (
+                          runResult.runs.map((r: any) => (
+                            <div key={r.run_id} style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', marginBottom: '0.25rem' }}>
+                              {r.target_id}: run {r.run_id} | ok {r.successful_cases}/{r.total_cases} | skipped {r.skipped_cases} | booked ${r.total_spend_usd}
+                              {r.halted_reason && <div style={{ color: 'var(--accent-red)' }}>{r.halted_reason}</div>}
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
+                            Run ID: {runResult.run_id} | Total Cases: {runResult.cases_evaluated} | Spend: ${runResult.total_spend_usd}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1369,7 +1462,7 @@ export default function App() {
                     borderRadius: 6,
                     height: 380,
                     overflowY: 'auto',
-                    fontFamily: 'monospace',
+                    fontFamily: 'var(--font-mono)',
                     fontSize: '0.75rem',
                     border: '1px solid var(--border-color)',
                   }}
@@ -1473,7 +1566,7 @@ export default function App() {
                       <tbody>
                         {runDetail.results.map((res: any) => (
                           <tr key={res.result_id}>
-                            <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{res.case_id}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{res.case_id}</td>
                             <td style={{ fontSize: '0.775rem', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {res.prompt}
                             </td>
@@ -1484,7 +1577,7 @@ export default function App() {
                             <td>
                               {res.prompt_tokens ?? 'None'} / {res.completion_tokens ?? 'None'}
                             </td>
-                            <td style={{ fontFamily: 'monospace' }}>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>
                               {res.cost_usd ? `$${parseFloat(res.cost_usd).toFixed(4)}` : 'None'}
                             </td>
                             <td>
@@ -1601,9 +1694,9 @@ export default function App() {
                       </tr>
                       <tr>
                         <td><strong>Cost per 1k Queries</strong></td>
-                        <td style={{ fontFamily: 'monospace' }}>${compareReportA.cost_per_1k_cases_usd.toFixed(4)}</td>
-                        <td style={{ fontFamily: 'monospace' }}>${compareReportB.cost_per_1k_cases_usd.toFixed(4)}</td>
-                        <td style={{ fontFamily: 'monospace' }}>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>${compareReportA.cost_per_1k_cases_usd.toFixed(4)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>${compareReportB.cost_per_1k_cases_usd.toFixed(4)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>
                           ${(compareReportB.cost_per_1k_cases_usd - compareReportA.cost_per_1k_cases_usd).toFixed(4)}
                         </td>
                       </tr>
@@ -1618,12 +1711,12 @@ export default function App() {
                     <svg viewBox="0 0 400 160" width="100%" height="160">
                       <rect x="0" y="0" width="400" height="160" fill="transparent" />
                       {/* Bars for Run A */}
-                      <rect x="60" y={140 - Math.min(120, (compareReportA.mean_latency_ms || 50) * 0.4)} width="40" height={Math.min(120, (compareReportA.mean_latency_ms || 50) * 0.4)} fill="#38bdf8" rx="4" />
-                      <rect x="110" y={140 - Math.min(120, (compareReportA.latency_p95_ms || 90) * 0.4)} width="40" height={Math.min(120, (compareReportA.latency_p95_ms || 90) * 0.4)} fill="#0284c7" rx="4" />
+                      <rect x="60" y={140 - Math.min(120, (compareReportA.mean_latency_ms || 50) * 0.4)} width="40" height={Math.min(120, (compareReportA.mean_latency_ms || 50) * 0.4)} fill="var(--accent-blue)" rx="4" />
+                      <rect x="110" y={140 - Math.min(120, (compareReportA.latency_p95_ms || 90) * 0.4)} width="40" height={Math.min(120, (compareReportA.latency_p95_ms || 90) * 0.4)} fill="var(--accent-blue)" fillOpacity={0.55} rx="4" />
 
                       {/* Bars for Run B */}
-                      <rect x="230" y={140 - Math.min(120, (compareReportB.mean_latency_ms || 50) * 0.4)} width="40" height={Math.min(120, (compareReportB.mean_latency_ms || 50) * 0.4)} fill="#34d399" rx="4" />
-                      <rect x="280" y={140 - Math.min(120, (compareReportB.latency_p95_ms || 90) * 0.4)} width="40" height={Math.min(120, (compareReportB.latency_p95_ms || 90) * 0.4)} fill="#059669" rx="4" />
+                      <rect x="230" y={140 - Math.min(120, (compareReportB.mean_latency_ms || 50) * 0.4)} width="40" height={Math.min(120, (compareReportB.mean_latency_ms || 50) * 0.4)} fill="var(--accent-amber)" rx="4" />
+                      <rect x="280" y={140 - Math.min(120, (compareReportB.latency_p95_ms || 90) * 0.4)} width="40" height={Math.min(120, (compareReportB.latency_p95_ms || 90) * 0.4)} fill="var(--accent-amber)" fillOpacity={0.55} rx="4" />
 
                       <line x1="20" y1="140" x2="380" y2="140" stroke="var(--border-color)" strokeWidth="1" />
                       <text x="85" y="155" fill="var(--text-secondary)" fontSize="10" textAnchor="middle">Run A (Mean / p95)</text>
@@ -1635,8 +1728,8 @@ export default function App() {
                     <div className="form-label" style={{ marginBottom: '0.75rem' }}>Spend per 1k Inferences ($)</div>
                     <svg viewBox="0 0 400 160" width="100%" height="160">
                       <rect x="0" y="0" width="400" height="160" fill="transparent" />
-                      <rect x="80" y={140 - Math.min(120, compareReportA.cost_per_1k_cases_usd * 200 + 10)} width="60" height={Math.min(120, compareReportA.cost_per_1k_cases_usd * 200 + 10)} fill="#38bdf8" rx="4" />
-                      <rect x="250" y={140 - Math.min(120, compareReportB.cost_per_1k_cases_usd * 200 + 10)} width="60" height={Math.min(120, compareReportB.cost_per_1k_cases_usd * 200 + 10)} fill="#34d399" rx="4" />
+                      <rect x="80" y={140 - Math.min(120, compareReportA.cost_per_1k_cases_usd * 200 + 10)} width="60" height={Math.min(120, compareReportA.cost_per_1k_cases_usd * 200 + 10)} fill="var(--accent-blue)" rx="4" />
+                      <rect x="250" y={140 - Math.min(120, compareReportB.cost_per_1k_cases_usd * 200 + 10)} width="60" height={Math.min(120, compareReportB.cost_per_1k_cases_usd * 200 + 10)} fill="var(--accent-amber)" rx="4" />
 
                       <line x1="20" y1="140" x2="380" y2="140" stroke="var(--border-color)" strokeWidth="1" />
                       <text x="110" y="155" fill="var(--text-secondary)" fontSize="10" textAnchor="middle">Run A (${compareReportA.cost_per_1k_cases_usd.toFixed(3)})</text>
@@ -1727,7 +1820,7 @@ export default function App() {
 
                     <div style={{ background: 'var(--bg-input)', padding: '0.85rem', borderRadius: 6, border: '1px solid var(--border-color)' }}>
                       <div className="form-label">Cost per 1k Inferences</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 700, fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
                         ${reportData.cost_per_1k_cases_usd.toFixed(4)}
                       </div>
                       <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
@@ -1758,7 +1851,7 @@ export default function App() {
                                   <td
                                     key={j}
                                     style={{
-                                      background: i === j && val > 0 ? 'rgba(52, 211, 153, 0.15)' : 'transparent',
+                                      background: i === j && val > 0 ? 'color-mix(in srgb, var(--accent-green) 12%, transparent)' : 'transparent',
                                       fontWeight: i === j ? 700 : 400,
                                     }}
                                   >
@@ -1816,7 +1909,7 @@ export default function App() {
               <div
                 className="card"
                 style={{
-                  background: 'rgba(248, 113, 113, 0.15)',
+                  background: 'color-mix(in srgb, var(--accent-red) 10%, transparent)',
                   borderColor: 'var(--accent-red)',
                   display: 'flex',
                   alignItems: 'center',
@@ -1903,10 +1996,10 @@ export default function App() {
                   <tbody>
                     {budget.recent_transactions.map((tx) => (
                       <tr key={tx.transaction_id}>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{tx.transaction_id.slice(0, 16)}...</td>
+                        <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{tx.transaction_id.slice(0, 16)}...</td>
                         <td>{tx.timestamp.slice(0, 19).replace('T', ' ')}</td>
                         <td>{tx.model_id} ({tx.provider})</td>
-                        <td style={{ fontFamily: 'monospace' }}>${parseFloat(tx.amount_usd).toFixed(4)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>${parseFloat(tx.amount_usd).toFixed(4)}</td>
                         <td>
                           <span className="badge badge-info">{tx.cost_basis}</span>
                         </td>
@@ -1925,7 +2018,42 @@ export default function App() {
             </div>
           </div>
         )}
+        </main>
       </div>
+
+      {paletteOpen && (
+        <div className="modal-overlay palette-overlay" onClick={() => setPaletteOpen(false)}>
+          <div className="palette" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Go to page">
+            <div className="palette-input-row">
+              <Search size={16} />
+              <input
+                autoFocus
+                className="palette-input"
+                placeholder="Go to a page…"
+                value={paletteQuery}
+                onChange={(e) => setPaletteQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && paletteItems[0]) handleSelectTab(paletteItems[0].id)
+                }}
+              />
+              <kbd className="kbd">esc</kbd>
+            </div>
+            <div className="palette-list">
+              {paletteItems.length === 0 && <div className="palette-empty">No matching page</div>}
+              {paletteItems.map((i) => {
+                const Icon = i.icon
+                return (
+                  <button key={i.id} className="palette-item" onClick={() => handleSelectTab(i.id)}>
+                    <Icon size={16} />
+                    <span className="palette-item-title">{i.label}</span>
+                    <span className="palette-item-desc">{PAGE_INFO[i.id].description}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ----------------- SINGLE-USE LIVE APPROVAL MODAL ----------------- */}
       {showApprovalModal && planData && (
@@ -1940,9 +2068,9 @@ export default function App() {
             </div>
 
             <div style={{ background: 'var(--bg-input)', padding: '0.85rem', borderRadius: 6, marginBottom: '1rem', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
-              <div>Plan Fingerprint: <strong style={{ color: 'var(--accent-blue)', fontFamily: 'monospace' }}>{planData.plan_fingerprint}</strong></div>
+              <div>Plan Fingerprint: <strong style={{ color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)' }}>{planData.plan_fingerprint}</strong></div>
               <div>Projected Cases: <strong>{planData.projected_cases}</strong></div>
-              <div>Projected Max Spend: <strong>${planData.projected_cost_usd.toFixed(4)}</strong></div>
+              <div>Projected Max Spend: <strong>{planData.projected_cost_usd != null ? `$${planData.projected_cost_usd.toFixed(4)}` : 'unknown'}</strong></div>
             </div>
 
             <div className="form-group">

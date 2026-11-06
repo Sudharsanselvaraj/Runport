@@ -46,7 +46,7 @@ class RAGCaseEvaluation(BaseModel):
     retrieval_latency_ms: float = Field(default=0.0, ge=0.0)
 
     # Decoupled Generation Metrics
-    answer_correctness: float = Field(ge=0.0, le=1.0)
+    answer_correctness: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="None when the case has no reference answer")
     groundedness: float = Field(ge=0.0, le=1.0)
     abstention_correctness: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     generation_latency_ms: float = Field(ge=0.0)
@@ -87,7 +87,7 @@ class RAGBenchmarkReport(BaseModel):
     mean_retrieval_precision: float = Field(default=0.0, ge=0.0, le=1.0)
 
     # Aggregated Generation Metrics
-    mean_answer_correctness: float = Field(default=0.0)
+    mean_answer_correctness: Optional[float] = Field(default=None, description="Mean over cases with a reference answer; None if none had one")
     mean_groundedness: float = Field(default=0.0)
     mean_generation_latency_ms: float = Field(default=0.0)
 

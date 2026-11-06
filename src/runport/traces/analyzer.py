@@ -12,6 +12,10 @@ from runport.traces.models import (
 )
 
 
+def _fmt_ms(value: Optional[float]) -> str:
+    return f"{value:.1f}ms" if value is not None else "UNAVAILABLE"
+
+
 class TraceDiagnosticAnalyzer:
     """Diagnoses production trace failures across the 4 RAG failure categories.
 
@@ -80,14 +84,12 @@ class TraceDiagnosticAnalyzer:
             )
 
         # Default: No significant failure detected
-        lat_str = f"Latency: {trace.latency_ms:.1f}ms" if trace.latency_ms is not None else "Latency: UNAVAILABLE"
-        tok_str = f"Tokens: {trace.total_tokens}" if trace.total_tokens is not None else "Tokens: UNAVAILABLE"
         return DiagnosisHypothesis(
             trace_id=trace.id,
             category=FailureCategory.NO_FAILURE_DETECTED,
             confidence=0.85,
             hypothesis="Trace response appears grounded, coherent, and within normal operational bounds.",
-            evidence=[lat_str, tok_str],
+            evidence=[f"Latency: {_fmt_ms(trace.latency_ms)}", f"Tokens: {trace.total_tokens if trace.total_tokens is not None else 'UNAVAILABLE'}"],
             suggested_action="No remediation necessary.",
         )
 
@@ -95,6 +97,8 @@ class TraceDiagnosticAnalyzer:
         """Analyzes a collection of traces and generates an aggregated diagnostic report."""
         diagnoses: List[DiagnosisHypothesis] = []
         category_counts = {cat.value: 0 for cat in FailureCategory}
+        latencies: List[float] = []
+        token_counts: List[int] = []
         failure_count = 0
 
         for t in traces:
@@ -103,19 +107,22 @@ class TraceDiagnosticAnalyzer:
             category_counts[diag.category.value] += 1
             if diag.category != FailureCategory.NO_FAILURE_DETECTED:
                 failure_count += 1
+            if t.latency_ms is not None:
+                latencies.append(t.latency_ms)
+            if t.total_tokens is not None:
+                token_counts.append(t.total_tokens)
 
-        valid_lats = [t.latency_ms for t in traces if t.latency_ms is not None]
-        mean_lat = round(sum(valid_lats) / len(valid_lats), 2) if valid_lats else None
-
-        valid_toks = [t.total_tokens for t in traces if t.total_tokens is not None]
-        total_tokens = sum(valid_toks) if valid_toks else None
+        n = len(traces)
+        mean_lat = round(sum(latencies) / len(latencies), 2) if latencies else None
 
         return TraceDiagnosticReport(
-            total_traces=len(traces),
+            total_traces=n,
             diagnosed_failures=failure_count,
             category_counts=category_counts,
             mean_latency_ms=mean_lat,
-            total_tokens=total_tokens,
+            total_tokens=sum(token_counts) if token_counts else None,
+            traces_missing_latency=n - len(latencies),
+            traces_missing_tokens=n - len(token_counts),
             diagnoses=diagnoses,
         )
 

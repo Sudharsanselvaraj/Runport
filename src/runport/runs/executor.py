@@ -15,15 +15,20 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from runport.core.approvers import BaseApprover
 from runport.core.budget import BudgetExceededError, BudgetService
 from runport.core.workspace import WorkspaceConfig
-from runport.providers.base import LiveNotAuthorizedError
+from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError
 from runport.runs.planner import ExecutionPlan
 from runport.storage.db import DatabaseManager
-from runport.targets.base import CostBasis, Target, TargetResult, TargetStatus
+from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus
+
+
+def _mean(values: Any) -> Optional[float]:
+    measured = [float(v) for v in values if v is not None]
+    return round(sum(measured) / len(measured), 4) if measured else None
 
 
 @dataclass
@@ -39,7 +44,9 @@ class GenericRunResult:
     failed_cases: int = 0
     invalid_cases: int = 0
     total_spend_usd: Decimal = Decimal("0")
-    mean_latency_ms: float = 0.0
+    mean_latency_ms: Optional[float] = None
+    skipped_cases: int = 0
+    halted_reason: Optional[str] = None
     case_results: List[TargetResult] = field(default_factory=list)
 
 
@@ -62,6 +69,7 @@ class GenericRunner:
         targets: Dict[str, Target],
         cases: Sequence[Dict[str, Any]],
         approver: Optional[BaseApprover] = None,
+        case_scorer: Optional[Callable[[Dict[str, Any], TargetResult], Dict[str, Any]]] = None,
     ) -> List[GenericRunResult]:
         """Execute a validated execution plan across configured targets."""
         # --- Guard 1: Authorization Check ---
@@ -91,6 +99,17 @@ class GenericRunner:
                     raise ValueError(
                         f"Whole-batch privacy gate rejected case {i} ('{c.get('id', i)}'): forbidden field '{k}' detected before transport execution."
                     )
+        # Confidentiality: only PUBLIC or SYNTHETIC cases may leave this machine. A case without a classification is
+        # UNCLASSIFIED and is blocked for any target that is not LOCAL (same rule as the OpenRouter gate).
+        remote = [tid for tid in plan.target_ids if getattr(targets.get(tid), "billing", BillingMode.BILLABLE) != BillingMode.LOCAL]
+        if remote:
+            for i, c in enumerate(cases):
+                cls = str(c.get("classification") or "UNCLASSIFIED").upper()
+                if cls not in ("PUBLIC", "SYNTHETIC"):
+                    raise ConfidentialityViolationError(
+                        f"Privacy gate rejected case {i} ('{c.get('id', i)}'): classification {cls} may not be sent to remote target(s) "
+                        f"{', '.join(remote)}. Only PUBLIC and SYNTHETIC cases leave this machine."
+                    )
 
         # Execute each target
         run_results: List[GenericRunResult] = []
@@ -119,8 +138,9 @@ class GenericRunner:
                 if plan.is_live:
                     target_pricing = getattr(target, "pricing", None)
                     is_priced = target_pricing is not None and (target_pricing.input_usd_per_1m is not None or target_pricing.fixed_usd_per_request is not None)
+                    billable = getattr(target, "billing", BillingMode.BILLABLE) == BillingMode.BILLABLE
                     if not is_priced:
-                        if self.workspace.budget.require_priced:
+                        if billable and self.workspace.budget.require_priced:
                             raise BudgetExceededError(f"Model/target '{target_id}' has unknown pricing and require_priced is enabled.")
                         # Unknown-price model runs with UNAVAILABLE estimate and requires max_cost_per_case_usd
                         worst_case_estimate = self.workspace.budget.per_case_usd
@@ -163,6 +183,9 @@ class GenericRunner:
                     run_res.failed_cases += 1
 
                 # --- Guard 6: Persistence Data Prep ---
+                # Optional scorer (only for successful outputs): returns any of accuracy / groundedness /
+                # format_adherence / overall_score / notes. Unscored stays None, never 0.
+                scores: Dict[str, Any] = case_scorer(dict(case), res) if (case_scorer and res.status == TargetStatus.SUCCESS) else {}
                 persisted_results.append(
                     {
                         "result_id": f"res-{uuid.uuid4().hex[:12]}",
@@ -177,18 +200,28 @@ class GenericRunner:
                         "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else None,
                         # GenericRunner records whether a case completed, not whether it was right.
                         # Correctness is unmeasured here (None), so it is never stored as a score.
-                        "accuracy": None,
-                        "groundedness": None,
-                        "format_adherence": (1.0 if res.status == TargetStatus.SUCCESS else 0.0 if res.status == TargetStatus.INVALID_OUTPUT else None),
-                        "overall_score": None,
-                        "evaluator_notes": res.error_message or "Not scored: apply a scorer from runport.scorers to case_results.",
+                        "accuracy": scores.get("accuracy"),
+                        "groundedness": scores.get("groundedness"),
+                        "format_adherence": scores.get(
+                            "format_adherence", 1.0 if res.status == TargetStatus.SUCCESS else 0.0 if res.status == TargetStatus.INVALID_OUTPUT else None
+                        ),
+                        "overall_score": scores.get("overall_score"),
+                        "evaluator_notes": res.error_message
+                        or scores.get("notes")
+                        or ("" if scores else "Not scored: apply a scorer from runport.scorers to case_results."),
                     }
                 )
 
                 # --- Guard 7: Spend Booking ---
+                # Unknown cost never becomes $0.00 for a target that may bill: it is booked UNRESOLVED and the run
+                # halts, because unresolved spend blocks live execution until reconciled.
+                halt = False
                 if plan.is_live and not res.is_replay:
                     basis = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
-                    if res.cost_usd is not None:
+                    billing = getattr(target, "billing", BillingMode.BILLABLE)
+                    # Rejected as unauthorized, or provably never sent: nothing can have been billed.
+                    not_billed = res.status == TargetStatus.UNAUTHORIZED or res.request_sent is False
+                    if res.cost_usd is not None and basis != CostBasis.UNRESOLVED.value:
                         self.budget_service.record_spend(
                             transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
                             model_id=target_id,
@@ -200,8 +233,8 @@ class GenericRunner:
                             cost_basis=basis,
                         )
                         run_res.total_spend_usd += res.cost_usd
-                    elif basis == CostBasis.UNAVAILABLE.value:
-                        # Zero-cost unpriced / local execution: booked as $0.00 with UNAVAILABLE basis
+                    elif billing != BillingMode.BILLABLE or not_billed:
+                        # Local, declared-free, or never-billed request: booked as $0.00 with UNAVAILABLE basis
                         self.budget_service.record_spend(
                             transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
                             model_id=target_id,
@@ -221,11 +254,21 @@ class GenericRunner:
                             description=f"Run {run_id} Case {case_id} (Unresolved)",
                             run_id=run_id,
                         )
+                        res.cost_basis = CostBasis.UNRESOLVED
+                        halt = True
 
                 run_res.case_results.append(res)
+                if halt:
+                    run_res.halted_reason = (
+                        f"Case '{case_id}' was sent to a billable target and returned no cost; it is booked UNRESOLVED. "
+                        "Remaining cases were not sent. Reconcile with 'runport budget reconcile'."
+                    )
+                    break
 
-            if len(cases) > 0:
-                run_res.mean_latency_ms = total_lat / len(cases)
+            executed = len(run_res.case_results)
+            run_res.skipped_cases = len(cases) - executed
+            if executed > 0:
+                run_res.mean_latency_ms = total_lat / executed
 
             # Persist run and results (run first for foreign key integrity)
             run_dict = {
@@ -235,20 +278,23 @@ class GenericRunner:
                 "dataset_path": plan.dataset_path,
                 "total_cases": len(cases),
                 "completed_cases": run_res.successful_cases,
-                "failed_cases": run_res.failed_cases + run_res.invalid_cases,
+                "failed_cases": run_res.failed_cases + run_res.invalid_cases + run_res.skipped_cases,
                 "total_cost_usd": f"{run_res.total_spend_usd:.6f}",
-                "mean_latency_ms": run_res.mean_latency_ms if cases else None,
+                "mean_latency_ms": run_res.mean_latency_ms,
                 # Unscored: completion counts live in completed_cases / failed_cases, not in score columns.
-                "mean_accuracy": None,
-                "mean_groundedness": None,
-                "mean_overall_score": None,
+                "mean_accuracy": _mean(r["accuracy"] for r in persisted_results),
+                "mean_groundedness": _mean(r["groundedness"] for r in persisted_results),
+                "mean_overall_score": _mean(r["overall_score"] for r in persisted_results),
                 "is_dry_run": 1 if not plan.is_live else 0,
-                "notes": f"Plan: {plan.plan_id} (Fingerprint: {plan.fingerprint[:12]})",
+                "notes": f"Plan: {plan.plan_id} (Fingerprint: {plan.fingerprint[:12]})"
+                + (f" HALTED: {run_res.halted_reason}" if run_res.halted_reason else ""),
             }
             self.db.save_evaluation_run(run_dict)
             if persisted_results:
                 self.db.save_evaluation_results(persisted_results)
 
             run_results.append(run_res)
+            if run_res.halted_reason:
+                break  # unresolved spend blocks every remaining target in this plan too
 
         return run_results

@@ -127,19 +127,37 @@ Runport separates target execution from evaluation logic. This allows supported 
 
 Runport supports multiple target types. Integration depth varies by connector:
 
-| Target | Integration Type | Status | Description |
-|:---|:---|:---:|:---|
-| **OpenRouter** | Provider API & model routing | **Stable** | 200+ models with provider-reported billing headers. |
-| **OpenAI-compatible APIs** | Chat Completions endpoints | **Stable** | OpenAI, vLLM, Groq, Mistral, Together, and custom servers. |
-| **Ollama** | Local inference API | **Stable** | Local open-weights execution with zero API cost. |
-| **Dify** | Workflow & Chat application | **Stable** | Dify Chatbot and Workflow execution via REST or SSE streaming. |
-| **Custom HTTP** | REST endpoints & webhooks | **Stable** | Any external service accepting JSON and returning structured data. |
-| **Python callable** | In-process code | **Stable** | Python functions, classes, or local rules evaluated in-process. |
-| **Subprocess** | External command execution | **Supported** | Local binaries, CLI tools, or external scripts. |
-| **Flowise** | Flow prediction endpoint | *Experimental* | Flowise visual flow execution endpoint. |
-| **Langflow** | Flow execution endpoint | *Experimental* | Langflow multi-agent and RAG flow endpoint. |
-| **n8n** | Webhook-triggered workflows | *Experimental* | n8n automation webhook pipeline endpoint. |
-| **LangGraph** | Graph execution endpoint | *Experimental* | LangGraph StateGraph HTTP service endpoint. |
+<!-- BEGIN CONNECTOR MATRIX (generated from src/runport/connectors/registry.py; do not edit by hand) -->
+| Connector | Name | Status | Integration | Tested | Streaming | Tool calls | Structured output | Per-step trace | Usage | Cost | Errors / timeouts |
+|:---|:---|:---:|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `openai_compat` | OpenAI / OpenAI-compatible | **Stable** | native | yes | — | — | partial | — | yes | partial | yes |
+| `openrouter` | OpenRouter | **Stable** | native | yes | — | — | — | — | yes | yes | yes |
+| `dify` | Dify | **Stable** | native | yes | yes | — | — | partial | yes | partial | yes |
+| `http_workflow` | Generic HTTP endpoint | **Stable** | generic http | yes | — | — | — | — | partial | partial | yes |
+| `python_target` | Python callable | **Stable** | in process | yes | — | — | partial | — | — | — | yes |
+| `subprocess` | Subprocess (stdin/stdout) | **Stable** | in process | yes | — | — | — | — | — | — | yes |
+| `ollama` | Ollama | **Stable** | native | yes | — | — | partial | — | yes | — | yes |
+| `mcp` | MCP server (tools) | *Experimental* | native | yes | — | yes | yes | — | — | — | yes |
+| `flowise` | Flowise | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `langflow` | Langflow | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `n8n` | n8n | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `langgraph` | LangGraph | *Experimental* | generic http | partial | — | — | — | — | — | — | yes |
+| `vllm` | vLLM | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `lm_studio` | LM Studio | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `localai` | LocalAI | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `litellm` | LiteLLM proxy | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `groq` | Groq | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `together` | Together | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `fireworks` | Fireworks | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `deepinfra` | DeepInfra | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `deepseek` | DeepSeek | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `mistral` | Mistral | Via | via `openai_compat` | — | — | — | — | — | yes | partial | yes |
+| `anthropic` | Anthropic | Via | via `openrouter` | — | — | — | — | — | yes | yes | yes |
+| `gemini` | Gemini | Via | via `openrouter` | — | — | — | — | — | yes | yes | yes |
+| `langchain` | LangChain | Planned | none | — | — | — | — | — | — | — | — |
+| `crewai` | CrewAI | Planned | none | — | — | — | — | — | — | — | — |
+| `llamaindex` | LlamaIndex | Planned | none | — | — | — | — | — | — | — | — |
+<!-- END CONNECTOR MATRIX -->
 
 > [!NOTE]
 > **Experimental integrations** should be treated as black-box endpoint adapters, not as complete framework-level instrumentation. In particular, internal node-level and per-step tracing is not guaranteed.

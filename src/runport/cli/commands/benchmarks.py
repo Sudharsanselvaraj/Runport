@@ -219,42 +219,86 @@ def run_benchmark(
             console.print(f"[bold red]Error:[/bold red] Invalid split '{split_str}'. Choose TEST, DEV, or ALL.")
             raise typer.Exit(code=1)
 
-    live_auth = _require_live_confirmation([model_id], dataset_path.name)
-    runner = BenchmarkRunner()
+    _run_live_through_service(model_id, dataset_path, target_split, split_str)
+
+
+def _run_live_through_service(target_id: str, dataset_path: Path, target_split, split_label: str) -> None:
+    """Live CLI benchmark: plan -> typed approval bound to the plan fingerprint -> ExecutionService/GenericRunner.
+
+    `target_id` is a target declared in runport.yaml, or else a catalog model id run on OpenRouter.
+    """
+    import getpass
+
+    from runport.connectors.registry import TargetSpecError
+    from runport.core.budget import BudgetExceededError
+    from runport.core.live_guard import confirm_live_run
+    from runport.dataset.manager import DatasetManager
+    from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError
+    from runport.services.execution import ExecutionService, rubric_case_scorer
+
+    all_cases = DatasetManager().load_jsonl(dataset_path)
+    cases = [c.model_dump(mode="json") for c in all_cases if target_split is None or c.split == target_split]
+    if not cases:
+        console.print(f"[bold red]Error:[/bold red] No cases for split {split_label} in {dataset_path.name}.")
+        raise typer.Exit(code=1)
+
+    service = ExecutionService()
     try:
-        report = runner.run(
-            model_id=model_id,
-            dataset_path=dataset_path,
-            split=target_split,
-            live_authorization=live_auth,
-        )
-    except Exception as e:
+        targets, specs = service.resolve([target_id])
+    except (TargetSpecError, KeyError) as e:
+        console.print(f"[bold red]Cannot build target:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    plan = service.plan(targets, specs, cases, dataset_label=dataset_path.name, requested_by="cli")
+
+    projected = f"${plan.projected_max_cost_usd:.4f}" if plan.projected_max_cost_usd is not None else "unknown"
+    console.print(f"Plan {plan.plan_id}: {plan.case_count} case(s), worst-case spend {projected}. Fingerprint {plan.fingerprint}", markup=False)
+    for t in plan.per_target:
+        console.print(f"  {t['target_id']} [{t['type']}, {t['billing']}]: {t['cost_note']}", markup=False)
+    if plan.blockers:
+        for b in plan.blockers:
+            console.print(f"[bold red]Blocked:[/bold red] {b}")
+        raise typer.Exit(code=1)
+
+    summary = [f"Live run requested. Target: {target_id}. Dataset: {dataset_path.name}. Worst-case spend {projected}."]
+    try:
+        confirm_live_run([target_id], summary, plan_fingerprint=plan.fingerprint, echo=lambda line: console.print(line, markup=False, highlight=False))
+        service.approve(plan.plan_id, plan.fingerprint, channel="cli_interactive", approver=getpass.getuser())
+        outcome = service.execute(plan.plan_id, targets, specs, cases, case_scorer=rubric_case_scorer)
+    except LiveNotAuthorizedError as e:
+        console.print(f"[bold red]Live run refused:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except (BudgetExceededError, ConfidentialityViolationError) as e:
         console.print(f"[bold red]Benchmark Failed:[/bold red] {e}")
         raise typer.Exit(code=1)
 
+    from runport.storage.db import DatabaseManager
+
+    run = outcome.runs[0]
+    rows = service.db.get_evaluation_results_for_run(run.run_id)
+    saved = service.db.get_evaluation_run(run.run_id) or {}
     summary_table = Table(title="Benchmark Execution Summary", show_header=True, header_style="bold magenta")
     summary_table.add_column("Metric", style="dim")
     summary_table.add_column("Value", justify="right")
     summary_table.add_column("Benchmark Evaluation Context", style="italic")
-
-    summary_table.add_row("Run Identifier", report.run_id, "Unique execution run ID stored in SQLite")
-    summary_table.add_row("Evaluated Cases", f"{report.completed_cases} / {report.total_cases}", f"Split: {split.upper()}")
-    summary_table.add_row("Mean Latency", _fmt_ms(report.mean_latency_ms), "End-to-end inference turnaround")
-    summary_table.add_row("Mean Accuracy", _fmt_pct(report.mean_accuracy), "Word overlap with the expected answer (labelled cases only)")
-    summary_table.add_row("Mean Groundedness", _fmt_pct(report.mean_groundedness), "Overlap-based groundedness heuristic")
-    summary_table.add_row("Overall Score", f"[bold green]{_fmt_pct(report.mean_overall_score)}[/bold green]", "Weighted composite rubric score")
-    summary_table.add_row("Run Spend (USD)", f"${report.total_cost_usd:.4f}", "Deducted and verified against budget ledger")
+    summary_table.add_row("Run Identifier", run.run_id, "Unique execution run ID stored in SQLite")
+    summary_table.add_row("Evaluated Cases", f"{run.successful_cases} / {run.total_cases}", f"Split: {split_label.upper()}; skipped {run.skipped_cases}")
+    summary_table.add_row("Mean Latency", _fmt_ms(run.mean_latency_ms), "End-to-end turnaround")
+    summary_table.add_row("Mean Accuracy", _fmt_pct(saved.get("mean_accuracy")), "Word overlap with the expected answer (labelled cases only)")
+    summary_table.add_row("Mean Groundedness", _fmt_pct(saved.get("mean_groundedness")), "Overlap-based groundedness heuristic")
+    summary_table.add_row("Overall Score", f"[bold green]{_fmt_pct(saved.get('mean_overall_score'))}[/bold green]", "Weighted composite rubric score")
+    summary_table.add_row(
+        "Booked Spend (USD)", f"${run.total_spend_usd:.4f}", "Known spend booked on the ledger (UNRESOLVED entries are listed by 'budget status')"
+    )
     console.print(summary_table)
+    if run.halted_reason:
+        console.print(f"[bold red]Halted:[/bold red] {run.halted_reason}")
 
     case_table = Table(title="Per-Case Performance Breakdown", show_header=True, header_style="bold blue")
-    case_table.add_column("Case ID", style="cyan", width=12)
-    case_table.add_column("Query Snippet", style="white", width=36)
-    case_table.add_column("Latency", justify="right", width=10)
-    case_table.add_column("Accuracy", justify="right", width=10)
-    case_table.add_column("Grounded", justify="right", width=10)
-    case_table.add_column("Overall", justify="right", style="bold", width=9)
-
-    for r in report.results:
+    for col, kw in (("Case ID", {"style": "cyan", "width": 12}), ("Query Snippet", {"style": "white", "width": 36})):
+        case_table.add_column(col, **kw)
+    for col in ("Latency", "Accuracy", "Grounded", "Overall"):
+        case_table.add_column(col, justify="right", width=10)
+    for r in rows:
         q_snip = r["prompt"][:34] + ("..." if len(r["prompt"]) > 34 else "")
         case_table.add_row(
             r["case_id"],
@@ -265,6 +309,8 @@ def run_benchmark(
             _fmt_pct(r["overall_score"], digits=0),
         )
     console.print(case_table)
+    if run.halted_reason:
+        raise typer.Exit(code=1)
 
 
 def compare_runs(
@@ -457,10 +503,32 @@ def benchmark_rag(
         console.print("Nothing was sent. Add --live to request typed approval for real requests.", markup=False)
         raise typer.Exit(code=2)
 
+    import getpass
+
+    from runport.core.budget import BudgetExceededError
+    from runport.core.live_guard import confirm_live_run
+    from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError, UsageUnavailableError
+    from runport.services.execution import ExecutionService
+
     live_models = [model] + ([compare_with] if compare_with else [])
-    live_auth = _require_live_confirmation(live_models, dataset.name)
-    runner = RAGBenchmarkRunner(retriever=retriever, top_k=top_k)
-    report_a = runner.run(model_id=model, dataset_path=dataset, split=split_enum, live_authorization=live_auth)
+    service = ExecutionService()
+    runner = RAGBenchmarkRunner(retriever=retriever, top_k=top_k, db_mgr=service.db, budget_service=service.budget_service)
+
+    def approve(plan) -> None:
+        projected = f"${plan.projected_max_cost_usd:.4f}" if plan.projected_max_cost_usd is not None else "unknown"
+        summary = [f"Live RAG run requested. Models: {', '.join(live_models)}. Dataset: {dataset.name}. Worst-case spend {projected}."]
+        confirm_live_run(live_models, summary, plan_fingerprint=plan.fingerprint, echo=lambda line: console.print(line, markup=False, highlight=False))
+        service.approve(plan.plan_id, plan.fingerprint, channel="cli_interactive", approver=getpass.getuser())
+
+    try:
+        reports = runner.run_planned(service, live_models, dataset, split_enum, approve)
+    except LiveNotAuthorizedError as e:
+        console.print(f"[bold red]Live run refused:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except (BudgetExceededError, ConfidentialityViolationError, UsageUnavailableError) as e:
+        console.print(f"[bold red]RAG benchmark failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    report_a = reports[0]
 
     summary_table = Table(title="Decoupled RAG Performance Summary", show_header=True, header_style="bold magenta")
     summary_table.add_column("Subsystem / Metric", style="cyan")
@@ -486,7 +554,7 @@ def benchmark_rag(
         "Abstention Accuracy", f"[bold yellow]{report_a.abstention_accuracy * 100:.1f}%[/bold yellow]", "Model successfully abstained on unsupported queries"
     )
     summary_table.add_row("Retrieval Latency", f"{report_a.mean_retrieval_latency_ms:.1f} ms", "Isolated context search turnaround")
-    summary_table.add_row("Answer Correctness", f"{report_a.mean_answer_correctness * 100:.1f}%", "Factual overlap against reference answer")
+    summary_table.add_row("Answer Correctness", _fmt_pct(report_a.mean_answer_correctness), "Factual overlap against reference answer (labelled cases only)")
     summary_table.add_row("Groundedness (Faithfulness)", f"{report_a.mean_groundedness * 100:.1f}%", "Supported by context (hallucination check)")
     summary_table.add_row("Diagnostic Keyword Hit Rate", f"{report_a.diagnostic_keyword_hit_rate * 100:.1f}%", "Secondary exact keyword-substring match")
     summary_table.add_row("Generation Latency", f"{report_a.mean_generation_latency_ms:.1f} ms", "Isolated LLM inference turnaround")
@@ -550,8 +618,7 @@ def benchmark_rag(
                 expand=False,
             )
         )
-        runner_b = RAGBenchmarkRunner(retriever=retriever)
-        report_b = runner_b.run(model_id=compare_with, dataset_path=dataset, split=split_enum, live_authorization=live_auth)
+        report_b = reports[1]
 
         comp_table = Table(title=f"Comparative Benchmark: {model} vs {compare_with}", show_header=True, header_style="bold magenta")
         comp_table.add_column("Metric", style="cyan")
@@ -569,9 +636,11 @@ def benchmark_rag(
 
         comp_table.add_row(
             "Answer Correctness",
-            f"{report_a.mean_answer_correctness * 100:.1f}%",
-            f"{report_b.mean_answer_correctness * 100:.1f}%",
-            _fmt_delta(report_b.mean_answer_correctness - report_a.mean_answer_correctness, is_pct=True),
+            _fmt_pct(report_a.mean_answer_correctness),
+            _fmt_pct(report_b.mean_answer_correctness),
+            _fmt_delta(report_b.mean_answer_correctness - report_a.mean_answer_correctness, is_pct=True)
+            if report_a.mean_answer_correctness is not None and report_b.mean_answer_correctness is not None
+            else "—",
         )
         comp_table.add_row(
             "Groundedness",

@@ -12,12 +12,14 @@ from runport.core.security import validate_safe_url
 from runport.providers.base import ProviderError, RateLimitError, scrub_secrets
 from runport.providers.http import RetryingPoster
 from runport.targets.base import (
+    BillingMode,
     CostBasis,
     Target,
     TargetPricing,
     TargetResult,
     TargetStatus,
     TargetType,
+    billing_for_url,
 )
 
 
@@ -62,6 +64,7 @@ class HttpWorkflowConnector(Target):
         allow_private: bool = False,
         allow_localhost: bool = False,
         host_allowlist: Optional[List[str]] = None,
+        billing: Optional[BillingMode] = None,
     ) -> None:
         safe_url = validate_safe_url(
             url,
@@ -79,6 +82,7 @@ class HttpWorkflowConnector(Target):
             max_retries=max_retries,
         )
         self.url = safe_url
+        self.billing = billing_for_url(self.url, billing)
         self.method = method.upper()
         self.headers = headers or {}
         self.payload_template = payload_template

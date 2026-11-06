@@ -30,7 +30,7 @@ function readmeTable(): Map<string, string> {
 
 test('connector data matches the status table in docs/connectors/README.md', () => {
   const table = readmeTable()
-  assert.equal(table.size, 10)
+  assert.equal(table.size, 12)
   assert.deepEqual(new Map(CONNECTORS.map((c) => [c.id, c.status])), table)
 })
 

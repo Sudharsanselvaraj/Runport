@@ -7,7 +7,7 @@ from runport.runs.executor import GenericRunner
 from runport.runs.planner import create_execution_plan
 from runport.scorers.stats import prf, wilson
 from runport.storage.db import DatabaseManager
-from runport.targets.base import CostBasis, Target, TargetResult, TargetStatus, TargetType
+from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus, TargetType
 
 
 class RuleBasedSupportClassifier(Target):
@@ -18,6 +18,7 @@ class RuleBasedSupportClassifier(Target):
             target_id="support-classifier",
             name="Rule-Based Ticket Classifier",
             target_type=TargetType.PYTHON_CALLABLE,
+            billing=BillingMode.LOCAL,  # runs in-process; nothing leaves this machine
         )
 
     def execute(self, input_data: dict) -> TargetResult:

@@ -112,8 +112,16 @@ def register_trace_commands(app: typer.Typer) -> None:
 
         table_sum.add_row("Total Ingested Traces", str(report.total_traces), "Successfully validated offline")
         table_sum.add_row("Diagnosed Failures", str(report.diagnosed_failures), "Identified candidate failure hypotheses")
-        table_sum.add_row("Mean Latency", f"{report.mean_latency_ms:.1f} ms", "End-to-end trace turnaround")
-        table_sum.add_row("Total Token Footprint", f"{report.total_tokens:,}", "Aggregated prompt and completion tokens")
+        table_sum.add_row(
+            "Mean Latency",
+            f"{report.mean_latency_ms:.1f} ms" if report.mean_latency_ms is not None else "unavailable",
+            f"End-to-end trace turnaround ({report.traces_missing_latency} trace(s) did not report it)",
+        )
+        table_sum.add_row(
+            "Total Token Footprint",
+            f"{report.total_tokens:,}" if report.total_tokens is not None else "unavailable",
+            f"Reported tokens only ({report.traces_missing_tokens} trace(s) did not report them)",
+        )
 
         console.print(table_sum)
 

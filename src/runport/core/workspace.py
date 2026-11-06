@@ -80,6 +80,19 @@ class TargetConfig(BaseModel):
     headers: Dict[str, str] = Field(default_factory=dict, description="Custom request headers or environment var references")
     options: Dict[str, Any] = Field(default_factory=dict, description="Target-specific execution options")
 
+    def to_spec(self) -> Dict[str, Any]:
+        """Declarative spec for connectors.registry.build_target. `endpoint` maps to the connector's URL field."""
+        url_key = {"http_workflow": "url", "n8n": "url", "mcp": "url"}.get(self.type, "base_url")
+        spec: Dict[str, Any] = {"type": self.type}
+        if self.endpoint:
+            spec[url_key] = self.endpoint
+        if self.model:
+            spec["model"] = self.model
+        if self.headers:
+            spec["headers"] = dict(self.headers)
+        spec.update(self.options)
+        return spec
+
 
 class WorkspaceConfig(BaseModel):
     """Top-level Runport workspace configuration model."""

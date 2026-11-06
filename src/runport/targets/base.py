@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional
+from urllib.parse import urlparse
 
 
 class TargetType(str, Enum):
@@ -21,6 +22,7 @@ class TargetType(str, Enum):
     WORKFLOW_LANGGRAPH = "workflow_langgraph"
     PYTHON_CALLABLE = "python_callable"
     SUBPROCESS = "subprocess"
+    MCP_TOOL = "mcp_tool"
 
 
 class TargetStatus(str, Enum):
@@ -37,6 +39,34 @@ class CostBasis(str, Enum):
     ESTIMATED = "ESTIMATED"  # Catalog price * reported tokens
     UNRESOLVED = "UNRESOLVED"  # Billed request with unknown cost
     UNAVAILABLE = "UNAVAILABLE"  # Zero-cost unpriced / local execution
+
+
+class BillingMode(str, Enum):
+    """Whether a target's requests can cost money. Decides how a missing cost is booked.
+
+    LOCAL     Runs in this process, as a local subprocess, or on a loopback address. A missing cost is booked
+              as UNAVAILABLE ($0.00 local execution).
+    UNBILLED  A remote endpoint the operator has explicitly declared free. Booked like LOCAL.
+    BILLABLE  A remote endpoint that may charge. A missing cost is booked as UNRESOLVED and blocks further
+              live execution until reconciled. This is the default for anything Runport cannot prove local.
+    """
+
+    LOCAL = "local"
+    UNBILLED = "unbilled"
+    BILLABLE = "billable"
+
+
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"})
+
+
+def billing_for_url(url: Optional[str], declared: Optional["BillingMode"] = None) -> "BillingMode":
+    """Billing mode for a URL-addressed target: the operator's declaration wins, loopback is LOCAL, anything else BILLABLE."""
+    if declared is not None:
+        return BillingMode(declared)
+    host = (urlparse(url or "").hostname or "").lower()
+    if host in _LOOPBACK_HOSTS or host.startswith("127.") or host.endswith(".localhost"):
+        return BillingMode.LOCAL
+    return BillingMode.BILLABLE
 
 
 @dataclass(frozen=True)
@@ -89,6 +119,9 @@ class TargetResult:
     error_message: Optional[str] = None
     error_code: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # False only when the target is certain nothing left this machine (e.g. a missing API key was caught before
+    # sending). None means unknown, which the runner treats as "possibly sent".
+    request_sent: Optional[bool] = None
 
     @property
     def is_success(self) -> bool:
@@ -117,8 +150,10 @@ class Target(ABC):
         pricing: Optional[TargetPricing] = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 3,
+        billing: BillingMode = BillingMode.BILLABLE,
     ) -> None:
         self.target_id = target_id
+        self.billing = BillingMode(billing)
         self.name = name
         self.target_type = target_type
         self.capabilities = capabilities or ["text"]

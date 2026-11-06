@@ -1,387 +1,234 @@
-# Runport Roadmap Implementation Audit
+# Roadmap Implementation Audit
 
-> **Status**: Comprehensive Engineering Audit  
-> **Release Target**: v0.1.0 Baseline → v1.0.0 Universal Platform  
-> **Repository**: `Sudharsanselvaraj/runport`  
-> **Audit Date**: November 2026  
-> **Author**: Runport Architecture & Engineering Team  
+**Audited tree:** branch `claude/charming-wiles-d0e566` at `d99d167`, which contains `main` up to `1179841` (merged in `09d6c54`).
+**Date:** 2026-11-06.
+**Scope:** the nine capabilities missing from the v0.1.0 announcement, plus the foundations they depend on.
 
----
-
-## 1. Executive Summary
-
-Runport v0.1.0 delivers a robust, local-first foundation for benchmarking raw LLMs, prompt variations, and black-box workflow HTTP endpoints under hard spend caps. Core mechanisms—such as the append-only SQLite WAL ledger (`src/runport/storage/db.py`), statistical scoring with Wilson score intervals and Cohen's kappa (`src/runport/scorers/`), the interactive Rich TUI (`src/runport/tui/`), and local web dashboard (`web/` + `src/runport/api/`)—are operational and backed by 389 passing unit and contract tests.
-
-However, a technical audit reveals a significant delta between the marketing vision of a **universal AI workflow benchmarking platform** and the v0.1.0 codebase. Several key capabilities highlighted on the roadmap or public documentation are either unstarted, partially implemented, or restricted to experimental HTTP wrappers. Furthermore, two critical architectural vulnerabilities exist in the core execution path:
-1. **Dual Execution Engines**: CLI commands invoke `src/runport/runs/executor.py` (`GenericRunner`), whereas the REST API implements an independent, duplicate execution and approval flow in `src/runport/api/routes/runs.py`.
-2. **Volatile Approval Tokens**: Execution plan approvals in the REST API use an in-memory Python `set` (`_CONSUMED_APPROVAL_TOKENS`), which is lost on server restart and vulnerable to concurrency bypasses across multi-worker deployments.
-
-This audit provides a feature-by-feature classification of the 9 missing roadmap capabilities, documents existing code anchors, highlights architectural risks, and outlines precise completion criteria required for v1.0.0 General Availability.
+This document separates **evidence** (what the code does, with file paths) from **recommendations** (what to build). Every
+"verified" statement below was checked against the code or by running a command on this tree. It replaces an earlier version
+of this file written against `main` alone, which predated the shared execution service, the MCP server and the Python SDK and
+contained factual errors (section 7).
 
 ---
 
-## 2. Classification Schema
+## 1. Verified baseline
 
-Each roadmap capability is categorized under one of five strict statuses:
+Commands run on `d99d167` (macOS, Python 3.12, uv):
 
-| Classification | Definition |
-| :--- | :--- |
-| **`IMPLEMENTED`** | Production-ready, fully covered by automated tests, compliant with all architectural invariants. |
-| **`PARTIALLY IMPLEMENTED`** | Core data structures or basic functionality exist, but essential capabilities (e.g., scoring, export, step breakdown) are incomplete. |
-| **`EXPERIMENTAL`** | Functional prototype exists, but relies on shallow abstractions (e.g., black-box HTTP POST) without granular instrumentation or stability guarantees. |
-| **`NOT IMPLEMENTED`** | Zero code footprint exists in the repository. Design and specifications required. |
-| **`BLOCKED BY ARCHITECTURE`** | Cannot be implemented safely without fundamental database schema migration, multi-process concurrency refactoring, or security model overhaul. |
+| Check | Result |
+|:---|:---|
+| `uv run pytest -q` | **456 passed** |
+| `uv run pytest -q examples/plugins` | 26 passed, 5 skipped |
+| `uv run ruff check .` | All checks passed |
+| `uv run mypy` | No issues (56 files: `core`, `runs`, `connectors`, `scorers`, `workloads`, `services`, `traces`, `sdk.py`, `mcp_server`, and the migrated runners) |
+| `npm test` (web) | 18 passed |
+| `git tag`, `git ls-remote --tags origin` | No tags. **v0.1.0 is described in `CHANGELOG.md` and `pyproject.toml` but has not been tagged**, so `.github/workflows/release.yml` (PyPI publish on `v*` tags) has never run for it. |
 
----
-
-## 3. Feature-by-Feature Roadmap Audit
-
-### 3.1. Complete MCP Client & Server Ecosystem
-
-- **Classification**: `NOT IMPLEMENTED`
-- **Existing Code Footprint**:
-  - `src/runport/`: Zero files related to Model Context Protocol (MCP).
-  - Dependencies: `pyproject.toml` contains no MCP SDK or FastMCP dependency.
-- **Working Features**:
-  - None.
-- **Missing Pieces**:
-  - MCP stdio and SSE transport server exposing Runport tools, resources, and prompts.
-  - MCP tool definitions (`runport_run_benchmark`, `runport_create_execution_plan`, `runport_approve_plan`, `runport_validate_dataset`, `runport_get_budget_status`).
-  - MCP resource providers (`runport://runs/{run_id}`, `runport://traces/{trace_id}`, `runport://budget/status`).
-  - MCP prompt templates (`benchmark_evaluation_review`, `dataset_leakage_audit`).
-  - Fail-closed security boundary preventing autonomous agent privilege escalation.
-- **Existing Tests**: None.
-- **Security & Reliability Risks**:
-  - An MCP server executing arbitrary benchmarks could trigger unbudgeted financial spend if budget preflight and human-in-the-loop approval checks are bypassed.
-- **Dependencies**: Unified Execution Service (`src/runport/runs/service.py`), Durable Approval Token Store.
-- **Completion Criteria**:
-  1. FastMCP server implemented in `src/runport/mcp/server.py` supporting stdio and SSE transports.
-  2. Tools, resources, and prompts registered with full JSON Schema validation.
-  3. Preflight budget verification enforced on all MCP execution tools.
-  4. Comprehensive integration tests in `tests/test_mcp.py` verifying tool invocation, resource retrieval, and fail-closed spend boundaries.
+mypy does **not** cover `api/`, `cli/`, `tui/`, `observability/`, `evaluation/replay_scoring.py` or `classification/threshold.py`;
+the latter two have about 20 known type errors.
 
 ---
 
-### 3.2. Public Python SDK
+## 2. Capability classification
 
-- **Classification**: `NOT IMPLEMENTED`
-- **Existing Code Footprint**:
-  - `pyproject.toml`: Configured solely as a CLI application with entrypoint `runport = "runport.cli:app"`.
-  - `src/runport/__init__.py`: Minimal package initialization without top-level client exports.
-- **Working Features**:
-  - Internal Python targets can be invoked via `PythonTarget` (`src/runport/targets/python.py`), but this is an execution target, not a client SDK.
-- **Missing Pieces**:
-  - Public client class (`runport.Client` and `runport.AsyncClient`).
-  - High-level API modules: `client.benchmarks`, `client.datasets`, `client.runs`, `client.traces`, `client.budget`.
-  - HTTP client transport with connection pooling, retries, and typed Pydantic models.
-  - PyPI package packaging and documentation.
-- **Existing Tests**: None for public SDK client workflows.
-- **Security & Reliability Risks**:
-  - Developers currently import internal modules (`from runport.core.budget import BudgetService`), coupling external code to private implementation details subject to breaking changes.
-- **Dependencies**: REST API stabilization, Scoped API Key Authentication.
-- **Completion Criteria**:
-  1. `runport.client.Client` and `runport.client.AsyncClient` implemented with full typing.
-  2. Fluent API supporting dataset upload, plan generation, approval, execution polling, and trace retrieval.
-  3. Custom exception hierarchy (`RunportError`, `BudgetExceededError`, `ApprovalRequiredError`).
-  4. Contract test suite in `tests/test_sdk_python.py` verifying offline client behavior against mock endpoints.
+| # | Capability | Status | One-line reason |
+|:---|:---|:---|:---|
+| 1 | MCP client and server ecosystem | **PARTIALLY IMPLEMENTED** | Client (tools, stdio + Streamable HTTP) and server (stdio, 11 tools, resources, prompts) exist and are tested with the official MCP SDK; no server HTTP transport, no resources/prompts in the client, no MCP auth. |
+| 2 | Public Python SDK | **PARTIALLY IMPLEMENTED** | `runport.sdk` works in-process with the shared guards; there is no remote client, no stable versioned contract and no published package. |
+| 3 | Public TypeScript SDK | **NOT IMPLEMENTED** | No package. The REST API it would wrap is unversioned and synchronous. |
+| 4 | Native LangGraph per-step tracing | **NOT IMPLEMENTED** | `connectors/langgraph.py` is a one-shot HTTP POST to `/runs/wait`. |
+| 5 | Universal agent trajectory evaluation | **BLOCKED BY ARCHITECTURE** | There is no span/trajectory field on `TargetResult` and no trace table. |
+| 6 | OpenTelemetry ingestion | **NOT IMPLEMENTED** | No OTLP endpoint, no OTel/OpenInference parsing, no dependency. |
+| 7 | Langfuse export | **NOT IMPLEMENTED** | Only a Langfuse-*shaped* JSON/CSV importer exists. |
+| 8 | Production multi-user hosting | **BLOCKED BY ARCHITECTURE** | One shared token, no users or tenants, SQLite file per workspace, synchronous runs inside HTTP requests. |
+| 9 | Universal framework instrumentation | **NOT IMPLEMENTED** | No instrumentation API; frameworks are reached only as black-box HTTP or Python callables. |
 
----
+### 2.1 MCP ecosystem: PARTIALLY IMPLEMENTED
 
-### 3.3. Public TypeScript SDK
+**Evidence**
+- Client: `src/runport/connectors/mcp.py`, `McpToolTarget`, `McpSession`, `StdioTransport`, `StreamableHttpTransport`,
+  `validate_json_schema`. Implements `initialize` with version negotiation (`2025-06-18`, `2025-03-26`, `2024-11-05`), paginated
+  `tools/list`, `tools/call`, cancellation on timeout, session teardown, secret redaction (header values and credential-named env vars).
+  Cost is never $0 for a billable HTTP server: billing mode is `local` for stdio, `billable` for non-loopback URLs.
+- Server: `src/runport/mcp_server/server.py`, `RunportMcpServer`; CLI `runport mcp serve` (`cli/commands/plans.py`). Tools:
+  `list_connectors`, `list_models`, `list_targets`, `list_datasets`, `validate_target`, `create_benchmark_plan`,
+  `request_benchmark_approval`, `get_plan_status`, `execute_approved_benchmark`, `get_run`, `get_evaluation_results`, `compare_runs`.
+  Resources `runport://{connectors,models,targets,datasets,runs,budget}` and template `runport://runs/{run_id}`. Prompts
+  `benchmark_target`, `investigate_failed_cases`, `compare_candidates`.
+- Execution goes through `ExecutionService.execute_by_ids` → `GenericRunner`. No approve tool exists; `ApprovalStore.approve`
+  rejects any channel outside `cli_interactive`, `web_ui`, `ci_token`, `local_only` (`services/approvals.py`).
+- Tests: `tests/test_mcp_connector.py` (16, offline fixture server `tests/fixtures/mcp_fixture_server.py`), `tests/test_mcp_server.py`
+  (2 end-to-end flows over real stdio: the official `mcp` 2.3.0 `ClientSession` and Runport's own client).
 
-- **Classification**: `NOT IMPLEMENTED`
-- **Existing Code Footprint**:
-  - `web/src/api/client.ts`: Internal Axios/fetch wrapper dedicated to the React web UI.
-- **Working Features**:
-  - Internal web dashboard queries REST endpoints for runs, ledger status, and trace lists.
-- **Missing Pieces**:
-  - Standalone `@runport/sdk` npm package.
-  - Universal client compatible with Node.js 18+, Bun, Deno, and modern browser runtimes.
-  - TypeScript definitions matching the OpenAPI specification.
-  - Streaming event subscription for live benchmark logs.
-- **Existing Tests**: Web dashboard component tests only (`web/src/__tests__/`).
-- **Security & Reliability Risks**:
-  - Frontend currently assumes a single-tenant local environment (`http://127.0.0.1:8000`), lacking token refresh or tenant header propagation.
-- **Dependencies**: REST API OpenAPI export, Unified Execution Service.
-- **Completion Criteria**:
-  1. Monorepo package `packages/sdk-ts` created with Vite/tsup build configuration.
-  2. Full coverage of Runport REST API with isomorphic fetch.
-  3. Automated type generation from FastAPI OpenAPI schema (`uv run python -m runport.api.export_openapi`).
-  4. Integration tests in `packages/sdk-ts/tests/` verifying Node and browser execution.
+**Missing**
+- Server over Streamable HTTP (needed for remote agents), and its authentication.
+- Client support for `resources/*`, `prompts/*`, sampling, OAuth discovery; MCP sessions are not recorded as trace spans.
+- Protocol `2025-11-25` / `2026-07-28` (the SDK's newest) are not spoken; the server answers `2025-06-18`, which the SDK accepts.
+- Per-tool authorization: anyone who can start the stdio server can call every tool (acceptable for a local process, not for HTTP).
 
----
+**Completion criteria:** Streamable HTTP server with token or OAuth auth and per-tool scopes; MCP calls emitted as spans; client
+resources/prompts; protocol-version matrix test against the official SDK.
 
-### 3.4. Native LangGraph Per-Step Tracing
+### 2.2 Public Python SDK: PARTIALLY IMPLEMENTED
 
-- **Classification**: `EXPERIMENTAL`
-- **Existing Code Footprint**:
-  - `src/runport/connectors/langgraph.py` (Lines 1–48): Implements `LangGraphConnector`, subclassing `HttpWorkflowConnector`.
-- **Working Features**:
-  - Issues HTTP POST request to LangGraph Cloud or custom server endpoint (`/runs/wait`).
-  - Extracts final response text from `messages[-1].content` or `output.messages[-1].content`.
-- **Missing Pieces**:
-  - Per-node execution timing, token consumption, and state delta capture.
-  - Step-by-step state snapshot inspection.
-  - Tool invocation capture inside graph nodes.
-  - Native LangGraph callback handler or AST-based graph listener.
-- **Existing Tests**:
-  - `tests/test_connectors.py` (Lines 210–255): Verifies HTTP POST mocking and payload formatting.
-- **Security & Reliability Risks**:
-  - If a multi-agent LangGraph workflow loops indefinitely or fails at step 5 of 6, Runport reports total latency and cost as a single opaque block or books `UNRESOLVED` without step-level diagnosis.
-- **Dependencies**: Canonical Trace Schema (`AgentTrajectory`, `AgentStep`), Unified Execution Service.
-- **Completion Criteria**:
-  1. Implementation of `RunportLangGraphCallbackHandler` streaming node events to Runport EventTail.
-  2. Ingestion of state transitions, tool calls, and node-level token spend.
-  3. Diagnostic analysis distinguishing agent routing errors from tool failures.
+**Evidence:** `src/runport/sdk.py` (`plan`, `approve_interactively`, `approve_with_ci_token`, `execute`, `benchmark`), re-exported
+lazily from `runport/__init__.py`. All calls use `ExecutionService`. A plain function can be benchmarked unchanged; local-only
+plans auto-approve via the `local_only` channel, verified in `ApprovalStore.approve`. Tests: `tests/test_sdk.py` (4).
 
----
+**Missing:** a remote client for a shared Runport server, typed public result models (it returns internal `ExecutionOutcome` /
+`GenericRunResult` dataclasses), datasets/runs/traces read APIs, async support, semantic-versioning guarantees, docs reference.
+**Risk:** the return types are internal and will change when traces are added (section 2.5).
 
-### 3.5. Universal Agent Trajectory Evaluation
+### 2.3 TypeScript SDK: NOT IMPLEMENTED
 
-- **Classification**: `PARTIALLY IMPLEMENTED`
-- **Existing Code Footprint**:
-  - `src/runport/traces/models.py`: Defines `ObservationSpan`, `TraceRecord`, and `TraceAnalysis`.
-  - `src/runport/traces/importer.py`: Parses trace JSON records.
-  - `src/runport/traces/analyzer.py`: Detects RAG retrieval failures and latency anomalies.
-- **Working Features**:
-  - Trace span representation, parent-child span trees, and basic failure classification (e.g., empty retrieval context, high latency).
-- **Missing Pieces**:
-  - Multi-turn trajectory scoring (Goal Completion, Plan Adherence, Redundant Tool Call Index).
-  - Tool-selection precision, recall, and argument schema validation.
-  - Supervised ground-truth trajectory alignment against gold paths.
-  - Evaluation of looping or cyclic agent behavior.
-- **Existing Tests**:
-  - `tests/test_traces.py`: 7 tests covering span parsing, "Null is not 0" enforcement, and basic analyzer diagnostics.
-- **Security & Reliability Risks**:
-  - Misleading benchmark results if an agent arrives at a correct final answer via hallucinated or forbidden intermediate actions.
-- **Dependencies**: Canonical Trace Schema, Supervised Metric Framework.
-- **Completion Criteria**:
-  1. Definition of trajectory scorers in `src/runport/scorers/trajectory.py`: `ToolSelectionF1`, `PlanAdherenceScore`, `RedundancyRatio`.
-  2. Alignment checks against human-approved gold trajectories.
-  3. Integration into `src/runport/runs/executor.py` for automated evaluation.
+**Evidence:** none in `web/` or elsewhere; `web/` is the dashboard. The REST API (`src/runport/api/routes/`) is unversioned
+(`/api/...`), returns untyped `Dict[str, Any]` from most routes, and runs live benchmarks synchronously inside `POST /api/runs`.
+**Depends on:** versioned REST contract (`docs/SDK_API_CONTRACT.md`), async run jobs, API keys.
 
----
+### 2.4 Native LangGraph per-step tracing: NOT IMPLEMENTED
 
-### 3.6. OpenTelemetry (OTel) Ingestion
+**Evidence:** `src/runport/connectors/langgraph.py` subclasses `HttpWorkflowConnector`, posts to `/runs/wait`, reads
+`messages.-1.content`. The capability registry (`connectors/registry.py`, `CONNECTOR_MATRIX`) correctly lists per-step trace as "no".
+**Depends on:** canonical trace schema and storage (2.5), streaming transport.
 
-- **Classification**: `NOT IMPLEMENTED`
-- **Existing Code Footprint**:
-  - `src/runport/observability/`: Contains `EventTail` and trace export utilities (`export.py`).
-  - No OTLP HTTP/gRPC receiver or OpenInference span converter.
-- **Working Features**:
-  - None for ingestion. Runport currently emits custom event dictionaries (`TraceEvent`).
-- **Missing Pieces**:
-  - FastAPI endpoint `/api/v1/traces/otlp/v1/traces` accepting standard OTLP JSON and Protobuf payloads.
-  - Semantic mapping from OpenInference conventions (`openinference.span.kind`, `llm.input_messages`, `llm.output_messages`, `tool.name`) to `ObservationSpan`.
-  - Background asynchronous batch processor for high-throughput span ingestion.
-- **Existing Tests**: None.
-- **Security & Reliability Risks**:
-  - Unauthenticated or unbounded OTLP ingestion could overwhelm the SQLite database or cause disk exhaustion.
-- **Dependencies**: Canonical Trace Schema, Multi-User Security Model (rate limits, project keys).
-- **Completion Criteria**:
-  1. OTLP trace ingestion endpoint active at `/api/v1/traces/otlp`.
-  2. Bidirectional translation between OpenInference span attributes and Runport `TraceRecord`.
-  3. End-to-end integration test with OpenTelemetry Python SDK emitting spans into Runport.
+### 2.5 Universal agent trajectory evaluation: BLOCKED BY ARCHITECTURE
+
+**Evidence:**
+- `TargetResult` (`targets/base.py`) has `metadata: Dict` only. Dify node data lands in `metadata["per_node_data"]`; MCP tool
+  details in `metadata`; RAG retrieval in `metadata["retrieval"]`. Nothing is typed or persisted as spans.
+- Storage (`storage/db.py`) has `evaluation_runs`, `evaluation_results`, `budget_ledger`, `model_portfolio`, `plan_approvals`,
+  `schema_migrations`. No trace or span table.
+- `traces/models.py` (`TraceRecord`, `ObservationSpan`) is an import model for diagnosis, not linked to runs.
+- Scorers (`scorers/`, `evaluation/evaluator.py`) score a single output string.
+
+**Blocker:** a canonical trace schema and persistence (`docs/CANONICAL_TRACE_SCHEMA.md`) must exist before any trajectory scorer.
+
+### 2.6 OpenTelemetry ingestion: NOT IMPLEMENTED
+
+**Evidence:** no `opentelemetry`/`otlp`/`openinference` reference in `src/`, `tests/` or `pyproject.toml`. **Depends on:** trace schema,
+an ingestion endpoint with auth, size limits and redaction.
+
+### 2.7 Langfuse export: NOT IMPLEMENTED
+
+**Evidence:** `traces/importer.py` reads Langfuse-style JSON/CSV (`latency` in seconds, `usage`, `observations`).
+`observability/export.py` exports Runport's own sanitized JSONL/CSV/ZIP bundle, not the Langfuse ingestion API format.
+**Depends on:** trace schema; then a mapper to the Langfuse public ingestion API.
+
+### 2.8 Production multi-user hosting: BLOCKED BY ARCHITECTURE
+
+**Evidence:**
+- Auth (`api/app.py`, `_access_policy_middleware`): no token → loopback only with Host check; token set → one shared token for all
+  callers. No users, roles, organizations or projects.
+- Any API caller can approve plans (`POST /api/runs/approve`, channel `web_ui`); the approver name is free text.
+- Workspace = one directory with one SQLite file; settings are process-global (`core/config.py`, `settings`).
+- Live runs execute synchronously inside the request (`api/routes/runs.py`); no job queue, cancellation or worker isolation.
+- Secrets come from the server's environment for every caller.
+**Blocker:** identity, tenancy and a job model are prerequisites, not features (`docs/MULTI_USER_SECURITY_MODEL.md`).
+
+### 2.9 Universal framework instrumentation: NOT IMPLEMENTED
+
+**Evidence:** integration paths today are black-box: `http_workflow`, `python` callable (`connectors/python_target.py`), `subprocess`,
+`mcp` tools. The registry lists LangChain, CrewAI and LlamaIndex as `planned`. No decorator, context manager or callback handler
+emits steps. **Depends on:** trace schema, an instrumentation API in the SDK, and OTel ingestion (so instrumentation can be OTel-native).
 
 ---
 
-### 3.7. Langfuse Export
+## 3. Architecture audit
 
-- **Classification**: `PARTIALLY IMPLEMENTED`
-- **Existing Code Footprint**:
-  - `src/runport/traces/importer.py` (Lines 80–135): Implements `import_langfuse_traces()`, parsing Langfuse JSON export format into Runport `TraceRecord` objects.
-  - `src/runport/observability/export.py`: Exports traces only in Runport's internal `trace-export-v1` format (JSONL, CSV, ZIP).
-- **Working Features**:
-  - One-way import from Langfuse JSON files into Runport trace models.
-- **Missing Pieces**:
-  - Reverse export from Runport `TraceRecord` to Langfuse API v2 / JSON export format.
-  - Direct push to a remote Langfuse instance via public/secret API keys.
-  - CLI command: `runport traces export --format langfuse`.
-- **Existing Tests**:
-  - `tests/test_traces.py`: Verifies Langfuse trace import parsing.
-- **Security & Reliability Risks**:
-  - Secret leakage: Provider API keys or user secrets must be scrubbed before external export.
-- **Dependencies**: Canonical Trace Schema, Secret Redactor (`src/runport/datasets/sanitizer.py`).
-- **Completion Criteria**:
-  1. `export_langfuse_traces()` implemented in `src/runport/observability/export.py`.
-  2. Full adherence to Langfuse ingestion format (traces, observations, scores).
-  3. Unit test verifying round-trip fidelity: `Runport Trace` → `Langfuse JSON` → `Runport Trace`.
+| Question | Answer | Evidence |
+|:---|:---|:---|
+| One shared execution service? | **Yes, for live target runs.** | `services/execution.py` `ExecutionService` → `runs/executor.py` `GenericRunner`, used by CLI `benchmark`/`benchmark-rag`, `/api/plan`, `/api/runs`, `/api/targets/test`, `runport.sdk`, the MCP server. `BenchmarkRunner.run`, `RAGBenchmarkRunner.run` and `ClassificationRunner.run_batch` also execute via `GenericRunner` (with their own plan objects and a `TokenApprover` built from a `LiveAuthorization`). The only `provider.generate(` left is in `connectors/openrouter.py`. |
+| One canonical run and trace schema? | **No.** | Runs: `evaluation_runs`/`evaluation_results`. Classification: `PredictionRecord` JSONL (`classification/records.py`). Events: `RequestEvent` JSONL (`observability/events.py`). Imported traces: `TraceRecord`. Four shapes, none linked. |
+| One connector contract? | **Yes.** | `Target.execute → TargetResult`; `connectors/registry.py` `build_target` and `CONNECTOR_MATRIX`. |
+| One evaluation interface? | **No.** | `scorers/base.py`, `evaluation/evaluator.py` `RubricEvaluator`, `rag/evaluator.py`, `classification/metrics.py`, `GenericRunner(case_scorer=…)`. Score provenance (`EvaluationScore.evaluator_type`) is **not persisted**: `evaluation_results` stores a heuristic word-overlap score in the `accuracy` column. |
+| One authentication/authorization model? | **Partly.** | API: shared token or loopback. Approvals: `ApprovalStore` channels. No per-user identity anywhere. |
+| One budget/approval path? | **Yes, with two gaps.** | `GenericRunner` guard order and `ApprovalStore`. Gaps in section 4 (per-run cap, concurrency). The library runners accept a `LiveAuthorization` object directly; it is a capability object, not a persisted approval. |
+| Durable persistence? | **Single-node only.** | SQLite WAL; `PRAGMA`-based migrations in `DatabaseManager.init_db`; no migration framework, no Postgres. |
+| Stable public API? | **No.** | `/api/*` unversioned; responses mostly untyped dicts; SDK returns internal dataclasses. |
+
+**Duplicate or divergent paths still present**
+1. `api/routes/runs.py` replay branch builds its own run record; CLI replay uses `runs/replay.py` + `evaluation/replay_scoring.py`. Both are offline, but they persist differently.
+2. `ClassificationRunner` writes `PredictionRecord`s to its own store in addition to `evaluation_results`.
+3. The dashboard's live telemetry stream (`/api/events`, `observability/monitor.py`) reads `request_events.jsonl`, but **no code in `src/` writes `RequestEvent`s**, so it stays empty for every run.
 
 ---
 
-### 3.8. Production-Ready Multi-User Hosting
+## 4. Security and data-integrity audit
 
-- **Classification**: `NOT IMPLEMENTED (BLOCKED BY ARCHITECTURE)`
-- **Existing Code Footprint**:
-  - `src/runport/storage/db.py`: Implements single-tenant SQLite WAL database (`DatabaseManager`).
-  - `src/runport/api/app.py`: Implements `local_security_middleware` checking a single static environment variable `RUNPORT_API_TOKEN`.
-- **Working Features**:
-  - Local single-user protection against remote requests via localhost verification and bearer token check.
-- **Missing Pieces**:
-  - Multi-tenant data model (`tenants`, `organizations`, `projects`, `users`, `memberships`).
-  - Role-Based Access Control (RBAC): `Owner`, `Admin`, `Approver`, `Runner`, `Viewer`.
-  - Scoped API key management with granular permissions and expiration.
-  - Tenant-isolated budget caps and ledger partitions.
-  - Support for multi-user database engines (PostgreSQL / SQLite schema isolation).
-- **Existing Tests**:
-  - `tests/test_api_security.py`: Tests single static token middleware and localhost blocking.
-- **Security & Reliability Risks**:
-  - Multi-tenant deployment in the current state results in immediate cross-tenant data leakage, budget cap collisions, and approval hijacking.
-- **Dependencies**: Database Schema Migration, Multi-User Security Model.
-- **Completion Criteria**:
-  1. Multi-tenant schema migration scripts supporting PostgreSQL and SQLite.
-  2. Full RBAC enforcement across all REST routes and execution services.
-  3. Scoped API keys with SHA-256 / Argon2id hashing and last-used tracking.
-  4. Security test suite in `tests/test_multi_user_rbac.py` verifying zero cross-tenant access.
+| Area | Status | Evidence / gap |
+|:---|:---|:---|
+| Remote API auth | Fixed on this branch | Fails closed without a token; constant-time compare; DNS-rebinding Host check (`api/app.py`). Dashboard cannot send a token, so token mode is API/CLI-only. |
+| API token handling | Single static secret | No rotation, scopes or per-client identity. |
+| Secret storage | Environment only | `runport.yaml` must use `$NAME`/`${NAME}` (`registry.check_spec_has_no_literal_secrets`, `workspace._check_no_secrets`). No vault, no per-user secrets. |
+| User/org isolation | None | Single tenant. |
+| Approval generation/consumption | Fixed on this branch | Persisted, expiring, fingerprint-bound, atomic single use (`services/approvals.py`; concurrency test in `tests/test_integrity_security.py`). Any API caller can approve via `web_ui`. |
+| Budget enforcement | **Two gaps** | (a) The per-run ceiling is checked against each case's worst case, never against the run's accumulated spend (`GenericRunner.execute_plan`, Guard 3; `BudgetService.check_spend_permitted`). Lifetime and pilot caps are cumulative and hold. (b) Preflight and booking are separate statements: two concurrent runs can both pass preflight and overspend together. |
+| Unknown cost | Fixed on this branch | Billable + no cost → `UNRESOLVED`, run halts (`runs/executor.py` Guard 7; `targets/base.py` `BillingMode`). |
+| Null vs zero | Mostly fixed | Traces, RAG correctness, plan projections. **Remaining:** the Compare page draws 50 ms / 90 ms when latency is missing (`web/src/App.tsx`, `mean_latency_ms || 50`). |
+| Trace redaction | Present | `scrub_secrets` on results, exports, MCP output; PII redaction in `datasets/redaction.py`. |
+| Concurrent execution | Unsafe for spend | See budget gap (b). SQLite serializes writes but not the check-then-book sequence. |
+| Transaction boundaries | Per statement | Each ledger write is its own transaction; a run is not atomic. |
+| Background jobs | None | Live API runs block the request; no cancel, no resume. |
+| Audit logging | Partial | The ledger and `plan_approvals` (who approved, when, which fingerprint) are durable; API access is not logged. |
 
 ---
 
-### 3.9. Universal Framework Instrumentation
-
-- **Classification**: `EXPERIMENTAL`
-- **Existing Code Footprint**:
-  - `src/runport/connectors/`: Contains adapters for `dify.py`, `flowise.py`, `langflow.py`, `n8n.py`, `langgraph.py`, `http.py`, and `python.py`.
-- **Working Features**:
-  - Unified HTTP request dispatching, configurable response path JSON pointers (e.g., `data.outputs.text`), and basic status code handling.
-- **Missing Pieces**:
-  - Deep in-process instrumentation (LangChain callbacks, LlamaIndex handlers, AutoGen hooks, CrewAI listeners).
-  - Fine-grained intermediate step telemetry (reasoning chains, tool calls, vector retrieval stats).
-  - Standardized webhook listener for asynchronous event streaming from n8n / Flowise / Dify.
-- **Existing Tests**:
-  - `tests/test_connectors.py`: Contract tests verifying HTTP request payload structures and mock response parsing.
-- **Security & Reliability Risks**:
-  - Failure to capture intermediate spend: External workflows executing multi-agent loops can accumulate massive third-party API spend while Runport only sees a single HTTP request.
-- **Dependencies**: Canonical Trace Schema, Universal Execution Architecture.
-- **Completion Criteria**:
-  1. Official callback integrations for LangChain / LlamaIndex / CrewAI published under `src/runport/integrations/`.
-  2. Async webhook listener receiving step events from workflow orchestrators.
-  3. Per-step latency, token, and cost breakdown rendered in Web UI and TUI.
-
----
-
-## 4. Critical Architectural Findings & Vulnerabilities
-
-### 4.1. Dual Execution Engines Vulnerability
+## 5. Dependency graph
 
 ```mermaid
 flowchart TD
-    subgraph Current Flawed State
-        CLI[Typer CLI / runport benchmark] --> GR[GenericRunner in src/runport/runs/executor.py]
-        GR --> G1[7-Step Guard Order]
-        GR --> DB1[(SQLite Ledger)]
-
-        API[FastAPI /api/v1/runs] --> CR[Custom Ad-Hoc Route Runner in routes/runs.py]
-        CR --> G2[Partial Checks / In-Memory Set]
-        CR --> DB2[(SQLite Ledger)]
-    end
-    
-    subgraph Target Architecture v1.0
-        T_CLI[CLI] --> ES[Unified ExecutionService]
-        T_API[REST API] --> ES
-        T_MCP[MCP Server] --> ES
-        T_SDK[Python / TS SDK] --> ES
-        ES --> Guard[Strict 7-Step Invariant Guard Pipeline]
-        Guard --> DB[(SQLite / PostgreSQL Ledger)]
-    end
+    F0[F0 Integrity fixes: per-run cap, atomic reservation, event emission, score provenance] --> F1
+    F1[F1 Canonical trace schema + span storage] --> T1[Trajectory on TargetResult]
+    F2[F2 Versioned REST v1 + async run jobs] --> SDKPY[Remote Python client]
+    F2 --> SDKTS[TypeScript SDK]
+    F3[F3 Identity: API keys with scopes] --> F2
+    T1 --> LG[LangGraph per-step tracing]
+    T1 --> TRAJ[Trajectory evaluation]
+    T1 --> OTEL[OTel / OpenInference ingestion]
+    T1 --> LFX[Langfuse export]
+    OTEL --> INSTR[Universal instrumentation]
+    SDKPY --> INSTR
+    F3 --> MCPHTTP[MCP over HTTP with auth]
+    F3 --> MU[Multi-user hosting: tenants, RBAC, Postgres, workers]
+    F2 --> MU
 ```
 
-#### Code Evidence:
-- **CLI Path**: `src/runport/cli.py` invokes `GenericRunner.run_plan()` (`src/runport/runs/executor.py`, Line 158). This runner enforces:
-  1. Authorization
-  2. Privacy Gate (Sanitizer)
-  3. Preflight Budget Check (`BudgetService.check_preflight_budget`)
-  4. Transport Execution
-  5. Strict Validation
-  6. Persistence
-  7. Spend Booking
-- **REST API Path**: `src/runport/api/routes/runs.py` (Lines 180–310) implements an independent execution loop:
-  - Generates its own plan fingerprint.
-  - Re-implements cost estimation logic.
-  - Manages approval verification independently.
-  - Bypasses portions of `GenericRunner` error-handling invariants.
-
-#### Critical Risk:
-A bug fix, spend cap enforcement rule, or safety invariant applied to `executor.py` does not automatically protect users executing runs via the Web UI or REST API, leading to inconsistent ledger accounting and potential budget overruns.
+Order of work: **F0 → F1 → F3 → F2**, then the features. F0 and F1 are small relative to what they unblock.
 
 ---
 
-### 4.2. Volatile Approval Tokens Vulnerability
+## 6. Executive summary
 
-#### Code Evidence:
-In `src/runport/api/routes/runs.py`:
-```python
-# Lines 38-42
-_CONSUMED_APPROVAL_TOKENS: set[str] = set()
-```
-When an execution plan exceeds the hard budget cap, the API requires a signed approval token. Upon approval, the token is added to `_CONSUMED_APPROVAL_TOKENS`.
+**Reusable now:** the `Target` contract and registry; `ExecutionService` + `GenericRunner` as the single live path; persisted
+approvals; billing modes and `UNRESOLVED` handling; the MCP client and server; the in-process SDK; scrubbing and SSRF checks;
+the capability matrix and its drift test.
 
-#### Critical Risks:
-1. **Server Restart Reset**: If the FastAPI server restarts or auto-reloads, `_CONSUMED_APPROVAL_TOKENS` is wiped clean, potentially permitting replay of previously consumed approval tokens.
-2. **Multi-Worker Concurrency Bypass**: If Runport is deployed with multiple Uvicorn workers (`--workers 4`) or behind a reverse proxy, worker processes do not share memory. A token consumed in Worker A can be re-used in Worker B, bypassing the spend cap.
-3. **Audit Impossibility**: Consumed tokens are not written to the SQLite ledger, preventing post-incident forensic audits.
+**Build first (foundations):**
+1. F0 integrity fixes: cumulative per-run cap, atomic budget reservation, `RequestEvent` emission from `GenericRunner`, persisted score provenance.
+2. F1 canonical trace schema and span tables, with `TargetResult.trajectory`.
+3. F3 scoped API keys (prerequisite for any remote SDK, MCP over HTTP, or hosting).
+4. F2 versioned REST v1 with asynchronous run jobs.
 
----
+**Needs refactoring:** settings are process-global (`core/config.settings`), which blocks multi-tenant serving; runs execute
+inside HTTP requests; four unlinked run/trace shapes.
 
-### 4.3. Single-Tenant Database Schema Bottleneck
-
-#### Code Evidence:
-In `src/runport/storage/db.py`, the SQLite schema defines:
-```sql
-CREATE TABLE IF NOT EXISTS runs (
-    run_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    benchmark_type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    completed_at TEXT
-);
-```
-None of the core tables (`runs`, `spend_ledger`, `approvals`, `traces`, `datasets`) contain:
-- `tenant_id`
-- `org_id`
-- `created_by_user_id`
-
-#### Architectural Consequence:
-Implementing multi-user hosting without a formal database migration path will result in complete data coupling and security boundary failure.
+**Could block v1.0:** multi-user hosting (identity, tenancy, Postgres, workers) is the largest and riskiest item; it should be its
+own release with security tests. OpenTelemetry ingestion widens the attack surface (untrusted payload size, PII) and needs limits
+and redaction from day one.
 
 ---
 
-## 5. Architectural Gap Analysis Matrix
+## 7. Corrections to the previous version of this audit
 
-| Roadmap Capability | v0.1.0 Status | Target Module Path | Primary Blocker |
-| :--- | :--- | :--- | :--- |
-| **MCP Ecosystem** | `NOT IMPLEMENTED` | `src/runport/mcp/` | Lack of unified execution service |
-| **Python SDK** | `NOT IMPLEMENTED` | `src/runport/client/` | Dual execution path & API churn |
-| **TypeScript SDK** | `NOT IMPLEMENTED` | `packages/sdk-ts/` | Dual execution path & missing OpenAPI build |
-| **LangGraph Per-Step** | `EXPERIMENTAL` | `src/runport/connectors/langgraph.py` | Missing canonical step trace schema |
-| **Agent Trajectory Scoring**| `PARTIALLY IMPLEMENTED`| `src/runport/scorers/trajectory.py` | Missing multi-turn trajectory models |
-| **OpenTelemetry Ingestion** | `NOT IMPLEMENTED` | `src/runport/observability/otlp.py` | Missing OTLP endpoint & mapping logic |
-| **Langfuse Export** | `PARTIALLY IMPLEMENTED`| `src/runport/observability/export.py` | One-way importer only; needs reverse exporter |
-| **Multi-User Hosting** | `BLOCKED BY ARCHITECTURE`| `src/runport/auth/` & `storage/db.py` | Single-tenant SQLite schema without tenancy |
-| **Framework Instrumentation**| `EXPERIMENTAL` | `src/runport/integrations/` | Connectors only wrap outer HTTP POST endpoints |
+The earlier file on `main` (`1179841`) stated, among others:
+- "CLI commands invoke `GenericRunner`" — at that commit the CLI live path used `BenchmarkRunner` with its own loop.
+- MCP and Python SDK "NOT IMPLEMENTED" — true for `main`, not for this branch.
+- `src/runport/targets/python.py` / `PythonTarget` — no such file or class; the target is `PythonCallableTarget` in `connectors/python_target.py`.
+- `docs/safety.md` (same commit) cited a `runport benchmark --live --approve <fingerprint>` flag (does not exist) and "DNS pinning"
+  (the code resolves and checks before connecting; the HTTP client resolves again). Both are corrected in `docs/safety.md`.
 
 ---
 
-## 6. Prioritized Remediation Roadmap
+## 8. Test results on the audited tree
 
-To achieve a production-grade v1.0.0 release, development must proceed in strict dependency order:
-
-1. **Phase 1: Universal Execution Consolidation (P0)**
-   - Create `src/runport/runs/service.py` (`ExecutionService`).
-   - Deprecate duplicate execution loop in `src/runport/api/routes/runs.py`.
-   - Migrate approval tokens to SQLite table `plan_approvals` with cryptographic signatures, expiration, and atomic single-use status.
-2. **Phase 2: Canonical Trace Schema & OpenTelemetry (P1)**
-   - Formalize `AgentTrajectory`, `AgentStep`, and `ToolCallRecord` models.
-   - Implement OpenInference / OTel ingestion and Langfuse v2 export.
-3. **Phase 3: Public SDKs & MCP Server (P1)**
-   - Implement `runport.Client` and `runport.AsyncClient`.
-   - Implement FastMCP server for Claude Desktop / Cursor / Antigravity integration.
-   - Publish `@runport/sdk` TypeScript package.
-4. **Phase 4: Deep Framework Callbacks & Trajectory Scoring (P2)**
-   - Implement LangGraph per-step callback handler.
-   - Introduce trajectory scorers: `ToolSelectionF1`, `PlanAdherenceScore`.
-5. **Phase 5: Multi-Tenant Security & RBAC (P2)**
-   - Database schema migration adding tenancy columns.
-   - Role-Based Access Control and scoped API keys (`rp_live_...`).
-   - Append-only security audit log.
-
+See section 1. All commands were run on `d99d167`; nothing here is inferred from CI.

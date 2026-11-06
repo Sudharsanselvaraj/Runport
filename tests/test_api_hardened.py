@@ -82,15 +82,12 @@ def test_dataset_upload_safe_success(client):
     assert data["case_count"] == 2
 
 
-def test_run_approval_single_use_invariant(client):
-    """Approval token is single-use and cannot be consumed more than once."""
+def test_run_approval_requires_an_existing_plan(client):
+    """Approval only exists for a plan the server created; a made-up fingerprint or token cannot authorize a run."""
     fp = "abcd1234ef567890"
     res = client.post("/api/runs/approve", json={"plan_fingerprint": fp, "user": "Tester", "timestamp": "2026-11-03T10:00:00Z"})
-    assert res.status_code == 200
-    token = res.json()["approval_token"]
-    assert token.startswith("approval-")
+    assert res.status_code == 404
 
-    # Attempting to execute live run with mismatched fingerprint fails
     res_mismatch = client.post(
         "/api/runs",
         json={
