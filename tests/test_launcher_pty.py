@@ -51,8 +51,22 @@ def run_launcher(keys, rows=55, cols=207, settle=0.6):
     while b"\x1b[?1049h" not in out and time.time() < deadline:
         drain(0.1)
     drain(settle)
+
+    def wait_for_more(marker: bytes, before: int, timeout: float) -> None:
+        """Read until `marker` occurs more often than `before`, so the next key never races the launcher."""
+        deadline = time.time() + timeout
+        while out.count(marker) <= before and time.time() < deadline:
+            drain(0.1)
+
     for k in keys:
+        frames, menus, prompts = out.count(b"\x1b[H"), out.count(b"\x1b[?1049h"), out.count(RETURN_PROMPT)
         os.write(master, k)
+        if k in (UP, DOWN):
+            wait_for_more(b"\x1b[H", frames, 30)  # the menu redrew
+        elif k == ENTER:
+            wait_for_more(b"\x1b[?1049h", menus, 30)  # back on the menu after a workflow
+        elif k != QUIT:
+            wait_for_more(RETURN_PROMPT, prompts, 90)  # a workflow ran to its "press Enter" prompt
         drain(settle)
     drain(settle)
     try:
@@ -65,6 +79,8 @@ def run_launcher(keys, rows=55, cols=207, settle=0.6):
 
 
 DOWN, UP, QUIT = b"\x1b[B", b"\x1b[A", b"q"
+ENTER = b"\r"
+RETURN_PROMPT = b"Press Enter to return to the menu"
 
 
 def test_moving_through_the_menu_redraws_in_place_on_the_alternate_screen():
@@ -93,9 +109,6 @@ def test_short_terminals_get_a_compact_frame_instead_of_scrolling():
     frames = re.split(r"\x1b\[H", text)[1:]
     assert frames and all(f.split("\x1b[?25h")[0].count("\x1b[K\n") + 1 <= 20 for f in frames)
     assert "Select a workflow:" in re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text)
-
-
-ENTER = b"\r"
 
 
 def plain(text):

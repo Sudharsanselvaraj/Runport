@@ -2,6 +2,7 @@
 
 import os
 import stat
+import sys
 import urllib.request
 from pathlib import Path
 import pytest
@@ -58,6 +59,7 @@ def test_empty_or_missing_key_reported_safely(tmp_path: Path, monkeypatch):
     assert "none" in get_api_key_source()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes; Windows has no 0600")
 def test_ensure_secure_dotenv_permissions(tmp_path: Path):
     """Ensure .env file permissions are set to 0600 where supported."""
     env_file = tmp_path / ".env"
