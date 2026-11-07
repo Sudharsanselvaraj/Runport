@@ -14,14 +14,14 @@ export const FAQSection: React.FC = () => {
       <div className="rp-col rp-faq-grid">
         <Reveal className="rp-faq-side">
           <div>
-            <h2 className="rp-h2 rp-fade-heading">
-              {c.titleA} {c.titleB}
+            <h2 className="rp-h2 rp-faq-title">
+              <span>{c.titleA}</span> <span className="rp-faq-title-dim">{c.titleB}</span>
             </h2>
             <p className="rp-body">{c.subheading}</p>
           </div>
           <div className="rp-faq-cta">
             <p className="rp-body" style={{ fontWeight: 500 }}>{c.ctaPrompt}</p>
-            <a href={c.ctaHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-sm rp-pill-glass">
+            <a href={c.ctaHref} target="_blank" rel="noopener noreferrer" className="rp-pill rp-pill-sm rp-faq-btn">
               {c.ctaButton}
             </a>
           </div>
