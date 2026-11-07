@@ -17,6 +17,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate Git Tag Matches pyproject.toml Version
+        run: |
+          TAG="${{ github.ref_name }}"
+          TAG_VER="${TAG#v}"
+          PYPROJECT_VER=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "GitHub Tag:     $TAG (parsed: $TAG_VER)"
+          echo "pyproject.toml: $PYPROJECT_VER"
+          if [ "$TAG_VER" != "$PYPROJECT_VER" ]; then
+            echo "::error::Release rejected! Git tag ($TAG_VER) does not match pyproject.toml ($PYPROJECT_VER)."
+            exit 1
+          fi
+          echo "Version check passed: Git tag matches pyproject.toml exactly."
+
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:

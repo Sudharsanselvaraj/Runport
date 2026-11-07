@@ -109,3 +109,16 @@ def test_evaluation_score_weighted_calculation():
     )
     # 0.50 * 0.90 + 0.35 * 0.80 + 0.15 * 1.00 = 0.45 + 0.28 + 0.15 = 0.88
     assert pytest.approx(score.overall_score, 0.001) == 0.88
+
+
+def test_package_version_consistency():
+    """Verify pyproject.toml version matches runport.__version__."""
+    from pathlib import Path
+    import tomllib
+
+    from runport import __version__
+
+    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with open(pyproject_path, "rb") as f:
+        data = tomllib.load(f)
+    assert data["project"]["version"] == __version__

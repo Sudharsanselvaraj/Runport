@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from runport import __version__
 from runport.api.routes import budget, datasets, events, models, plan, reports, runs, setup, targets
 
 
@@ -66,7 +67,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Runport",
         description="Universal LLM, Prompt, and Workflow Benchmarking Platform",
-        version="0.1.0",
+        version=__version__,
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
@@ -106,7 +107,7 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "app": "runport",
-            "version": "0.1.0",
+            "version": __version__,
             "mode": "local_first",
         }
 

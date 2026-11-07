@@ -18,10 +18,11 @@ import json
 import sys
 from typing import IO, Any, Callable, Dict, List, Optional, Tuple
 
+from runport import __version__
 from runport.connectors.mcp import SUPPORTED_PROTOCOL_VERSIONS, validate_json_schema
 from runport.providers.base import scrub_secrets
 
-SERVER_INFO = {"name": "runport", "version": "0.1.0"}
+SERVER_INFO = {"name": "runport", "version": __version__}
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 _STR = {"type": "string"}

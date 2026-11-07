@@ -32,13 +32,14 @@ import urllib.request
 from collections import deque
 from typing import IO, Any, Callable, Deque, Dict, List, Optional, Tuple
 
+from runport import __version__
 from runport.core.security import validate_safe_url
 from runport.providers.base import scrub_secrets
 from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus, TargetType, billing_for_url
 
 LATEST_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
-CLIENT_INFO = {"name": "runport", "version": "0.1.0"}
+CLIENT_INFO = {"name": "runport", "version": __version__}
 _STDERR_TAIL_LINES = 20
 _SENSITIVE_ENV_NAME = re.compile(r"KEY|TOKEN|SECRET|PASS|AUTH|CREDENTIAL|COOKIE|PRIVATE", re.IGNORECASE)
 _REDACTED = "[REDACTED_SECRET]"

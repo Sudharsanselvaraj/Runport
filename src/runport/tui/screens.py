@@ -75,10 +75,12 @@ def build_top_header() -> Table:
     header.add_column("center", justify="center", ratio=1, no_wrap=True)
     header.add_column("right", justify="right", width=26, no_wrap=True)
 
+    from runport import __version__
+
     left_text = Text()
     left_text.append("[RUNPORT] ", style=f"bold {CYAN_HIGHLIGHT}")
     left_text.append("BENCHMARK PLATFORM ", style=f"bold {TEXT_PRIMARY}")
-    left_text.append("v0.1.0", style=f"{TEXT_MUTED}")
+    left_text.append(f"v{__version__}", style=f"{TEXT_MUTED}")
 
     center_text = Text()
     center_text.append("Project: runport  |  ", style=f"{TEXT_SECONDARY}")

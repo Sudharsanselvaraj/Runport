@@ -2,8 +2,9 @@
 
 from typing import Any, Dict, List
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from runport import __version__
 from runport.core.config import settings
 from runport.storage.db import DatabaseManager
 
@@ -20,7 +21,7 @@ class BudgetPolicySummary(BaseModel):
 
 class SetupResponse(BaseModel):
     app_name: str = "Runport"
-    version: str = "0.1.0"
+    version: str = Field(default_factory=lambda: __version__)
     mode: str = "local_first"
     workspace_root: str
     db_path: str
