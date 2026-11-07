@@ -15,8 +15,8 @@ Every statement below has been verified against the live repository files and ne
 | Check / Domain | Command / Query | Verified Result | Evidence / Notes |
 |:---|:---|:---|:---|
 | **Git Tree & Head** | `git rev-parse --short HEAD` | `c64e31b` | Working tree clean. Latest commit adds dark/light architecture diagrams to README. |
-| **Git Tags** | `git tag && git ls-remote --tags origin` | **0 tags** | No tags exist. No formal release has ever been published to GitHub Releases. |
-| **PyPI Registry** | `https://pypi.org/pypi/runport/json` | **HTTP 404 (Available)** | The package name `runport` is currently **unclaimed** on PyPI. |
+| **Git Tags** | `git tag && git ls-remote --tags origin` | **v0.1.0-alpha** | Tagged and published on GitHub Releases. |
+| **PyPI Registry** | `https://pypi.org/pypi/runport/json` | **HTTP 200 (Live)** | Published as `runport` 0.1.0 via PyPA Trusted Publishing. |
 | **npm Registry** | `https://registry.npmjs.org/@runport/sdk` | **HTTP 404 (Available)** | Both `runport` and `@runport/sdk` are currently **unclaimed** on npm. |
 | **Core Test Suite** | `uv run pytest` | **478 passed** (48.98s) | Sockets strictly blocked. All unit, PTY launcher, and integration tests pass. |
 | **Plugin Test Suite** | `uv run pytest examples/plugins` | **26 passed, 5 skipped** | All plugin contracts and decision fixtures pass. |
@@ -166,7 +166,7 @@ To eliminate the risk of releasing multiple unstable public contracts simultaneo
 
 ---
 
-### Milestone 0: PyPI Name Reservation & Release Foundation
+### Milestone 0: PyPI Name Reservation & Release Foundation (COMPLETED)
 **Goal:** Make Runport globally installable (`pip install runport`) and protect project naming without cloud/account dependencies.
 
 - [x] **Task 0.1: Verify Wheel Cleanliness & Local Smoke Tests**
@@ -179,11 +179,13 @@ To eliminate the risk of releasing multiple unstable public contracts simultaneo
   - Implemented artifact handoff via `actions/upload-artifact@v4` and `actions/download-artifact@v4`.
   - Scoped permissions per job (`id-token: write` only for PyPI publish; `contents: write` only for GitHub release).
   - Configured dynamic prerelease detection (flags `prerelease: true` for tags containing `-alpha`, `-beta`, `-rc`, `-dev`).
-- [ ] **Task 0.3: Secure Production PyPI Namespace**
-  - Configure GitHub repository PyPI Trusted Publishing under owner account.
-  - Perform initial publication directly to production PyPI (TestPyPI can be used for pipeline dry-runs, but does *not* claim the production namespace).
-- [ ] **Task 0.4: Tag v0.1.0-alpha**
-  - Tag git commit `v0.1.0-alpha` and trigger automated publication pipeline.
+- [x] **Task 0.3: Secure Production PyPI Namespace**
+  - Configured GitHub repository PyPI Trusted Publishing under owner account (`Sudharsanselvaraj/Runport`, workflow `release.yml`, environment `pypi`).
+  - Successfully published `runport` v0.1.0 to PyPI. Project namespace permanently claimed.
+- [x] **Task 0.4: Tag v0.1.0-alpha & Verify Independent PyPI Installation**
+  - Tagged `v0.1.0-alpha` and pushed to GitHub.
+  - All 6 CI jobs passed: Build, Ubuntu verify, macOS verify, Windows verify, PyPI publish, GitHub release.
+  - Verified `pip install runport` from PyPI in an independent clean virtual environment; ran `runport --version`, `runport init`, and `runport budget status` with 100% success.
 
 ---
 
