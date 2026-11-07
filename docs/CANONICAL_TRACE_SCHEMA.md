@@ -1,7 +1,6 @@
 # Canonical Trace Schema
 
-**Status: design.** Nothing in this document exists in code yet, except where marked "existing". It is the prerequisite (F1) for
-per-step tracing, trajectory evaluation, OpenTelemetry ingestion, Langfuse export and framework instrumentation.
+**Status: Phase 1 Implemented (Data models in `runport.traces.domain`, schema re-exports in `runport.traces.schema`, SQLite migration v4 in `runport.storage.db`, and `runport.traces.repository`).** Execution instrumentation and trajectory evaluation are planned for subsequent phases.
 
 ---
 

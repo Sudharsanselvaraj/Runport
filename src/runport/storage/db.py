@@ -1,12 +1,37 @@
 """SQLite database initialization, migration, and transactional persistence."""
 
+from __future__ import annotations
+
+import json
 import sqlite3
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import TYPE_CHECKING, List, Optional, Dict, Any
 
 from runport.core.config import settings
+
+if TYPE_CHECKING:
+    from runport.traces.domain import (
+        Span,
+        SpanEvent,
+        SpanKind,
+        SpanStatus,
+        Trace,
+    )
+
+
+def _to_utc_dt(val: Any) -> Optional[datetime]:
+    """Helper to convert datetime or ISO string to UTC datetime."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        val = datetime.fromisoformat(val.replace("Z", "+00:00"))
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=timezone.utc)
+        return val.astimezone(timezone.utc)
+    raise ValueError(f"Cannot parse UTC datetime from {type(val)}: {val}")
 
 
 SCHEMA_SQL = """
@@ -93,6 +118,61 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     description TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS traces (
+    trace_id TEXT PRIMARY KEY,
+    run_id TEXT,
+    case_id TEXT,
+    target_id TEXT,
+    session_id TEXT,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    attributes_json TEXT NOT NULL DEFAULT '{}',
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'native',
+    source_ref TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
+);
+
+CREATE TABLE IF NOT EXISTS spans (
+    trace_id TEXT NOT NULL,
+    span_id TEXT NOT NULL,
+    parent_span_id TEXT,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    duration_ms REAL,
+    provider TEXT,
+    model TEXT,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    total_tokens INTEGER,
+    cost_usd TEXT,
+    cost_basis TEXT,
+    attributes_json TEXT NOT NULL DEFAULT '{}',
+    events_json TEXT NOT NULL DEFAULT '[]',
+    error_json TEXT,
+    attempt INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'native',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (trace_id, span_id),
+    FOREIGN KEY (trace_id) REFERENCES traces(trace_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_traces_run_id ON traces(run_id);
+CREATE INDEX IF NOT EXISTS idx_traces_run_case ON traces(run_id, case_id);
+CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+CREATE INDEX IF NOT EXISTS idx_traces_start_time ON traces(start_time);
+CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id);
+CREATE INDEX IF NOT EXISTS idx_spans_parent ON spans(trace_id, parent_span_id);
+CREATE INDEX IF NOT EXISTS idx_spans_kind ON spans(trace_id, kind);
+CREATE INDEX IF NOT EXISTS idx_spans_status ON spans(status);
+CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
+
 """
 
 
@@ -122,6 +202,7 @@ class DatabaseManager:
             self._migrate_score_provenance(conn)
             conn.commit()
             self._migrate_evaluation_runs(conn)
+            self._migrate_canonical_traces(conn)
 
     @staticmethod
     def _migrate_evaluation_runs(conn: sqlite3.Connection) -> None:
@@ -244,6 +325,77 @@ class DatabaseManager:
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
             "VALUES (1, datetime('now'), 'Base schema with ledger simulation and unresolved spend columns')"
         )
+
+    @staticmethod
+    def _migrate_canonical_traces(conn: sqlite3.Connection) -> None:
+        """Additive migration 4: Ensure canonical traces and spans tables and indexes exist.
+
+        Preserves all existing tables and data. Safe for existing user databases.
+        """
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "traces" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS traces (
+                    trace_id TEXT PRIMARY KEY,
+                    run_id TEXT,
+                    case_id TEXT,
+                    target_id TEXT,
+                    session_id TEXT,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    start_time TEXT,
+                    end_time TEXT,
+                    attributes_json TEXT NOT NULL DEFAULT '{}',
+                    schema_version INTEGER NOT NULL DEFAULT 1,
+                    source TEXT NOT NULL DEFAULT 'native',
+                    source_ref TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
+                )
+            """)
+        if "spans" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS spans (
+                    trace_id TEXT NOT NULL,
+                    span_id TEXT NOT NULL,
+                    parent_span_id TEXT,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    start_time TEXT,
+                    end_time TEXT,
+                    duration_ms REAL,
+                    provider TEXT,
+                    model TEXT,
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    total_tokens INTEGER,
+                    cost_usd TEXT,
+                    cost_basis TEXT,
+                    attributes_json TEXT NOT NULL DEFAULT '{}',
+                    events_json TEXT NOT NULL DEFAULT '[]',
+                    error_json TEXT,
+                    attempt INTEGER NOT NULL DEFAULT 1,
+                    source TEXT NOT NULL DEFAULT 'native',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (trace_id, span_id),
+                    FOREIGN KEY (trace_id) REFERENCES traces(trace_id) ON DELETE CASCADE
+                )
+            """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_run_id ON traces(run_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_run_case ON traces(run_id, case_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_start_time ON traces(start_time)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_parent ON spans(trace_id, parent_span_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_kind ON spans(trace_id, kind)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_status ON spans(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time)")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+            "VALUES (4, datetime('now'), 'Add canonical traces and spans tables and indexes')"
+        )
+        conn.commit()
 
     def record_transaction(
         self,
@@ -633,3 +785,405 @@ class DatabaseManager:
                 (run_id,),
             )
             return [dict(row) for row in cursor.fetchall()]
+
+    # -------------------------------------------------------------------------
+    # Canonical Trace & Span Persistence (Milestone 2 - Phase 1)
+    # -------------------------------------------------------------------------
+
+    def create_trace(self, trace: Trace) -> None:
+        """Persists a new trace record. Fails with IntegrityError if trace_id already exists."""
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO traces (
+                    trace_id, run_id, case_id, target_id, session_id, name, status,
+                    start_time, end_time, attributes_json, schema_version, source, source_ref, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trace.trace_id,
+                    trace.run_id,
+                    trace.case_id,
+                    trace.target_id,
+                    trace.session_id,
+                    trace.name,
+                    trace.status.value,
+                    trace.start_time.isoformat() if trace.start_time else None,
+                    trace.end_time.isoformat() if trace.end_time else None,
+                    json.dumps(trace.attributes),
+                    trace.schema_version,
+                    trace.source,
+                    trace.source_ref,
+                    trace.created_at.isoformat(),
+                ),
+            )
+            if trace.spans:
+                self._insert_spans_with_conn(conn, trace.spans)
+            conn.commit()
+
+    def save_trace(self, trace: Trace) -> None:
+        """Upserts a trace and any child spans atomically in a single transaction."""
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO traces (
+                    trace_id, run_id, case_id, target_id, session_id, name, status,
+                    start_time, end_time, attributes_json, schema_version, source, source_ref, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(trace_id) DO UPDATE SET
+                    run_id=excluded.run_id,
+                    case_id=excluded.case_id,
+                    target_id=excluded.target_id,
+                    session_id=excluded.session_id,
+                    name=excluded.name,
+                    status=excluded.status,
+                    start_time=excluded.start_time,
+                    end_time=excluded.end_time,
+                    attributes_json=excluded.attributes_json,
+                    schema_version=excluded.schema_version,
+                    source=excluded.source,
+                    source_ref=excluded.source_ref
+                """,
+                (
+                    trace.trace_id,
+                    trace.run_id,
+                    trace.case_id,
+                    trace.target_id,
+                    trace.session_id,
+                    trace.name,
+                    trace.status.value,
+                    trace.start_time.isoformat() if trace.start_time else None,
+                    trace.end_time.isoformat() if trace.end_time else None,
+                    json.dumps(trace.attributes),
+                    trace.schema_version,
+                    trace.source,
+                    trace.source_ref,
+                    trace.created_at.isoformat(),
+                ),
+            )
+            if trace.spans:
+                for span in trace.spans:
+                    self._upsert_span_with_conn(conn, span)
+            conn.commit()
+
+    def create_span(self, span: Span) -> None:
+        """Persists a new span record. Fails with IntegrityError if span already exists."""
+        with self.get_connection() as conn:
+            self._insert_span_with_conn(conn, span)
+            conn.commit()
+
+    def create_spans(self, spans: List[Span]) -> None:
+        """Persists multiple spans in an atomic transaction. Rolls back entirely on failure."""
+        if not spans:
+            return
+        with self.get_connection() as conn:
+            self._insert_spans_with_conn(conn, spans)
+            conn.commit()
+
+    def _insert_span_with_conn(self, conn: sqlite3.Connection, span: Span) -> None:
+        events_json = json.dumps([e.model_dump(mode="json") for e in span.events])
+        conn.execute(
+            """
+            INSERT INTO spans (
+                trace_id, span_id, parent_span_id, name, kind, status,
+                start_time, end_time, duration_ms, provider, model,
+                prompt_tokens, completion_tokens, total_tokens,
+                cost_usd, cost_basis, attributes_json, events_json,
+                error_json, attempt, source, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                span.trace_id,
+                span.span_id,
+                span.parent_span_id,
+                span.name,
+                span.kind.value,
+                span.status.value,
+                span.start_time.isoformat() if span.start_time else None,
+                span.end_time.isoformat() if span.end_time else None,
+                span.duration_ms,
+                span.provider,
+                span.model,
+                span.prompt_tokens,
+                span.completion_tokens,
+                span.total_tokens,
+                span.cost_usd,
+                span.cost_basis,
+                json.dumps(span.attributes),
+                events_json,
+                span.error,
+                span.attempt,
+                span.source,
+                span.created_at.isoformat(),
+            ),
+        )
+
+    def _upsert_span_with_conn(self, conn: sqlite3.Connection, span: Span) -> None:
+        events_json = json.dumps([e.model_dump(mode="json") for e in span.events])
+        conn.execute(
+            """
+            INSERT INTO spans (
+                trace_id, span_id, parent_span_id, name, kind, status,
+                start_time, end_time, duration_ms, provider, model,
+                prompt_tokens, completion_tokens, total_tokens,
+                cost_usd, cost_basis, attributes_json, events_json,
+                error_json, attempt, source, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(trace_id, span_id) DO UPDATE SET
+                parent_span_id=excluded.parent_span_id,
+                name=excluded.name,
+                kind=excluded.kind,
+                status=excluded.status,
+                start_time=excluded.start_time,
+                end_time=excluded.end_time,
+                duration_ms=excluded.duration_ms,
+                provider=excluded.provider,
+                model=excluded.model,
+                prompt_tokens=excluded.prompt_tokens,
+                completion_tokens=excluded.completion_tokens,
+                total_tokens=excluded.total_tokens,
+                cost_usd=excluded.cost_usd,
+                cost_basis=excluded.cost_basis,
+                attributes_json=excluded.attributes_json,
+                events_json=excluded.events_json,
+                error_json=excluded.error_json,
+                attempt=excluded.attempt,
+                source=excluded.source
+            """,
+            (
+                span.trace_id,
+                span.span_id,
+                span.parent_span_id,
+                span.name,
+                span.kind.value,
+                span.status.value,
+                span.start_time.isoformat() if span.start_time else None,
+                span.end_time.isoformat() if span.end_time else None,
+                span.duration_ms,
+                span.provider,
+                span.model,
+                span.prompt_tokens,
+                span.completion_tokens,
+                span.total_tokens,
+                span.cost_usd,
+                span.cost_basis,
+                json.dumps(span.attributes),
+                events_json,
+                span.error,
+                span.attempt,
+                span.source,
+                span.created_at.isoformat(),
+            ),
+        )
+
+    def _insert_spans_with_conn(self, conn: sqlite3.Connection, spans: List[Span]) -> None:
+        for span in spans:
+            self._insert_span_with_conn(conn, span)
+
+    def get_trace(self, trace_id: str, include_spans: bool = True) -> Optional[Trace]:
+        """Fetches a trace by ID. Optionally populates child spans."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM traces WHERE trace_id = ?", (trace_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            spans: List[Span] = []
+            if include_spans:
+                s_cursor = conn.execute(
+                    "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time ASC, created_at ASC",
+                    (trace_id,),
+                )
+                spans = [self._row_to_span(r) for r in s_cursor.fetchall()]
+            return self._row_to_trace(row, spans=spans)
+
+    def get_spans(self, trace_id: str) -> List[Span]:
+        """Fetches all spans for a given trace ordered chronologically."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time ASC, created_at ASC",
+                (trace_id,),
+            )
+            return [self._row_to_span(r) for r in cursor.fetchall()]
+
+    def get_spans_by_parent(self, trace_id: str, parent_span_id: Optional[str]) -> List[Span]:
+        """Fetches spans within a trace filtered by immediate parent span."""
+        with self.get_connection() as conn:
+            if parent_span_id is None:
+                cursor = conn.execute(
+                    "SELECT * FROM spans WHERE trace_id = ? AND parent_span_id IS NULL ORDER BY start_time ASC, created_at ASC",
+                    (trace_id,),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM spans WHERE trace_id = ? AND parent_span_id = ? ORDER BY start_time ASC, created_at ASC",
+                    (trace_id, parent_span_id),
+                )
+            return [self._row_to_span(r) for r in cursor.fetchall()]
+
+    def get_traces_for_run(self, run_id: str, include_spans: bool = False) -> List[Trace]:
+        """Returns all traces associated with a specific evaluation run."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM traces WHERE run_id = ? ORDER BY start_time ASC, created_at ASC",
+                (run_id,),
+            )
+            rows = cursor.fetchall()
+            traces = []
+            for r in rows:
+                spans = self.get_spans(r["trace_id"]) if include_spans else []
+                traces.append(self._row_to_trace(r, spans=spans))
+            return traces
+
+    def get_traces_for_case(self, run_id: str, case_id: str, include_spans: bool = False) -> List[Trace]:
+        """Returns all traces for a specific run case."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM traces WHERE run_id = ? AND case_id = ? ORDER BY start_time ASC, created_at ASC",
+                (run_id, case_id),
+            )
+            rows = cursor.fetchall()
+            traces = []
+            for r in rows:
+                spans = self.get_spans(r["trace_id"]) if include_spans else []
+                traces.append(self._row_to_trace(r, spans=spans))
+            return traces
+
+    def update_trace_status(
+        self,
+        trace_id: str,
+        status: SpanStatus,
+        end_time: Optional[datetime] = None,
+    ) -> None:
+        """Updates the status and optional end_time of an existing trace."""
+        with self.get_connection() as conn:
+            cur = conn.execute("SELECT 1 FROM traces WHERE trace_id = ?", (trace_id,))
+            if not cur.fetchone():
+                raise KeyError(f"Trace not found: {trace_id}")
+
+            status_val = status.value if hasattr(status, "value") else str(status)
+            if end_time is not None:
+                dt = _to_utc_dt(end_time)
+                end_iso = dt.isoformat() if dt else None
+                conn.execute(
+                    "UPDATE traces SET status = ?, end_time = ? WHERE trace_id = ?",
+                    (status_val, end_iso, trace_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE traces SET status = ? WHERE trace_id = ?",
+                    (status_val, trace_id),
+                )
+            conn.commit()
+
+    def update_span_status(
+        self,
+        trace_id: str,
+        span_id: str,
+        status: SpanStatus,
+        end_time: Optional[datetime] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Updates status, end_time, and sanitized error for an existing span."""
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "SELECT start_time FROM spans WHERE trace_id = ? AND span_id = ?",
+                (trace_id, span_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise KeyError(f"Span not found: trace_id={trace_id}, span_id={span_id}")
+
+            from runport.providers.base import scrub_secrets
+
+            status_val = status.value if hasattr(status, "value") else str(status)
+            scrubbed_error = scrub_secrets(str(error)) if error is not None else None
+
+            if end_time is not None:
+                dt = _to_utc_dt(end_time)
+                end_iso = dt.isoformat() if dt else None
+                start_iso = row["start_time"]
+                duration_ms = None
+                if start_iso and dt:
+                    start_dt = datetime.fromisoformat(start_iso)
+                    if dt < start_dt:
+                        raise ValueError(f"end_time ({dt}) cannot be earlier than start_time ({start_dt})")
+                    duration_ms = max(0.0, round((dt - start_dt).total_seconds() * 1000.0, 3))
+
+                conn.execute(
+                    """
+                    UPDATE spans 
+                    SET status = ?, end_time = ?, duration_ms = COALESCE(?, duration_ms), error_json = COALESCE(?, error_json)
+                    WHERE trace_id = ? AND span_id = ?
+                    """,
+                    (status_val, end_iso, duration_ms, scrubbed_error, trace_id, span_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE spans 
+                    SET status = ?, error_json = COALESCE(?, error_json)
+                    WHERE trace_id = ? AND span_id = ?
+                    """,
+                    (status_val, scrubbed_error, trace_id, span_id),
+                )
+            conn.commit()
+
+    @staticmethod
+    def _row_to_trace(row: sqlite3.Row, spans: Optional[List[Span]] = None) -> Trace:
+        from runport.traces.domain import SpanStatus, Trace
+
+        return Trace(
+            trace_id=row["trace_id"],
+            run_id=row["run_id"],
+            case_id=row["case_id"],
+            target_id=row["target_id"],
+            session_id=row["session_id"],
+            name=row["name"],
+            status=SpanStatus(row["status"]),
+            start_time=datetime.fromisoformat(row["start_time"]) if row["start_time"] else None,
+            end_time=datetime.fromisoformat(row["end_time"]) if row["end_time"] else None,
+            attributes=json.loads(row["attributes_json"]) if row["attributes_json"] else {},
+            schema_version=row["schema_version"],
+            source=row["source"],
+            source_ref=row["source_ref"],
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc),
+            spans=spans or [],
+        )
+
+    @staticmethod
+    def _row_to_span(row: sqlite3.Row) -> Span:
+        from runport.traces.domain import Span, SpanEvent, SpanKind, SpanStatus
+
+        events_data = json.loads(row["events_json"]) if row["events_json"] else []
+        events = [
+            SpanEvent(
+                name=e["name"],
+                timestamp=e["timestamp"],
+                attributes=e.get("attributes", {}),
+            )
+            for e in events_data
+        ]
+        return Span(
+            trace_id=row["trace_id"],
+            span_id=row["span_id"],
+            parent_span_id=row["parent_span_id"],
+            name=row["name"],
+            kind=SpanKind(row["kind"]),
+            status=SpanStatus(row["status"]),
+            start_time=datetime.fromisoformat(row["start_time"]) if row["start_time"] else None,
+            end_time=datetime.fromisoformat(row["end_time"]) if row["end_time"] else None,
+            duration_ms=row["duration_ms"],
+            provider=row["provider"],
+            model=row["model"],
+            prompt_tokens=row["prompt_tokens"],
+            completion_tokens=row["completion_tokens"],
+            total_tokens=row["total_tokens"],
+            cost_usd=row["cost_usd"],
+            cost_basis=row["cost_basis"],
+            attributes=json.loads(row["attributes_json"]) if row["attributes_json"] else {},
+            events=events,
+            error=row["error_json"],
+            attempt=row["attempt"],
+            source=row["source"],
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc),
+        )
