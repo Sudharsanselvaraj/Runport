@@ -122,6 +122,8 @@ class TargetResult:
     # False only when the target is certain nothing left this machine (e.g. a missing API key was caught before
     # sending). None means unknown, which the runner treats as "possibly sent".
     request_sent: Optional[bool] = None
+    trajectory: Optional[List[Any]] = None
+    trace_id: Optional[str] = None
 
     @property
     def is_success(self) -> bool:

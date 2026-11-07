@@ -30,12 +30,14 @@ import time
 import urllib.error
 import urllib.request
 from collections import deque
+import uuid
 from typing import IO, Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from runport import __version__
 from runport.core.security import validate_safe_url
 from runport.providers.base import scrub_secrets
 from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus, TargetType, billing_for_url
+from runport.traces.domain import Span, SpanKind, SpanStatus
 
 LATEST_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -801,6 +803,7 @@ class McpToolTarget(Target):
         message: str,
         metadata: Dict[str, Any],
         latency_ms: Optional[float] = None,
+        trajectory: Optional[List[Any]] = None,
     ) -> TargetResult:
         return TargetResult(
             target_id=self.target_id,
@@ -811,6 +814,7 @@ class McpToolTarget(Target):
             error_code=code,
             error_message=self._clean(message),
             metadata=self._clean(metadata),
+            trajectory=trajectory,
         )
 
     def execute(self, input_payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> TargetResult:
@@ -867,7 +871,18 @@ class McpToolTarget(Target):
             except McpRpcError as e:
                 elapsed = (time.perf_counter() - started) * 1000.0
                 meta["tool_latency_ms"] = elapsed
-                return self._fail(TargetStatus.FAILED, e.code, f"JSON-RPC error from tools/call: {e}", meta, latency_ms=elapsed)
+                tool_span = Span(
+                    trace_id="pending",
+                    span_id=f"sp-mcp-{uuid.uuid4().hex[:10]}",
+                    parent_span_id=None,
+                    name=f"mcp:{tool}",
+                    kind=SpanKind.TOOL,
+                    status=SpanStatus.ERROR,
+                    duration_ms=round(elapsed, 3),
+                    attributes=scrub_secrets({"tool": tool, "arguments": arguments}),
+                    error=str(e),
+                )
+                return self._fail(TargetStatus.FAILED, e.code, f"JSON-RPC error from tools/call: {e}", meta, latency_ms=elapsed, trajectory=[tool_span])
             except McpError as e:
                 elapsed = (time.perf_counter() - started) * 1000.0
                 meta["tool_latency_ms"] = elapsed if isinstance(e, McpTimeoutError) else None
@@ -875,7 +890,18 @@ class McpToolTarget(Target):
                 if diag:
                     meta["server_stderr_tail"] = diag
                 status = TargetStatus.TIMEOUT if isinstance(e, McpTimeoutError) else TargetStatus.FAILED
-                return self._fail(status, e.code, str(e), meta, latency_ms=elapsed)
+                tool_span = Span(
+                    trace_id="pending",
+                    span_id=f"sp-mcp-{uuid.uuid4().hex[:10]}",
+                    parent_span_id=None,
+                    name=f"mcp:{tool}",
+                    kind=SpanKind.TOOL,
+                    status=SpanStatus.TIMEOUT if isinstance(e, McpTimeoutError) else SpanStatus.ERROR,
+                    duration_ms=round(elapsed, 3) if isinstance(e, McpTimeoutError) else None,
+                    attributes=scrub_secrets({"tool": tool, "arguments": arguments}),
+                    error=str(e),
+                )
+                return self._fail(status, e.code, str(e), meta, latency_ms=elapsed, trajectory=[tool_span])
             elapsed = (time.perf_counter() - started) * 1000.0
 
         meta["tool_latency_ms"] = elapsed
@@ -887,6 +913,26 @@ class McpToolTarget(Target):
         meta["is_error"] = bool(result.get("isError"))
         raw_output = self._clean(result)
 
+        is_err = bool(result.get("isError"))
+        err_msg = self._clean("\n".join(texts) or "tool reported isError without text content") if is_err else None
+        tool_span = Span(
+            trace_id="pending",
+            span_id=f"sp-mcp-{uuid.uuid4().hex[:10]}",
+            parent_span_id=None,
+            name=f"mcp:{tool}",
+            kind=SpanKind.TOOL,
+            status=SpanStatus.ERROR if is_err else SpanStatus.OK,
+            duration_ms=round(elapsed, 3),
+            attributes=scrub_secrets({
+                "tool": tool,
+                "arguments": arguments,
+                "server_info": meta.get("server_info"),
+                "protocol_version": meta.get("protocol_version"),
+                "content_types": meta.get("content_types"),
+            }),
+            error=err_msg,
+        )
+
         if result.get("isError") is True:
             return TargetResult(
                 target_id=self.target_id,
@@ -896,8 +942,9 @@ class McpToolTarget(Target):
                 cost_usd=None,
                 cost_basis=CostBasis.UNAVAILABLE,
                 error_code="TOOL_ERROR",
-                error_message=self._clean("\n".join(texts) or "tool reported isError without text content"),
+                error_message=err_msg,
                 metadata=self._clean(meta),
+                trajectory=[tool_span],
             )
 
         if texts:
@@ -918,4 +965,5 @@ class McpToolTarget(Target):
             cost_basis=CostBasis.UNAVAILABLE,
             error_code=None if output_text is not None else "EMPTY_TOOL_RESULT",
             metadata=self._clean(meta),
+            trajectory=[tool_span],
         )

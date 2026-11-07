@@ -189,6 +189,7 @@ def post_chat_stream(
 
 
 from runport.core.security import validate_safe_url
+from runport.providers.base import scrub_secrets
 from runport.targets.base import (
     BillingMode,
     CostBasis,
@@ -199,6 +200,80 @@ from runport.targets.base import (
     TargetType,
     billing_for_url,
 )
+from runport.traces.domain import Span, SpanKind, SpanStatus
+
+
+def _build_dify_node_spans(node_list: List[Dict[str, Any]]) -> List[Span]:
+    import uuid
+
+    spans: List[Span] = []
+    for idx, node in enumerate(node_list):
+        if not isinstance(node, dict):
+            continue
+        node_id = str(node.get("node_id") or node.get("id") or f"node-{idx}")
+        title = str(node.get("title") or node.get("node_type") or node_id)
+        raw_type = str(node.get("node_type") or "").lower()
+
+        if raw_type in ("llm", "llm-node"):
+            kind = SpanKind.LLM
+        elif raw_type in ("knowledge-retrieval", "retrieval"):
+            kind = SpanKind.RETRIEVAL
+        elif raw_type in ("tool", "api_tool"):
+            kind = SpanKind.TOOL
+        elif raw_type in ("agent", "agent-node"):
+            kind = SpanKind.AGENT
+        else:
+            kind = SpanKind.WORKFLOW_STEP
+
+        raw_status = str(node.get("status") or "").lower()
+        if raw_status in ("succeeded", "success"):
+            status = SpanStatus.OK
+        elif raw_status in ("failed", "error"):
+            status = SpanStatus.ERROR
+        elif raw_status in ("stopped", "cancelled"):
+            status = SpanStatus.CANCELLED
+        else:
+            status = SpanStatus.UNSET
+
+        elapsed = node.get("elapsed_time")
+        duration_ms = None
+        if elapsed is not None:
+            try:
+                val = float(elapsed)
+                duration_ms = round(val * 1000.0 if val < 500.0 else val, 3)
+            except (ValueError, TypeError):
+                duration_ms = None
+
+        exec_meta = node.get("execution_metadata") or {}
+        p_tokens = exec_meta.get("prompt_tokens")
+        c_tokens = exec_meta.get("completion_tokens")
+        t_tokens = exec_meta.get("total_tokens")
+
+        attrs: Dict[str, Any] = {
+            "node_id": node_id,
+            "node_type": raw_type,
+        }
+        if "inputs" in node:
+            attrs["inputs"] = node["inputs"]
+        if "outputs" in node:
+            attrs["outputs"] = node["outputs"]
+
+        span = Span(
+            trace_id="pending",
+            span_id=f"sp-dify-{uuid.uuid4().hex[:10]}",
+            parent_span_id=None,
+            name=title,
+            kind=kind,
+            status=status,
+            duration_ms=duration_ms,
+            prompt_tokens=p_tokens,
+            completion_tokens=c_tokens,
+            total_tokens=t_tokens,
+            attributes=scrub_secrets(attrs),
+            error=scrub_secrets(str(node.get("error"))) if node.get("error") else None,
+        )
+        spans.append(span)
+    return spans
 
 
 class DifyConnector(Target):
@@ -409,6 +484,11 @@ class DifyConnector(Target):
             if cost_usd is not None:
                 cost_basis = CostBasis.ESTIMATED
 
+        trajectory = None
+        node_records = metadata.get("per_node_data")
+        if node_records and isinstance(node_records, list):
+            trajectory = _build_dify_node_spans(node_records)
+
         return TargetResult(
             target_id=self.target_id,
             status=TargetStatus.SUCCESS if output_text is not None else TargetStatus.INVALID_OUTPUT,
@@ -419,4 +499,5 @@ class DifyConnector(Target):
             cost_usd=cost_usd,
             cost_basis=cost_basis,
             metadata=metadata,
+            trajectory=trajectory,
         )

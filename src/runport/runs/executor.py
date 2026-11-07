@@ -10,6 +10,7 @@ Guard Order:
 7. Spend Booking (booked as UNRESOLVED if cost is unknown/missing)
 """
 
+from datetime import datetime, timezone
 from decimal import Decimal
 import time
 import uuid
@@ -20,10 +21,38 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from runport.core.approvers import BaseApprover
 from runport.core.budget import BudgetExceededError, BudgetService
 from runport.core.workspace import WorkspaceConfig
-from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError
+from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError, scrub_secrets
 from runport.runs.planner import ExecutionPlan
 from runport.storage.db import DatabaseManager
-from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus
+from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus, TargetType
+from runport.traces.domain import Span, SpanKind, SpanStatus, Trace
+
+
+def _map_target_to_span_kind(target: Any) -> SpanKind:
+    ttype = getattr(target, "target_type", None)
+    if ttype == TargetType.RAW_MODEL:
+        return SpanKind.LLM
+    if ttype == TargetType.MCP_TOOL:
+        return SpanKind.TOOL
+    if ttype == TargetType.WORKFLOW_LANGGRAPH:
+        return SpanKind.AGENT
+    if ttype in (
+        TargetType.WORKFLOW_DIFY,
+        TargetType.WORKFLOW_FLOWISE,
+        TargetType.WORKFLOW_LANGFLOW,
+        TargetType.WORKFLOW_N8N,
+        TargetType.WORKFLOW_HTTP,
+    ):
+        return SpanKind.WORKFLOW_STEP
+    return SpanKind.OTHER
+
+
+def _map_target_status_to_span_status(status: TargetStatus) -> SpanStatus:
+    if status == TargetStatus.SUCCESS:
+        return SpanStatus.OK
+    if status == TargetStatus.TIMEOUT:
+        return SpanStatus.TIMEOUT
+    return SpanStatus.ERROR
 
 
 def _mean(values: Any) -> Optional[float]:
@@ -145,6 +174,7 @@ class GenericRunner:
 
             total_lat = 0.0
             persisted_results: List[Dict[str, Any]] = []
+            persisted_traces: List[Trace] = []
 
             for case in cases:
                 case_id = str(case.get("id") or case.get("case_id") or "case")
@@ -183,6 +213,7 @@ class GenericRunner:
                 if plan.is_live:
                     self._emit(kind="REQUEST_STARTED", request_id=request_id, run_id=run_id, case_id=case_id, model_key=target_id)
                 t0 = time.perf_counter()
+                case_start_utc = datetime.now(timezone.utc)
                 try:
                     res = target.execute(case)
                 except Exception as exc:
@@ -195,7 +226,8 @@ class GenericRunner:
                         is_replay=not plan.is_live,
                         provenance="REPLAYED" if not plan.is_live else "LIVE",
                     )
-                elapsed_ms = res.latency_ms or ((time.perf_counter() - t0) * 1000.0)
+                case_end_utc = datetime.now(timezone.utc)
+                elapsed_ms = res.latency_ms if res.latency_ms is not None else ((time.perf_counter() - t0) * 1000.0)
                 total_lat += elapsed_ms
 
                 # --- Guard 5: Strict Validation ---
@@ -241,6 +273,87 @@ class GenericRunner:
                         or ("" if scores else "Not scored: apply a scorer from runport.scorers to case_results."),
                     }
                 )
+
+                # Canonical Trace & Span Instrumentation
+                trace_id = res.trace_id or f"tr-{uuid.uuid4().hex[:16]}"
+                res.trace_id = trace_id
+                root_span_id = f"sp-{uuid.uuid4().hex[:12]}"
+
+                root_kind = _map_target_to_span_kind(target)
+                root_status = _map_target_status_to_span_status(res.status)
+
+                cost_usd_str = f"{res.cost_usd:.6f}" if res.cost_usd is not None else None
+                cost_basis_str = (
+                    res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
+                ) if res.cost_basis is not None else None
+
+                tot_tokens = (
+                    res.tokens_in + res.tokens_out
+                ) if (res.tokens_in is not None and res.tokens_out is not None) else None
+
+                root_attrs: Dict[str, Any] = {
+                    "target_id": target_id,
+                    "target_type": target.target_type.value if hasattr(target, "target_type") else "unknown",
+                    "is_replay": not plan.is_live or res.is_replay,
+                    "provenance": res.provenance,
+                }
+                if res.metadata:
+                    root_attrs["metadata"] = scrub_secrets(res.metadata)
+
+                root_span = Span(
+                    trace_id=trace_id,
+                    span_id=root_span_id,
+                    parent_span_id=None,
+                    name=target_id,
+                    kind=root_kind,
+                    status=root_status,
+                    start_time=case_start_utc,
+                    end_time=case_end_utc,
+                    duration_ms=round(elapsed_ms, 3) if elapsed_ms is not None else None,
+                    provider=getattr(target, "provider_name", None),
+                    model=getattr(target, "model_id", None) or target_id,
+                    prompt_tokens=res.tokens_in,
+                    completion_tokens=res.tokens_out,
+                    total_tokens=tot_tokens,
+                    cost_usd=cost_usd_str,
+                    cost_basis=cost_basis_str,
+                    attributes=root_attrs,
+                    error=scrub_secrets(res.error_message) if res.status != TargetStatus.SUCCESS else None,
+                )
+
+                child_spans: List[Span] = []
+                if res.trajectory:
+                    for child in res.trajectory:
+                        if isinstance(child, Span):
+                            up: Dict[str, Any] = {"trace_id": trace_id}
+                            if child.parent_span_id is None:
+                                up["parent_span_id"] = root_span_id
+                            child_spans.append(child.model_copy(update=up))
+                        elif isinstance(child, dict):
+                            c_dict = dict(child)
+                            c_dict["trace_id"] = trace_id
+                            if c_dict.get("parent_span_id") is None:
+                                c_dict["parent_span_id"] = root_span_id
+                            child_spans.append(Span.model_validate(c_dict))
+
+                trace = Trace(
+                    trace_id=trace_id,
+                    run_id=run_id,
+                    case_id=case_id,
+                    target_id=target_id,
+                    name=f"{target_id}:{case_id}",
+                    status=root_status,
+                    start_time=case_start_utc,
+                    end_time=case_end_utc,
+                    attributes={
+                        "dataset_path": plan.dataset_path,
+                        "plan_id": plan.plan_id,
+                        "fingerprint": plan.fingerprint,
+                        "is_live": plan.is_live,
+                    },
+                    spans=[root_span, *child_spans],
+                )
+                persisted_traces.append(trace)
 
                 # --- Guard 7: Spend Booking ---
                 # Unknown cost never becomes $0.00 for a target that may bill: it is booked UNRESOLVED and the run
@@ -344,6 +457,9 @@ class GenericRunner:
             self.db.save_evaluation_run(run_dict)
             if persisted_results:
                 self.db.save_evaluation_results(persisted_results)
+            if persisted_traces:
+                for trace in persisted_traces:
+                    self.db.save_trace(trace)
 
             run_results.append(run_res)
             if run_res.halted_reason:

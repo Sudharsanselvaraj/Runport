@@ -59,6 +59,11 @@ class PythonCallableTarget(Target):
             raw_output = self._callable(input_payload)
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
+            if isinstance(raw_output, TargetResult):
+                if raw_output.latency_ms is None:
+                    raw_output.latency_ms = elapsed_ms
+                return raw_output
+
             if isinstance(raw_output, dict):
                 output_text = raw_output.get("output") or raw_output.get("answer") or json.dumps(raw_output)
             else:
