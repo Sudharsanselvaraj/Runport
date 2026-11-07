@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from runport import __version__
-from runport.api.routes import budget, datasets, events, models, plan, reports, runs, setup, targets
+from runport.api.routes import budget, datasets, events, models, plan, reports, runs, setup, targets, traces
 
 
 _PUBLIC_API_PATHS = frozenset({"/api/health", "/api/docs", "/api/openapi.json", "/api/redoc"})
@@ -101,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(runs.router, prefix="/api")
     app.include_router(reports.router, prefix="/api")
     app.include_router(events.router, prefix="/api")
+    app.include_router(traces.router, prefix="/api")
 
     @app.get("/api/health")
     def health_check():

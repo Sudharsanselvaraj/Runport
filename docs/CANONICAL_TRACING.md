@@ -196,5 +196,6 @@ CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
 | Target-specific span extraction (Dify, MCP, RAG) | **Implemented (Phase 2)** | `per_step_trace`, MCP tool calls, RAG retrieval |
 | `TargetResult.trajectory` field | **Implemented (Phase 2)** | Typed `Span` sequence container |
 | Trajectory evaluators (`ToolSelectionScorer`, `ToolArgumentScorer`, `LoopDetectionScorer`, `StepBudgetScorer`, `RecoveryScorer`) | **Implemented (Phase 3)** | `runport.scorers.tools`, `runport.scorers.trajectory` |
-| Web Dashboard Trace Waterfall / Tree View | **Planned (Phase 4)** | Next phase |
-| OTLP Export & OpenInference Interoperability | **Planned (Phase 5)** | After Phase 4 |
+| Terminal Tree/Panel View & CLI (`runport trace`, `runport traces`) | **Implemented (Phase 4)** | Rich tree, panel, table |
+| Web Dashboard Trace Waterfall / Tree View & REST API | **Implemented (Phase 4)** | Interactive React Gantt timeline & inspector drawer |
+| OTLP Export & OpenInference Interoperability | **Planned (Phase 5)** | Next phase |

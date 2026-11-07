@@ -1048,6 +1048,20 @@ class DatabaseManager:
                 traces.append(self._row_to_trace(r, spans=spans))
             return traces
 
+    def list_traces(self, limit: int = 50, include_spans: bool = False) -> List[Trace]:
+        """Returns the most recent canonical traces across all runs."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM traces ORDER BY start_time DESC, created_at DESC LIMIT ?",
+                (max(1, limit),),
+            )
+            rows = cursor.fetchall()
+            traces = []
+            for r in rows:
+                spans = self.get_spans(r["trace_id"]) if include_spans else []
+                traces.append(self._row_to_trace(r, spans=spans))
+            return traces
+
     def update_trace_status(
         self,
         trace_id: str,

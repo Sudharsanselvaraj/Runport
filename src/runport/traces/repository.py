@@ -54,6 +54,10 @@ class TraceRepository:
         """Returns all traces for a specific run case."""
         return self.db.get_traces_for_case(run_id, case_id, include_spans=include_spans)
 
+    def list_traces(self, limit: int = 50, include_spans: bool = False) -> List[Trace]:
+        """Returns the most recent canonical traces across all runs."""
+        return self.db.list_traces(limit=limit, include_spans=include_spans)
+
     def update_trace_status(
         self,
         trace_id: str,

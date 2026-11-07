@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import TraceView from './components/TraceView'
 import {
   Sliders,
   Cpu,
@@ -171,7 +172,7 @@ interface ReportData {
   classification_report?: Record<string, { precision: number; recall: number; f1: number; support: number }>
 }
 
-type TabId = 'setup' | 'models' | 'targets' | 'datasets' | 'plan' | 'liverun' | 'results' | 'compare' | 'reports' | 'budget'
+type TabId = 'setup' | 'models' | 'targets' | 'datasets' | 'plan' | 'liverun' | 'results' | 'traces' | 'compare' | 'reports' | 'budget'
 
 const NAV_GROUPS: { label: string | null; items: { id: TabId; label: string; icon: LucideIcon }[] }[] = [
   { label: null, items: [{ id: 'setup', label: 'Overview', icon: Home }] },
@@ -181,6 +182,7 @@ const NAV_GROUPS: { label: string | null; items: { id: TabId; label: string; ico
       { id: 'plan', label: 'Plans', icon: FileText },
       { id: 'liverun', label: 'Runs', icon: Play },
       { id: 'results', label: 'Results', icon: CheckCircle2 },
+      { id: 'traces', label: 'Traces', icon: Activity },
       { id: 'compare', label: 'Compare', icon: GitCompare },
     ],
   },
@@ -206,6 +208,7 @@ const PAGE_INFO: Record<TabId, { title: string; description: string }> = {
   plan: { title: 'Plans', description: 'Fingerprinted benchmark plans with worst-case spend, checked before anything is sent.' },
   liverun: { title: 'Runs', description: 'Approve and execute plans, or replay recorded outputs at zero spend.' },
   results: { title: 'Results', description: 'Per-run and per-case outcomes. Unmeasured metrics show as unavailable, not zero.' },
+  traces: { title: 'Traces', description: 'Interactive span waterfall, tool executions, and step-level agent trajectory inspector.' },
   compare: { title: 'Compare', description: 'Two runs side by side.' },
   targets: { title: 'Targets', description: 'Models, endpoints and workspace targets you can benchmark, plus a guarded probe.' },
   models: { title: 'Models', description: 'Catalog models with verified pricing.' },
@@ -332,6 +335,7 @@ export default function App() {
   // Screen 7: Results
   const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [runDetail, setRunDetail] = useState<any | null>(null)
+  const [activeTraceId, setActiveTraceId] = useState<string>('')
 
   // Screen 8: Compare runs
   const [compareRunIdA, setCompareRunIdA] = useState<string>('')
@@ -1570,6 +1574,7 @@ export default function App() {
                           <th>Tokens (In/Out)</th>
                           <th>Cost USD</th>
                           <th>Score (kind)</th>
+                          <th>Trace</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1604,6 +1609,20 @@ export default function App() {
                                 <span className="badge badge-info">UNSCORED</span>
                               )}
                             </td>
+                            <td>
+                              <button
+                                className="button button-secondary"
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.725rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                                onClick={() => {
+                                  setActiveTraceId(res.trace_id || '')
+                                  handleSelectTab('traces')
+                                }}
+                                title="Inspect Execution Trace Waterfall"
+                              >
+                                <Activity size={12} color="var(--accent-blue)" />
+                                Trace
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1613,6 +1632,15 @@ export default function App() {
               )}
             </div>
           </div>
+        )}
+
+        {/* ----------------- SCREEN: TRACES ----------------- */}
+        {activeTab === 'traces' && (
+          <TraceView
+            initialRunId={selectedRunId}
+            initialTraceId={activeTraceId}
+            runsList={runsList}
+          />
         )}
 
         {/* ----------------- SCREEN 8: COMPARE RUNS ----------------- */}

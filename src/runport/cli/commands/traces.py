@@ -12,6 +12,58 @@ console = Console()
 
 
 def register_trace_commands(app: typer.Typer) -> None:
+    @app.command("trace")
+    def view_trace(
+        trace_id: str = typer.Argument(..., help="Trace ID to view (e.g. tr-1234...)"),
+    ) -> None:
+        """Inspect a canonical trace execution tree and span waterfall."""
+        from runport.core.config import settings
+        from runport.storage.db import DatabaseManager
+        from runport.traces.repository import TraceRepository
+        from runport.tui.traces_view import render_trace_panel, render_trace_tree
+
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        repo = TraceRepository(db=db)
+
+        trace = repo.get_trace(trace_id, include_spans=True)
+        if not trace:
+            console.print(f"[bold red]Trace '{trace_id}' not found.[/bold red]")
+            raise typer.Exit(code=1)
+
+        console.print(render_trace_panel(trace))
+        console.print()
+        console.print(render_trace_tree(trace))
+
+    @app.command("traces")
+    def list_traces_cmd(
+        run_id: Optional[str] = typer.Option(None, "--run", "-r", help="Filter by evaluation run ID"),
+        case_id: Optional[str] = typer.Option(None, "--case", "-c", help="Filter by benchmark case ID"),
+        limit: int = typer.Option(20, "--limit", "-n", help="Maximum number of traces to list"),
+    ) -> None:
+        """List stored canonical traces from benchmark runs."""
+        from runport.core.config import settings
+        from runport.storage.db import DatabaseManager
+        from runport.traces.repository import TraceRepository
+        from runport.tui.traces_view import render_traces_table
+
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        repo = TraceRepository(db=db)
+
+        if run_id and case_id:
+            traces = repo.get_traces_for_case(run_id, case_id, include_spans=True)
+        elif run_id:
+            traces = repo.get_traces_for_run(run_id, include_spans=True)
+        else:
+            traces = repo.list_traces(limit=limit, include_spans=True)
+
+        if not traces:
+            console.print("[dim]No canonical traces found matching criteria.[/dim]")
+            return
+
+        console.print(render_traces_table(traces))
+
     @app.command("export-traces")
     def export_traces_cmd(
         fmt: str = typer.Option("zip", "--format", "-f", help="jsonl, csv or zip (zip = per-model files, comparison file and manifest)."),
