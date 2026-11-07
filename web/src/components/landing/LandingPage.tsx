@@ -35,8 +35,8 @@ export const LandingPage: React.FC = () => (
       <Suspense fallback={<div className="rp-lazy rp-lazy-bento" aria-hidden="true" />}>
         <BentoSection />
       </Suspense>
-      <MetricsSection />
       <RunAnywhere />
+      <MetricsSection />
       <FAQSection />
       <FinalCTA />
     </main>
