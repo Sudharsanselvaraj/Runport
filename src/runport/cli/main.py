@@ -5,6 +5,18 @@ from typing import List, Optional
 import typer
 from rich.console import Console
 
+# Gracefully handle console encodings on legacy Windows consoles without UTF-8
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(errors="replace")
+    except Exception:
+        pass
+
 console = Console()
 
 

@@ -1,5 +1,6 @@
 """Dataset validation and ground-truth annotation CLI commands."""
 
+import sys
 from pathlib import Path
 import typer
 from rich.console import Console
@@ -7,6 +8,15 @@ from rich.panel import Panel
 from rich.table import Table
 
 console = Console()
+
+
+def _safe_symbol(unicode_sym: str, ascii_fallback: str) -> str:
+    try:
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        unicode_sym.encode(enc)
+        return unicode_sym
+    except Exception:
+        return ascii_fallback
 
 
 def register_dataset_commands(app: typer.Typer) -> None:
@@ -84,18 +94,20 @@ def register_dataset_commands(app: typer.Typer) -> None:
             console.print(leak_table)
 
         if summary.is_valid:
+            pass_mark = _safe_symbol("✓", "[PASS]")
             console.print(
                 Panel(
-                    f"[bold green]✓ DATASET VALIDATION PASSED[/bold green]\n"
+                    f"[bold green]{pass_mark} DATASET VALIDATION PASSED[/bold green]\n"
                     f"Total Cases: {summary.total_cases} | Zero Leakage Detected | Confidentiality Invariants Satisfied",
                     border_style="green",
                 )
             )
         else:
+            fail_mark = _safe_symbol("✗", "[FAIL]")
             err_msg = "\n".join(f"• {e}" for e in summary.validation_errors)
             console.print(
                 Panel(
-                    f"[bold red]✗ DATASET VALIDATION FAILED[/bold red]\n{err_msg}",
+                    f"[bold red]{fail_mark} DATASET VALIDATION FAILED[/bold red]\n{err_msg}",
                     border_style="red",
                 )
             )

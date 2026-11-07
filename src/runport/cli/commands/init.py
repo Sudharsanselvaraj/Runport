@@ -1,5 +1,6 @@
 """Workspace initialization CLI command."""
 
+import sys
 from pathlib import Path
 import typer
 from rich.console import Console
@@ -8,6 +9,15 @@ from rich.panel import Panel
 from runport.core.workspace import init_workspace
 
 console = Console()
+
+
+def _safe_checkmark() -> str:
+    try:
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        "✓".encode(enc)
+        return "✓"
+    except Exception:
+        return "[OK]"
 
 
 def register_init_command(app: typer.Typer) -> None:
@@ -20,9 +30,10 @@ def register_init_command(app: typer.Typer) -> None:
         """Initialize a new Runport workspace configuration and directory tree."""
         try:
             cfg_path = init_workspace(directory, name=name, force=force)
+            mark = _safe_checkmark()
             console.print(
                 Panel(
-                    f"[bold green]✓ Runport Workspace Initialized Successfully[/bold green]\n\n"
+                    f"[bold green]{mark} Runport Workspace Initialized Successfully[/bold green]\n\n"
                     f"Configuration: [bold white]{cfg_path.resolve()}[/bold white]\n"
                     f"Evaluation:    [dim]{(directory / 'data' / 'evaluation').resolve()}[/dim]\n"
                     f"Reports:       [dim]{(directory / 'reports').resolve()}[/dim]\n\n"
