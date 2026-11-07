@@ -84,7 +84,7 @@ Runport has moved beyond a CLI prototype. Its core engine is a battle-tested, gu
 * **Current State**: Configured in `pyproject.toml` with console script `runport = "runport.cli:app"`. Release workflow `.github/workflows/release.yml` triggers on `v*` tags using PyPI Trusted Publishing.
 * **Gaps**:
   1. `runport` is **unclaimed on PyPI** (HTTP 404). High risk of name squatting.
-  2. Release workflow builds and publishes in a single monolithic job without intermediate artifact attestation or TestPyPI dry-run.
+  2. **TestPyPI vs. Production PyPI distinction**: Publishing to TestPyPI does *not* reserve `runport` on production PyPI; they are completely isolated registries. The production namespace must be claimed directly on production PyPI.
   3. No published PyPI wheel or sdist exists. Users must clone the git repository and use `uv` from source.
 * **Impact**: Blocks global adoption. Ordinary developers cannot run `pip install runport`.
 
@@ -155,22 +155,35 @@ flowchart TD
 
 ---
 
-### Milestone 0: PyPI Name Reservation & Release Foundation
-**Goal:** Make Runport globally installable (`pip install runport`) and protect project naming.
+### Staged SDK & Ecosystem Release Sequencing
 
-- [ ] **Task 0.1: Claim PyPI & npm Namespaces**
-  - Claim `runport` on PyPI via an initial placeholder or TestPyPI release.
-  - Claim `@runport/sdk` and `runport` organization on npm.
-- [ ] **Task 0.2: Harden GitHub Actions Release Workflow**
-  - Split `.github/workflows/release.yml` into decoupled `build` and `publish` jobs.
-  - Implement GitHub artifact upload/download between jobs.
-  - Add TestPyPI publication step before production PyPI publish.
-  - Add artifact attestation (`actions/attest-build-provenance`).
-- [ ] **Task 0.3: Cross-Platform Clean-Room Smoke Tests**
-  - Matrix test installing the built wheel in an isolated container on Linux, macOS, and Windows.
-  - Verify `runport --help`, `runport init`, and `runport web` (ensuring bundled `_web` frontend loads).
+To eliminate the risk of releasing multiple unstable public contracts simultaneously, the interfaces will be published in strict staged sequence:
+1. **Stage 1 (M0)**: PyPI Package & CLI (Local-First Core).
+2. **Stage 2 (M1)**: Stable In-Process Python SDK (`runport.benchmark`, stable Pydantic models).
+3. **Stage 3 (M2/M4)**: Local MCP Server & Client Documentation.
+4. **Stage 4 (M3)**: Remote Python SDK & Versioned REST API v1 (`/api/v1/*`).
+5. **Stage 5 (M3)**: TypeScript SDK (`@runport/sdk` on npm).
+
+---
+
+### Milestone 0: PyPI Name Reservation & Release Foundation
+**Goal:** Make Runport globally installable (`pip install runport`) and protect project naming without cloud/account dependencies.
+
+- [x] **Task 0.1: Verify Wheel Cleanliness & Local Smoke Tests**
+  - Built clean sdist and wheel with `uv build` (`dist/runport-0.1.0-py3-none-any.whl`).
+  - Verified wheel installs into a fresh isolated virtual environment with zero dev dependencies.
+  - Verified `runport --help`, `runport --version`, `runport -v`, `runport init` workspace scaffolding.
+  - Verified `runport web` serves bundled frontend assets (`index.html`) with `200 OK`.
+- [x] **Task 0.2: Harden GitHub Actions Release Workflow (`.github/workflows/release.yml`)**
+  - Decoupled into 4 isolated jobs: `build`, `verify` (matrix on Ubuntu, macOS, Windows), `publish-pypi` (Trusted Publishing), and `github-release`.
+  - Implemented artifact handoff via `actions/upload-artifact@v4` and `actions/download-artifact@v4`.
+  - Scoped permissions per job (`id-token: write` only for PyPI publish; `contents: write` only for GitHub release).
+  - Configured dynamic prerelease detection (flags `prerelease: true` for tags containing `-alpha`, `-beta`, `-rc`, `-dev`).
+- [ ] **Task 0.3: Secure Production PyPI Namespace**
+  - Configure GitHub repository PyPI Trusted Publishing under owner account.
+  - Perform initial publication directly to production PyPI (TestPyPI can be used for pipeline dry-runs, but does *not* claim the production namespace).
 - [ ] **Task 0.4: Tag v0.1.0-alpha**
-  - Tag git commit `v0.1.0-alpha` and trigger automated publication.
+  - Tag git commit `v0.1.0-alpha` and trigger automated publication pipeline.
 
 ---
 
@@ -288,10 +301,11 @@ Before declaring public general availability (v1.0.0), the platform must pass th
 ## 6. What NOT to Build Yet (Strict Boundaries)
 
 To prevent scope creep and maintain architectural integrity:
-1. **No Cloud SaaS Hosting Upfront**: Do not build billing stripe integration, multi-tenant cloud infrastructure, or OAuth social logins before the local developer workflow is rock solid.
-2. **No Shallow Framework Connectors**: Do not add 10 one-off connectors for every emerging agent library. Build the canonical trace and OTel ingestion layer first; let frameworks connect through standard protocols.
-3. **No Secondary Execution Engine**: Every interface (CLI, TUI, Web, SDK, MCP) must execute strictly via `ExecutionService` and `GenericRunner`. Never write a bypass runner for the remote API.
-4. **No Fake Traces**: Do not claim agent trajectory evaluation until spans are formally persisted in SQLite and linked to evaluation run cases.
+1. **Preserve Local-First Architecture Above All**: Never make user accounts, cloud infrastructure, or a hosted service mandatory to install and use the open-source Python package. A developer anywhere must be able to run offline evaluations, inspect score provenance, and govern spend entirely on their local machine.
+2. **No Cloud SaaS Hosting Upfront**: Do not build billing stripe integration, multi-tenant cloud infrastructure, or OAuth social logins before the local developer workflow is rock solid.
+3. **No Shallow Framework Connectors**: Do not add 10 one-off connectors for every emerging agent library. Build the canonical trace and OTel ingestion layer first; let frameworks connect through standard protocols.
+4. **No Secondary Execution Engine**: Every interface (CLI, TUI, Web, SDK, MCP) must execute strictly via `ExecutionService` and `GenericRunner`. Never write a bypass runner for the remote API.
+5. **No Fake Traces**: Do not claim agent trajectory evaluation until spans are formally persisted in SQLite and linked to evaluation run cases.
 
 ---
 

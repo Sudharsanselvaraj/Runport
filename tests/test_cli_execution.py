@@ -175,3 +175,16 @@ def test_cli_benchmark_rag_plans_approves_and_runs_through_the_service(tmp_path,
     assert rec.status == "CONSUMED" and rec.approved_by.startswith("cli_interactive:")
     ledger = _ledger()
     assert len(ledger) == 1 and ledger[0]["cost_basis"] == "ESTIMATED"
+
+
+def test_cli_version_flag():
+    from runport import __version__
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert __version__ in result.output
+
+    result_short = runner.invoke(app, ["-v"])
+    assert result_short.exit_code == 0
+    assert __version__ in result_short.output

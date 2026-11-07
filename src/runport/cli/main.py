@@ -1,11 +1,20 @@
 """Main CLI application assembly and interactive launcher loop."""
 
 import sys
-from typing import List
+from typing import List, Optional
 import typer
 from rich.console import Console
 
 console = Console()
+
+
+def version_callback(value: bool) -> None:
+    if value:
+        from runport import __version__
+
+        console.print(f"runport {__version__}")
+        raise typer.Exit()
+
 
 app = typer.Typer(
     name="runport",
@@ -35,6 +44,14 @@ def main(
         "--interactive",
         "-i",
         help="Launch interactive terminal UI.",
+    ),
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-v",
+        help="Show Runport version and exit.",
+        callback=version_callback,
+        is_eager=True,
     ),
 ) -> None:
     """Runport LLM and Workflow Benchmarking Platform."""
