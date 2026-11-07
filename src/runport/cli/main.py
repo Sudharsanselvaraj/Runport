@@ -62,36 +62,34 @@ def _run_command(args: List[str]) -> None:
 
 
 def handle_welcome_action(choice: int) -> None:
-    """Dispatches one launcher choice to a real workflow."""
+    """Dispatches one launcher choice to its corresponding functional onboarding workflow."""
+    from runport.tui.onboarding import OnboardingEngine
+
+    engine = OnboardingEngine(console=console)
+
     if choice == 1:
+        # (A) Explore a benchmark workspace
+        engine.explore_workspace()
+    elif choice == 2:
+        # (B) Run a model benchmark
+        engine.run_benchmark_flow()
+    elif choice == 3:
+        # (C) Evaluate a dataset
+        engine.evaluate_dataset_flow()
+    elif choice == 4:
+        # (D) Compare models and inspect results
+        engine.compare_results_flow()
+    elif choice == 5:
+        # (E) Open the interactive dashboard
         from runport.tui.app import run_tui
 
         run_tui()
-    elif choice == 2:
-        console.print("\n[bold #c084fc]Knowledge Base Audit Plugin:[/]")
-        console.print("  Located under: [dim]examples/plugins/kb_audit/[/dim]")
-        console.print("  See [cyan]examples/plugins/kb_audit/README.md[/cyan] for usage instructions.")
-    elif choice == 3:
-        _run_command(["validate-dataset", "data/evaluation/verified_rag_benchmark.jsonl"])
-    elif choice == 4:
-        _run_command(["models", "roster"])
-        console.print("\n[dim]Next: api-preflight (menu 5), then the RAG benchmark (menu 6).[/dim]")
-    elif choice == 5:
-        _run_command(["api-preflight"])
-    elif choice == 6:
-        _run_command(["benchmark-rag"])
-    elif choice == 7:
-        _run_command(["budget", "status"])
-    elif choice == 8:
-        from runport.core.config import settings
-
-        console.print("\n[bold #c084fc]Runport Environment & Workspace Configuration:[/]")
-        console.print(f"  App Name:          [green]{settings.app_name}[/]")
-        console.print(f"  Data Directory:    [green]{settings.data_dir}[/]")
-        console.print(f"  Reports Directory: [green]{settings.reports_dir}[/]")
-        console.print(f"  Database Path:     [green]{settings.db_path}[/]")
-    elif choice == 9:
-        console.print("[dim]Exiting Runport. Goodbye.[/]\n")
+    elif choice in (6, 8):
+        # (F) Configure providers and settings (8 is legacy alias)
+        engine.configure_providers_flow()
+    elif choice in (7, 9):
+        # (G) Skip onboarding and open the shell (9 is legacy alias)
+        engine.skip_and_exit()
 
 
 def run_launcher_loop() -> None:
@@ -102,9 +100,9 @@ def run_launcher_loop() -> None:
     while True:
         choice = show_welcome_screen()
         handle_welcome_action(choice)
-        if choice == exit_choice or choice == 0:
+        if choice in (exit_choice, 0, 7, 9):
             break
-        if choice != 1:
+        if choice != 5:  # Dashboard handles its own session and returns cleanly
             try:
                 console.input("\n[dim]Press Enter to return to the menu...[/dim]")
             except (EOFError, KeyboardInterrupt):

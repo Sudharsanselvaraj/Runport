@@ -241,15 +241,15 @@ def test_panel_renderers():
 
 
 def test_monochrome_selection_and_palette():
-    """Verify purple-and-black palette and selection highlights."""
+    """Verify almost-black palette and restrained selection highlights."""
     from runport.tui.theme import STYLE_ROW_SELECTED, BG_DARK, TEXT_PRIMARY, BORDER_CHARCOAL
 
-    assert BG_DARK == "#212633"
-    assert TEXT_PRIMARY == "#f8fafc"
-    assert BORDER_CHARCOAL == "#3b4256"
-    # Selection: crisp white on royal purple background
+    assert BG_DARK == "#111111"
+    assert TEXT_PRIMARY == "#E5E5E5"
+    assert BORDER_CHARCOAL == "#282828"
+    # Selection: crisp white on restrained dark purple background
     assert STYLE_ROW_SELECTED.color.name.lower() == "#ffffff"
-    assert STYLE_ROW_SELECTED.bgcolor.name.lower() == "#4c1d95"
+    assert STYLE_ROW_SELECTED.bgcolor.name.lower() == "#261933"
 
 
 def test_workbench_tui_btop_layout():
@@ -860,15 +860,21 @@ def test_welcome_screen_render():
     output = buf.getvalue()
 
     assert "Welcome to Runport" in output
-    assert "Dataset:" in output and "Models:" in output and "API key:" in output and "Mode:" in output
+    assert "Runtime" in output and "Workspace" in output and "Providers" in output and "Storage" in output
     assert "Spend: $" in output and "cap" in output
     assert "Tests: 95 passed" not in output  # no hard-coded claims; every figure is read live or shown as n/a
-    assert "Launch Full-Screen TUI Dashboard" in output
-    for item in ("Validate Evaluation Dataset", "Model Comparison Roster", "API Preflight", "Run Benchmark", "Inspect Budget"):
+    for item in (
+        "Explore a benchmark workspace",
+        "Run a model benchmark",
+        "Evaluate a dataset",
+        "Compare models and inspect results",
+        "Open the interactive dashboard",
+        "Configure providers and settings",
+        "Skip onboarding and open the shell",
+    ):
         assert item in output
     for gone in ("Decoupled RAG Benchmark", "Simulate vLLM", "Diagnose Production Traces"):
         assert gone not in output  # the launcher offers real workflows only
-    assert "runport >" in output
 
 
 def test_welcome_cli_command():

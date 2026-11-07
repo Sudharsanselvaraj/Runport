@@ -128,8 +128,8 @@ def plain(text):
 
 
 def test_a_workflow_returns_to_the_menu_instead_of_exiting_and_never_crashes():
-    # 3 = dataset status, Enter returns to the menu, 5 = API preflight, Enter returns, q leaves
-    text, code = run_launcher([b"3", ENTER, b"5", ENTER, QUIT], settle=1.2)
+    # 3 = dataset status, Enter returns to the menu, 6 = Configure providers/preflight, Enter returns, q leaves
+    text, code = run_launcher([b"3", ENTER, b"6", ENTER, QUIT], settle=1.2)
     p = plain(text)
     assert code == 0 and "Traceback" not in p and "AttributeError" not in p and "OptionInfo" not in p
     assert text.count("\x1b[?1049h") == 3 and text.count("\x1b[?1049l") == 3  # menu, menu again, menu again: it came back each time
@@ -139,7 +139,7 @@ def test_a_workflow_returns_to_the_menu_instead_of_exiting_and_never_crashes():
 
 
 def test_every_menu_workflow_runs_without_a_traceback():
-    for key in (b"2", b"4", b"6", b"7", b"8"):
+    for key in (b"1", b"2", b"3", b"4", b"6"):
         text, code = run_launcher([key, ENTER, QUIT], settle=1.5)
         p = plain(text)
         assert code == 0 and "Traceback" not in p and "Command failed" not in p, (key, p[-400:])

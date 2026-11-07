@@ -73,6 +73,7 @@ def _payload(result):
 
 
 def test_official_sdk_client_full_flow(workspace):
+    pytest.importorskip("mcp")
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 

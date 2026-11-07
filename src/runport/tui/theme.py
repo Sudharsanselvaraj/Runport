@@ -1,41 +1,59 @@
-"""Visual design system, color palette, and styling constants for charcoal monochrome TUI."""
+"""Visual design system, color palette, and styling constants for Runport TUI.
+
+Design Characteristics:
+- Deep navy / near-black terminal background (#0d1117)
+- Muted lavender primary accent (#c084fc)
+- Restrained cyan secondary accent (#38bdf8)
+- Muted green for successful states (#4ade80)
+- Cool grey for secondary information (#94a3b8, #64748b)
+- Minimal borders, monospace typography, and deliberate alignment
+- Zero excessive emojis or unnecessary gradients
+"""
 
 from typing import List, Optional, Tuple
 from rich.style import Style
 
-# OpenSRE-inspired Slate Grey Palette with Lavender Accents
-BG_DARK = "#212633"  # Distinct, comfortable slate-grey background (sampled from OpenSRE)
-PANEL_BG = "#262b3a"  # Subtle elevated slate-grey panel background
-PANEL_BG_SECONDARY = "#2c3243"  # Elevated container background
-BORDER_CHARCOAL = "#3b4256"  # Refined slate border (crisp and visible against grey canvas)
-BORDER_FOCUSED = "#c084fc"  # Radiant lavender border for active focused panel
+# Almost-black terminal background per OpenSRE visual reference
+BG_DARK = "#111111"  # Almost-black canvas
+PANEL_BG = "#161616"  # Subtle elevated dark container background
+PANEL_BG_SECONDARY = "#1c1c1c"  # Elevated container background
+BORDER_CHARCOAL = "#282828"  # Refined minimal dark border
+BORDER_FOCUSED = "#C5A6E8"  # Muted lavender border for active focused panel
+BORDER_MUTED = "#222222"  # Subtle divider border
 BORDER_TEAL = BORDER_CHARCOAL  # Backwards compatibility alias
-CYAN_HIGHLIGHT = "#d8b4fe"  # Soft lilac accent for titles and indicators
 
-TEXT_PRIMARY = "#f8fafc"  # Crisp, clean off-white primary text
-TEXT_SECONDARY = "#94a3b8"  # Balanced slate gray secondary text
-TEXT_MUTED = "#64748b"  # Deep restrained slate for inactive items and axes
-TEXT_BRIGHT = "#ffffff"  # Crisp white highlights
+# Accents - Single-colour muted lavender branding
+ACCENT_LAVENDER = "#C5A6E8"  # Primary muted lavender
+ACCENT_LAVENDER_LIGHT = "#E2D3F5"  # Soft light lavender highlight
+ACCENT_CYAN = "#C5A6E8"  # Replaced bright cyan with restrained lavender per spec
+CYAN_HIGHLIGHT = "#C5A6E8"  # Lavender highlight alias
 
-# Clean Status Colors (Zero emojis)
-COLOR_SUCCESS = "#4ade80"  # Clean emerald check
-COLOR_WARNING = "#fbbf24"  # Warm amber warning
-COLOR_ERROR = "#f87171"  # Soft coral red error
-COLOR_INFO = "#c084fc"  # Elegant lavender info
+# Typography colors - Clean white and grey typography
+TEXT_PRIMARY = "#E5E5E5"  # Clean white / light grey primary text
+TEXT_SECONDARY = "#858585"  # Balanced secondary grey
+TEXT_MUTED = "#555555"  # Muted grey for metadata and secondary hints
+TEXT_BRIGHT = "#FFFFFF"  # Crisp white highlights
+
+# Clean Status Colors (Used only where meaningful)
+COLOR_SUCCESS = "#75B88A"  # Soft green check
+COLOR_WARNING = "#D9B45B"  # Muted amber warning
+COLOR_ERROR = "#D97979"  # Soft red error
+COLOR_INFO = "#C5A6E8"  # Elegant lavender info
 
 # Rich Style Objects
-STYLE_TITLE = Style(color="#e9d5ff", bold=True)
+STYLE_TITLE = Style(color=ACCENT_LAVENDER, bold=True)
 STYLE_MUTED = Style(color=TEXT_MUTED)
 STYLE_SECONDARY = Style(color=TEXT_SECONDARY)
 STYLE_SUCCESS = Style(color=COLOR_SUCCESS, bold=True)
 STYLE_WARNING = Style(color=COLOR_WARNING, bold=True)
 STYLE_ERROR = Style(color=COLOR_ERROR, bold=True)
-STYLE_CYAN = Style(color="#d8b4fe", bold=True)
+STYLE_CYAN = Style(color=ACCENT_LAVENDER, bold=True)
 STYLE_PANEL = Style(color=TEXT_PRIMARY, bgcolor=PANEL_BG)
 
-# Refined Royal Purple Selection Highlights
-STYLE_ROW_SELECTED = Style(color="#ffffff", bgcolor="#4c1d95", bold=True)
-STYLE_ROW_HOVER = Style(color="#f8fafc", bgcolor="#2e1065")
+# Refined Selection Highlights - Restrained dark purple background
+SELECTION_BG = "#261933"  # Restrained dark purple
+STYLE_ROW_SELECTED = Style(color="#FFFFFF", bgcolor="#261933", bold=True)
+STYLE_ROW_HOVER = Style(color="#E5E5E5", bgcolor="#1C1C1C")
 
 # Sparkline characters (Unicode Block Elements U+2581 to U+2588)
 SPARK_CHARS = (" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█")

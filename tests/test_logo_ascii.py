@@ -20,16 +20,16 @@ def _clean_ansi(text: str) -> str:
 
 def test_emblem_dimensions_and_equal_width():
     """Assert emblem line lists have exact line counts and equal width across all rows."""
-    # Braille dotted variant: 12 lines of width 28
-    assert len(RUNPORT_EMBLEM_LINES) == 12
-    expected_braille_width = 28
+    # Braille dotted variant: 8 lines of width 20 (compact restrained brand identifier)
+    assert len(RUNPORT_EMBLEM_LINES) == 8
+    expected_braille_width = 20
     for idx, line in enumerate(RUNPORT_EMBLEM_LINES):
         assert len(line) == expected_braille_width, f"Braille line {idx} width mismatch: {len(line)} != {expected_braille_width}"
     assert RUNPORT_EMBLEM == "\n".join(RUNPORT_EMBLEM_LINES)
 
-    # Solid half-block variant: 12 lines of width 28
-    assert len(RUNPORT_EMBLEM_SOLID_LINES) == 12
-    expected_solid_width = 28
+    # Solid half-block variant: 8 lines of width 20
+    assert len(RUNPORT_EMBLEM_SOLID_LINES) == 8
+    expected_solid_width = 20
     for idx, line in enumerate(RUNPORT_EMBLEM_SOLID_LINES):
         assert len(line) == expected_solid_width, f"Solid line {idx} width mismatch: {len(line)} != {expected_solid_width}"
     assert RUNPORT_EMBLEM_SOLID == "\n".join(RUNPORT_EMBLEM_SOLID_LINES)
@@ -49,7 +49,7 @@ def test_welcome_renders_emblem_on_large_terminal(monkeypatch):
 
     # Asserts emblem presence and text hierarchy
     assert RUNPORT_EMBLEM_LINES[0].strip() in output
-    assert RUNPORT_EMBLEM_LINES[6].strip() in output
+    assert RUNPORT_EMBLEM_LINES[4].strip() in output
     assert "Welcome to Runport" in output
     assert "The universal open-source LLM, prompt, and workflow benchmarking platform." in output
     assert "Spend: $0.00 / $5 cap" in output

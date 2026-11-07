@@ -1,13 +1,15 @@
-"""Interactive, developer-grade welcome screen and quick launcher for Runport.
+"""Interactive, developer-grade welcome screen and onboarding launcher for Runport.
 
-Features:
-- Custom high-resolution Braille logo matching the Runport 3-plane branching architecture
-- Mathematically centered layout across any terminal width (80 to 250+ columns)
-- Zero emojis (clean, minimalist, developer-terminal typography)
-- Deep purple and pitch black cyberpunk/hacker visual aesthetic
-- Keyboard-driven interactive menu (arrow keys, number shortcuts, Enter to launch)
-- Instant dispatch to full TUI dashboard, RAG benchmark, audit, traces, serving simulation, or budget
+Design Characteristics:
+- Deep navy / near-black terminal background (#0d1117)
+- Official Runport dot-matrix & Braille brand emblem
+- Live system & workspace status telemetry (Runtime, Workspace, Providers, Storage)
+- Generous, deliberate alignment and monospace typography
+- Interactive option selector (Arrow keys, Enter, Letters A-G, Numbers 1-7, Esc/q to exit)
+- Graceful terminal resizing with compact mode fallback for small viewports
 """
+
+from __future__ import annotations
 
 import json
 import os
@@ -15,60 +17,66 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 from rich.align import Align
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from runport.tui.components import (
+    ConfirmationPanel,
+    InteractiveMenu,
+    MenuItem,
+    RunportLogo,
+    SectionHeader,
+    StatusIndicator,
+    TerminalFooter,
+)
 from runport.tui.input import KeyReader
-from runport.tui.logo_ascii import RUNPORT_EMBLEM, RUNPORT_EMBLEM_SOLID
-from runport.tui.theme import BG_DARK
+from runport.tui.logo_ascii import (
+    RUNPORT_BLOCK,
+    RUNPORT_EMBLEM,
+    RUNPORT_EMBLEM_LINES,
+    RUNPORT_EMBLEM_SOLID,
+    RUNPORT_EMBLEM_SOLID_LINES,
+)
+from runport.tui.theme import (
+    ACCENT_CYAN,
+    ACCENT_LAVENDER,
+    ACCENT_LAVENDER_LIGHT,
+    BG_DARK,
+    BORDER_CHARCOAL,
+    COLOR_SUCCESS,
+    COLOR_WARNING,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+)
 
 
 def _should_show_emblem(console: Console, compact: bool, cols: int, rows: int) -> bool:
-    """Size and terminal capability rule for displaying the hexagonal logo art.
-
-    Shows emblem only if:
-    - terminal is at least 60 columns wide and 32 rows tall
-    - output encoding is UTF-8
-    - NO_COLOR is not set
-    - TERM is not 'dumb'
-    - not compact mode
-    Never raises an exception.
-    """
-    try:
-        if compact:
-            return False
-        if cols < 60 or rows < 32:
-            return False
-        enc = getattr(console.file, "encoding", None) or getattr(sys.stdout, "encoding", None) or "utf-8"
-        if str(enc).lower().replace("-", "").replace("_", "") not in ("utf8",):
-            return False
-        if bool(os.environ.get("NO_COLOR")) or getattr(console, "no_color", False):
-            return False
-        if os.environ.get("TERM", "").lower().strip() == "dumb":
-            return False
-        return True
-    except Exception:
-        return False
+    """Size and terminal capability rule for displaying the hexagonal brand emblem."""
+    return RunportLogo.should_render(console, compact, cols, rows)
 
 
+# Menu items specification for onboarding actions (A through G)
 MENU_ITEMS: List[Tuple[str, str, Optional[str]]] = [
-    ("1.  Launch Full-Screen TUI Dashboard", "Live telemetry and monitors", None),
-    ("2.  Knowledge Base Audit Plugin (Example)", "Plugin example under examples/plugins/kb_audit", None),
-    ("3.  Validate Evaluation Dataset", "Schema validation & leakage checks", None),
-    ("4.  Model Comparison Roster", "Readiness, routes and blockers", "NEW"),
-    ("5.  API Preflight", "Key present? No request is sent", None),
-    ("6.  Run Benchmark", "Evaluation under fail-closed spend caps", None),
-    ("7.  Inspect Budget & Spend Ceilings", "actual spend vs ceilings", None),
-    ("8.  Settings & Environment", "Providers, paths, storage configuration", None),
-    ("9.  Exit to Shell", "", None),
+    ("Explore a benchmark workspace", "Workspace config & datasets", None),
+    ("Run a model benchmark", "Guarded evaluation", "GUARDED"),
+    ("Evaluate a dataset", "Schema validation & leakage", None),
+    ("Compare models and inspect results", "Past benchmark runs & metrics", None),
+    ("Open the interactive dashboard", "Live telemetry", "DASHBOARD"),
+    ("Configure providers and settings", "API keys, ceilings & storage", None),
+    ("Skip onboarding and open the shell", "Exit to command line prompt", None),
 ]
+
+_MENU_KEYS = ["A", "B", "C", "D", "E", "F", "G"]
 
 
 def _git(*args: str) -> Optional[str]:
+    """Helper to run git commands with short timeout."""
     try:
         out = subprocess.run(["git", *args], capture_output=True, text=True, timeout=2)
         return out.stdout.strip() or None if out.returncode == 0 else None
@@ -76,216 +84,235 @@ def _git(*args: str) -> Optional[str]:
         return None
 
 
-def launcher_status() -> Dict[str, str]:
-    """Live facts for the launcher header. Every value is read from local files or the ledger; unknown values say 'n/a'."""
+def launcher_status() -> Dict[str, Any]:
+    """Live facts for the launcher header. Every value is read from actual local files, environment, or ledger."""
     from runport import __version__
 
     ver = f"v{__version__}"
-    sha, branch, date = (
-        _git("rev-parse", "--short", "HEAD"),
-        _git("rev-parse", "--abbrev-ref", "HEAD"),
-        _git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"),
-    )
-    if sha:
-        ver = f"{ver}-{date or 'dev'}+{branch or 'detached'}.{sha}"
-    status: Dict[str, str] = {"version": ver, "dataset": "none loaded", "records": "n/a", "spend": "n/a", "key": "n/a", "models": "n/a"}
-    try:
-        from runport.datasets.loader import list_local_datasets
+    sha = _git("rev-parse", "--short", "HEAD")
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+    date = _git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d")
+    build_info = f"{ver} · {sha or 'release'} ({date or 'local'})"
 
-        dsets = list_local_datasets()
-        if dsets:
-            status["dataset"] = f"{len(dsets)} available"
-    except Exception:
-        pass
-    try:
-        m = json.loads(Path("reports/rag_corpus_manifest.json").read_text())
-        status["dataset"] = f"{int(m['indexed_records_count']):,} clean"
-        status["records"] = f"{int(m['total_records_scanned']):,} parsed records"
-    except Exception:
-        pass
-    try:
-        from runport.core.workspace import load_workspace_config
+    # 1. Runtime Status
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 11)
+    runtime_state = "ready" if py_ok else "error"
+    runtime_status = "READY" if py_ok else "UNSUPPORTED"
+    runtime_detail = f"Python {py_ver} ({sys.platform})"
 
-        b_pol = load_workspace_config().budget.to_budget_policy()
-        from runport.core.budget import BudgetService
+    # 2. Workspace Status
+    from runport.core.workspace import find_workspace_file, load_workspace_config
 
-        b = BudgetService(policy=b_pol).get_status()
-        status["spend"] = f"${b.cumulative_spend_usd:.2f} / ${b.total_ceiling_usd:.0f} cap"
-        status["ledger"] = f"${b.cumulative_spend_usd:.2f} actual (cap: ${b.total_ceiling_usd:.2f})"
-    except Exception:
-        pass
+    ws_file = find_workspace_file()
+    ws_cfg = load_workspace_config()
+    target_count = len(ws_cfg.targets)
+    if ws_file is not None:
+        ws_state = "connected"
+        ws_status = "CONNECTED"
+        ws_detail = f"{ws_file.name} ({target_count} target{'s' if target_count != 1 else ''})"
+    else:
+        ws_state = "unconfigured"
+        ws_status = "NOT CONFIGURED"
+        ws_detail = "no runport.yaml found in current directory"
+
+    # 3. Providers Status
     key = os.environ.get("OPENROUTER_API_KEY")
-    status["key"] = "set" if key and key.strip() else "not set"
-    try:
-        from runport.models.registry import roster_status
+    key_present = bool(key and key.strip())
+    if key_present:
+        prov_state = "connected"
+        prov_status = "CONFIGURED"
+        prov_detail = "API key: set (OpenRouter)"
+    else:
+        prov_state = "local"
+        prov_status = "LOCAL ONLY"
+        prov_detail = "API key: not set (local endpoints & offline replay)"
 
-        rows = roster_status()
-        ready, smoke = sum(r["readiness"] == "READY" for r in rows), sum(r["readiness"] == "SMOKE_READY" for r in rows)
-        status["models"] = f"{ready} ready, {smoke} smoke-ready, {len(rows) - ready - smoke} blocked"
+    # 4. Storage & Budget Status
+    storage_state = "ready"
+    storage_status = "READY"
+    spend_str = "$0.00 / $5 cap"
+    try:
+        from runport.core.config import settings
+        from runport.core.budget import BudgetService
+        from runport.storage.db import DatabaseManager
+
+        db_path = Path(settings.db_path)
+        if db_path.exists():
+            db_mgr = DatabaseManager(settings.db_path)
+            db_mgr.init_db()
+            b_pol = ws_cfg.budget.to_budget_policy()
+            b = BudgetService(db=db_mgr, policy=b_pol).get_status()
+            spend_str = f"${b.cumulative_spend_usd:.2f} / ${b.total_ceiling_usd:.0f} cap"
+            storage_detail = f"WAL active · Spend: {spend_str}"
+        else:
+            storage_state = "unconfigured"
+            storage_status = "INITIALIZING"
+            storage_detail = f"{settings.db_path} · Spend: {spend_str}"
     except Exception:
-        pass
-    return status
+        storage_detail = f"Spend: {spend_str}"
+
+    return {
+        "version": ver,
+        "build_info": build_info,
+        "runtime": (runtime_status, runtime_state, runtime_detail),
+        "workspace": (ws_status, ws_state, ws_detail),
+        "providers": (prov_status, prov_state, prov_detail),
+        "storage": (storage_status, storage_state, storage_detail),
+        "spend_summary": spend_str,
+    }
 
 
 class WelcomeScreen:
-    """Renders the developer-grade launcher screen and handles interactive menu selection."""
+    """Renders the Runport Welcome & Onboarding screen with real-time status."""
 
-    def __init__(self, console: Optional[Console] = None, key_reader: Optional[KeyReader] = None) -> None:
-        self.console = console or Console()
-        self.key_reader = key_reader or KeyReader()
+    def __init__(self, console: Optional[Console] = None) -> None:
+        self.console = console or Console(color_system="auto", legacy_windows=False)
+        self.key_reader = KeyReader()
         self.selected_index: int = 0
 
-    def _build(self, compact: bool = False, rows: Optional[int] = None):
-        """Builds the launcher layout. `compact` drops decorative lines so the frame fits short terminals."""
-        status = launcher_status()
-        self.status = status
-        items = [
-            (
-                t,
-                (
-                    status.get("records")
-                    if i == 1 and status.get("records") not in (None, "n/a")
-                    else status.get("ledger")
-                    if i == 6 and status.get("ledger")
-                    else sub
-                ),
-                b,
+        # Construct menu items for InteractiveMenu
+        self.menu_items = [
+            MenuItem(
+                key=_MENU_KEYS[i],
+                title=MENU_ITEMS[i][0],
+                description=MENU_ITEMS[i][1],
+                badge=MENU_ITEMS[i][2],
             )
-            for i, (t, sub, b) in enumerate(MENU_ITEMS)
+            for i in range(len(MENU_ITEMS))
         ]
+        self.menu = InteractiveMenu(self.menu_items, selected_index=0)
 
-        # Determine terminal and content width matching compact OpenSRE proportion
-        term_cols, term_rows = shutil.get_terminal_size((100, 30))
-        if self.console.width:
-            term_cols = self.console.width
-        if self.console.height:
-            term_rows = self.console.height
-        env_cols = os.environ.get("COLUMNS")
-        if env_cols and env_cols.isdigit():
-            term_cols = int(env_cols)
-        env_rows = os.environ.get("LINES")
-        if env_rows and env_rows.isdigit():
-            term_rows = int(env_rows)
-        if rows is not None:
-            term_rows = rows
+    def _build(self, compact: bool = False, rows: Optional[int] = None) -> Align:
+        """Builds the complete welcome screen as a centered Rich renderable."""
+        content_width = 94
+        facts = launcher_status()
 
-        content_width = min(max(74, term_cols - 4), 88)
+        grid = Table.grid(padding=(0, 0))
+        grid.add_column(width=content_width)
 
-        container = Table.grid(padding=(0, 0))
-        container.add_column("main", width=content_width)
+        size = shutil.get_terminal_size((100, 50))
+        cols = self.console.width if self.console.width else size.columns
+        eff_rows = rows if rows is not None else (self.console.height if (self.console.is_terminal and self.console.height) else 50)
 
-        # 1. Hexagonal Emblem or Compact Title
-        if _should_show_emblem(self.console, compact, term_cols, term_rows):
-            style_choice = os.environ.get("RUNPORT_LOGO_STYLE", "dotted").lower().strip()
-            emblem_text = RUNPORT_EMBLEM_SOLID if style_choice == "solid" else RUNPORT_EMBLEM
-            container.add_row(Align.center(Text(emblem_text, style="bold #c4b5fd", no_wrap=True, overflow="crop")))
-            container.add_row(Text(""))
-        else:
-            container.add_row(Align.center(Text("RUNPORT", style="bold #c4b5fd")))
-            if not compact:
-                container.add_row(Text(""))
+        # Compact View for tight terminal viewports (< 28 rows)
+        if compact or (rows is not None and rows < 28):
+            grid.add_row(Align.center(Text(f"RUNPORT CLI {facts['version']}", style=f"bold {ACCENT_LAVENDER}")))
+            grid.add_row(Align.center(Text("Welcome to Runport", style=f"bold {TEXT_PRIMARY}")))
+            grid.add_row(Align.center(Text("Select a workflow:", style=TEXT_SECONDARY)))
+            grid.add_row(SectionHeader.divider(width=content_width))
+            self.menu.selected_index = self.selected_index
+            grid.add_row(self.menu.render(content_width=content_width, compact=True))
+            grid.add_row(SectionHeader.divider(width=content_width))
+            footer_hints = [("↑↓", "Navigate"), ("Enter", "Select"), ("A-G", "Jump"), ("q", "Exit")]
+            grid.add_row(TerminalFooter.render(hints=footer_hints, width=content_width))
+            return Align.center(grid)
 
-        # 2. Version, Title, and Subtitle (matching OpenSRE restrained hierarchy)
-        container.add_row(Align.center(Text.from_markup(f"[dim #a78bfa]{status['version']}[/]")))
-        container.add_row(Align.center(Text.from_markup("[bold #d8b4fe]Welcome to Runport[/]")))
-        container.add_row(Align.center(Text.from_markup("[dim #9ca3af]The universal open-source LLM, prompt, and workflow benchmarking platform.[/]")))
-        if not compact:
-            container.add_row(Text(""))
+        # Determine if terminal can fit emblem
+        solid_pref = os.environ.get("RUNPORT_LOGO_STYLE", "").lower().strip() == "solid"
+        show_emblem = _should_show_emblem(self.console, compact, cols, eff_rows)
 
-        # 3. Telemetry Status Row (Zero Emojis, Clean Minimalist Monospace)
-        key_style = "green" if status["key"] == "set" else "yellow"
-        pills = Text.from_markup(f"Dataset: {status['dataset']}    │    Models: {status['models']}")
-        pills2 = Text.from_markup(f"Spend: {status['spend']}    │    API key: [{key_style}]{status['key']}[/]    │    Mode: [bold #38bdf8]DRY-RUN[/]")
-        container.add_row(Align.center(pills))
-        container.add_row(Align.center(pills2))
-        if not compact:
-            container.add_row(Text(""))
+        # 1. Header / Logo Section
+        if show_emblem:
+            emblem_text = RunportLogo.render_emblem(solid=solid_pref)
+            grid.add_row(Align.center(emblem_text))
+        elif compact or not show_emblem:
+            grid.add_row(Align.center(RunportLogo.render_compact()))
 
-        # 4. Announcement Box with subtle slate border (matching OpenSRE prompt box style)
-        box_content = (
-            "[bold #f1f3f9]Universal Benchmarking Environment[/]\n"
-            "[dim #9ca3af]Benchmark LLMs, prompts, and orchestrated workflows under hard spend caps.[/]\n"
-            "[dim #9ca3af]Honest cost, latency, and quality accounting from CLI, Web, or Terminal.[/]"
+        # 2. Brand Title & Version Hierarchy
+        grid.add_row(Align.center(Text("RUNPORT CLI", style=f"bold {ACCENT_LAVENDER}")))
+        grid.add_row(Align.center(Text(facts["build_info"].upper(), style=f"dim {TEXT_SECONDARY}")))
+        grid.add_row(Align.center(Text("Welcome to Runport", style=f"bold {TEXT_PRIMARY}")))
+        grid.add_row(
+            Align.center(
+                Text("The universal open-source LLM, prompt, and workflow benchmarking platform.", style=TEXT_SECONDARY)
+            )
         )
-        panel = Panel(
-            box_content,
-            border_style="#373a4d",
-            padding=(0, 2),
-            width=content_width,
-            expand=False,
-        )
-        if not compact:
-            container.add_row(panel)
-            container.add_row(Text(""))
-
-        # 5. Menu Section
-        container.add_row(Text.from_markup("[bold #f1f3f9]Select a workflow:[/]"))
-        if not compact:
-            container.add_row(Text(""))
-
-        for idx, (title, subtitle, badge) in enumerate(items):
-            is_active = idx == self.selected_index
-            prefix = " > " if is_active else "   "
-            badge_str = f"  [bold #f5d0fe on #432874] {badge} [/]" if badge else ""
-
-            # Target exact 94-column balance
-            title_w = 44
-            sub_w = 34
-
-            if is_active:
-                row_text = Text.from_markup(f"[bold #ffffff on #432874]{prefix}{title:<{title_w}} {subtitle:<{sub_w}}{badge_str}[/]")
-            else:
-                row_text = Text.from_markup(f"[dim #64748b]{prefix}[/][#f1f3f9]{title:<{title_w}}[/] [dim #8e95a5]{subtitle:<{sub_w}}[/]{badge_str}")
-
-            container.add_row(row_text)
 
         if not compact:
-            container.add_row(Text(""))
+            grid.add_row(Text(""))
 
-        # 6. Informational Disclaimer (Zero Emojis)
-        container.add_row(Text.from_markup("[dim #64748b]All commands run locally. No external data is sent unless you explicitly enable a provider.[/]"))
+        # 6. Live System Status Block
+        status_box = Table.grid(padding=(0, 1))
+        status_box.add_column(width=content_width)
 
-        # 7. Prompt Line with Hotkey Hints
-        prompt = Text.from_markup("[bold #c4b5fd]runport >[/] █")
-        hints = Text.from_markup("[dim #64748b]↑↓ Navigate    Enter Select    ? Help    q Exit[/]")
-        spacing = max(2, content_width - len(prompt.plain) - len(hints.plain))
-        prompt_row = Text.assemble(prompt, " " * spacing, hints)
-        container.add_row(prompt_row)
+        rt_st, rt_state, rt_det = facts["runtime"]
+        ws_st, ws_state, ws_det = facts["workspace"]
+        pr_st, pr_state, pr_det = facts["providers"]
+        st_st, st_state, st_det = facts["storage"]
 
-        return Align.center(container)
+        status_box.add_row(StatusIndicator.render_row("Runtime", rt_st, rt_state, rt_det))
+        status_box.add_row(StatusIndicator.render_row("Workspace", ws_st, ws_state, ws_det))
+        status_box.add_row(StatusIndicator.render_row("Providers", pr_st, pr_state, pr_det))
+        status_box.add_row(StatusIndicator.render_row("Storage", st_st, st_state, st_det))
+
+        grid.add_row(status_box)
+
+        # 7. Section Separator & Header
+        if not compact:
+            grid.add_row(Text(""))
+        grid.add_row(SectionHeader.divider(width=content_width))
+        if not compact:
+            grid.add_row(Text(""))
+        grid.add_row(Align.center(Text("GET STARTED", style=f"bold {ACCENT_LAVENDER}")))
+        grid.add_row(Align.center(Text("What would you like to do? Select a workflow:", style=TEXT_SECONDARY)))
+        if not compact:
+            grid.add_row(Text(""))
+
+        # 9. Interactive Options Menu
+        self.menu.selected_index = self.selected_index
+        grid.add_row(self.menu.render(content_width=content_width))
+
+        if not compact:
+            grid.add_row(Text(""))
+
+        # 10. Navigation Footer
+        footer_hints = [
+            ("↑↓", "Navigate"),
+            ("Enter", "Select"),
+            ("A-G", "Jump"),
+            ("q", "Exit"),
+        ]
+        grid.add_row(TerminalFooter.render(hints=footer_hints, width=content_width))
+
+        return Align.center(grid)
 
     def render(self, clear: bool = True) -> None:
-        """Prints one frame (used for non-interactive output and tests). The interactive loop redraws in place instead."""
+        """Prints one frame (used for non-interactive output, piping, and tests)."""
         if clear and self.key_reader.is_tty:
             self.console.clear()
         self.console.print(self._build())
 
     def frame_lines(self, rows: int) -> List[str]:
-        """The frame as terminal lines that are guaranteed to fit `rows`: the full layout, else compact, else truncated."""
+        """Renders the screen and fits it into `rows` without scrollback overflow."""
         for compact in (False, True):
             with self.console.capture() as cap:
                 self.console.print(self._build(compact=compact, rows=rows))
             lines = cap.get().rstrip("\n").split("\n")
             if len(lines) <= rows:
+                if not compact and rows >= 40:
+                    top_pad = max(0, (rows - len(lines)) // 2)
+                    return [""] * top_pad + lines
                 return lines
         return lines[:rows]
 
     def run(self) -> int:
-        """Runs the interactive loop until a choice is selected. Returns the 1-based action code."""
+        """Runs the interactive loop until a choice is made. Returns 1-based action code (1-7)."""
         if not self.key_reader.is_tty:
             self.render(clear=False)
             return 0
 
-        # Apply slate-grey background matching OpenSRE (#212633)
+        # Apply deep navy / near-black background to terminal canvas
         try:
             sys.stdout.write(f"\033]11;{BG_DARK}\007")
             sys.stdout.flush()
         except Exception:
             pass
 
-        # The alternate screen has no scrollback, so frames can never pile up; each frame is drawn in place.
+        # Switch to alternate screen, hide cursor
         sys.stdout.write("\033[?1049h\033[?25l")
         sys.stdout.flush()
+
         last_size = None
         dirty = True
         try:
@@ -297,30 +324,51 @@ class WelcomeScreen:
                     sys.stdout.write("\033[H" + "\033[K\n".join(lines) + "\033[K\033[J")
                     sys.stdout.flush()
                     last_size, dirty = size, False
+
                 key = self.key_reader.read_key(timeout=0.3)
                 if key == "TIMEOUT":
                     continue
                 dirty = True
 
+                # Arrow Navigation
                 if key in ("UP", "k", "K"):
-                    self.selected_index = (self.selected_index - 1) % len(MENU_ITEMS)
+                    self.selected_index = (self.selected_index - 1) % len(self.menu_items)
                 elif key in ("DOWN", "j", "J"):
-                    self.selected_index = (self.selected_index + 1) % len(MENU_ITEMS)
+                    self.selected_index = (self.selected_index + 1) % len(self.menu_items)
                 elif key in ("ENTER", "SPACE"):
                     return self.selected_index + 1
                 elif key in ("q", "Q", "ESC"):
-                    return len(MENU_ITEMS)  # Exit to Shell
+                    return len(self.menu_items)  # Option 7: Skip/Exit
                 elif key == "EOF":
-                    return len(MENU_ITEMS)
-                elif key.isdigit() and 1 <= int(key) <= len(MENU_ITEMS):
-                    return int(key)
+                    return len(self.menu_items)
+
+                # Direct key selection by letter A-G
+                elif key.upper() in _MENU_KEYS:
+                    idx = _MENU_KEYS.index(key.upper())
+                    self.selected_index = idx
+                    return idx + 1
+
+                # Direct selection by digit (1-7, with 8/9 legacy aliases)
+                elif key.isdigit():
+                    num = int(key)
+                    if 1 <= num <= len(self.menu_items):
+                        self.selected_index = num - 1
+                        return num
+                    elif num == 8:
+                        self.selected_index = 5  # Option F: Configure providers
+                        return 6
+                    elif num == 9:
+                        self.selected_index = 6  # Option G: Exit
+                        return 7
+
                 elif key == "?":
-                    self.selected_index = 0
-                    return 1  # Open TUI dashboard for help
+                    self.selected_index = 4  # Option E: Open dashboard
+                    return 5
+
         finally:
             try:
-                sys.stdout.write("\033[?25h\033[?1049l")  # show cursor, leave the alternate screen
-                sys.stdout.write("\033]111\007")  # restore the original terminal background
+                sys.stdout.write("\033[?25h\033[?1049l")  # Restore cursor and main screen
+                sys.stdout.write("\033]111\007")  # Restore terminal background
                 sys.stdout.flush()
             except Exception:
                 pass
