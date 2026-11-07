@@ -192,9 +192,9 @@ CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
 | `DatabaseManager` trace/span CRUD & atomic rollbacks | **Implemented (Phase 1)** | Fully tested |
 | `TraceRepository` typed repository interface | **Implemented (Phase 1)** | Re-exported in `runport.traces` |
 | Safe additive migration (v4) | **Implemented (Phase 1)** | Verified against legacy databases |
-| `GenericRunner` runtime span instrumentation | **Planned (Phase 2)** | To be added in Phase 2 |
-| Target-specific span extraction (Dify, MCP, RAG) | **Planned (Phase 2)** | To be added in Phase 2 |
-| `TargetResult.trajectory` field | **Planned (Phase 2)** | Untouched in Phase 1 |
-| Trajectory evaluators (tool selection, step count) | **Planned (Phase 3)** | Untouched in Phase 1 |
-| Web Dashboard Trace Waterfall / Tree View | **Planned (Phase 4)** | Untouched in Phase 1 |
-| OTLP Export & OpenInference Interoperability | **Planned (Phase 5)** | Untouched in Phase 1 |
+| `GenericRunner` runtime span instrumentation | **Implemented (Phase 2)** | Automatic Trace and root Span per case |
+| Target-specific span extraction (Dify, MCP, RAG) | **Implemented (Phase 2)** | `per_step_trace`, MCP tool calls, RAG retrieval |
+| `TargetResult.trajectory` field | **Implemented (Phase 2)** | Typed `Span` sequence container |
+| Trajectory evaluators (`ToolSelectionScorer`, `ToolArgumentScorer`, `LoopDetectionScorer`, `StepBudgetScorer`, `RecoveryScorer`) | **Implemented (Phase 3)** | `runport.scorers.tools`, `runport.scorers.trajectory` |
+| Web Dashboard Trace Waterfall / Tree View | **Planned (Phase 4)** | Next phase |
+| OTLP Export & OpenInference Interoperability | **Planned (Phase 5)** | After Phase 4 |
