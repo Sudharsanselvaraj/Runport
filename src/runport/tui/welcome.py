@@ -223,11 +223,7 @@ class WelcomeScreen:
         grid.add_row(Align.center(Text("RUNPORT CLI", style=f"bold {ACCENT_LAVENDER}")))
         grid.add_row(Align.center(Text(facts["build_info"].upper(), style=f"dim {TEXT_SECONDARY}")))
         grid.add_row(Align.center(Text("Welcome to Runport", style=f"bold {TEXT_PRIMARY}")))
-        grid.add_row(
-            Align.center(
-                Text("The universal open-source LLM, prompt, and workflow benchmarking platform.", style=TEXT_SECONDARY)
-            )
-        )
+        grid.add_row(Align.center(Text("The universal open-source LLM, prompt, and workflow benchmarking platform.", style=TEXT_SECONDARY)))
 
         if not compact:
             grid.add_row(Text(""))

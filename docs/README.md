@@ -14,6 +14,7 @@ Welcome to the documentation for **Runport**, the universal, local-first open-so
 | **Connectors & Integrations** | Setup guides for OpenRouter, OpenAI, Ollama, Dify, Flowise, n8n, LangGraph, and custom targets. | [Read Connectors](connectors.md) |
 | **Safety & Spend Governance** | Append-only SQLite WAL ledger, fail-closed spend caps, SSRF protection, and PII redaction. | [Read Safety](safety.md) |
 | **System Architecture** | Decoupled 5-layer design, storage engine, and execution lifecycles. | [Read Architecture](ARCHITECTURE.md) |
+| **Product Readiness Audit** | Evidence-backed audit against latest main and milestone execution plan. | [Read Audit](GLOBAL_PRODUCT_READINESS_AUDIT.md) |
 | **Configuration Reference** | Full schema specification for `runport.yaml` workspace settings. | [Read Config](config-reference.md) |
 | **CLI Reference** | Complete command-line manual, subcommands, and flags. | [Read CLI Manual](cli.md) |
 | **Web UI & Terminal Dashboard** | Dual interface guide: Rich fullscreen TUI and FastAPI + React local dashboard. | [Read UI Guide](web-ui.md) |

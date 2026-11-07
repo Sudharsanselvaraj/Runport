@@ -247,7 +247,7 @@ Configuration for each connector: [Connector catalogue](docs/connectors/README.m
 | **Integrations** | [Connector catalogue](docs/connectors/README.md) · [Dify](docs/connectors/dify.md) · [MCP architecture](docs/MCP_ARCHITECTURE.md) · [Python SDK contract](docs/SDK_API_CONTRACT.md) |
 | **Evaluation and metrics** | [Metrics](docs/metrics.md) |
 | **Safety and governance** | [Safety guide](docs/safety.md) · [Invariant tests](docs/INVARIANT_TESTS.md) · [Security policy](SECURITY.md) |
-| **Design and roadmap** | [Architecture](docs/ARCHITECTURE.md) · [Canonical trace schema (design)](docs/CANONICAL_TRACE_SCHEMA.md) · [Multi-user security model (design)](docs/MULTI_USER_SECURITY_MODEL.md) · [Roadmap audit](docs/ROADMAP_IMPLEMENTATION_AUDIT.md) |
+| **Design and roadmap** | [Architecture](docs/ARCHITECTURE.md) · [Canonical trace schema (design)](docs/CANONICAL_TRACE_SCHEMA.md) · [Multi-user security model (design)](docs/MULTI_USER_SECURITY_MODEL.md) · [Product readiness audit](docs/GLOBAL_PRODUCT_READINESS_AUDIT.md) · [Roadmap audit](docs/ROADMAP_IMPLEMENTATION_AUDIT.md) |
 
 ---
 
