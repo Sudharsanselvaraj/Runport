@@ -125,6 +125,18 @@ USAGE_KEYS = frozenset(
         "completion_tokens_details",
         "input_tokens_details",
         "output_tokens_details",
+        # OpenTelemetry & OpenInference GenAI usage conventions
+        "gen_ai.usage.input_tokens",
+        "gen_ai.usage.output_tokens",
+        "gen_ai.usage.total_tokens",
+        "gen_ai.usage.prompt_tokens",
+        "gen_ai.usage.completion_tokens",
+        "llm.token_count.prompt",
+        "llm.token_count.completion",
+        "llm.token_count.total",
+        "usage.prompt_tokens",
+        "usage.completion_tokens",
+        "usage.total_tokens",
     }
 )
 _SENSITIVE_KEY_PARTS = ("key", "secret", "token", "auth", "password", "credential", "bearer", "cookie")

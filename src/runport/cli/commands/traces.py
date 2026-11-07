@@ -230,3 +230,69 @@ def register_trace_commands(app: typer.Typer) -> None:
             console.print(f"\n[green]Diagnostic reports generated successfully:[/green]")
             console.print(f"  • CSV: [bold]{csv_file}[/bold]")
             console.print(f"  • Markdown: [bold]{md_file}[/bold]")
+
+    @app.command("import-otlp")
+    def import_otlp_cmd(
+        file_path: Path = typer.Argument(
+            ...,
+            help="Path to OpenTelemetry OTLP JSON trace file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ) -> None:
+        """Ingest OpenTelemetry / OpenInference OTLP JSON traces into canonical storage."""
+        from runport.core.config import settings
+        from runport.storage.db import DatabaseManager
+        from runport.traces.otlp import OtlpIngester
+        from runport.traces.repository import TraceRepository
+
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        repo = TraceRepository(db=db)
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            traces = OtlpIngester.ingest_to_repository(content, repo)
+        except Exception as e:
+            console.print(f"[bold red]Failed to ingest OTLP trace file:[/bold red] {e}")
+            raise typer.Exit(code=1)
+
+        total_spans = sum(len(t.spans) for t in traces)
+        console.print(
+            f"[bold green]Successfully ingested {len(traces)} trace(s) and {total_spans} span(s) from {file_path.name}[/bold green]"
+        )
+
+    @app.command("export-otlp")
+    def export_otlp_cmd(
+        trace_id: str = typer.Argument(..., help="Trace ID to export in OTLP format"),
+        out_file: Optional[Path] = typer.Option(None, "--output", "-o", help="Destination file path (stdout if omitted)"),
+    ) -> None:
+        """Export a canonical trace in standard OpenTelemetry OTLP JSON format."""
+        import json
+        from runport.core.config import settings
+        from runport.storage.db import DatabaseManager
+        from runport.traces.otlp import OtlpExporter
+        from runport.traces.repository import TraceRepository
+
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        repo = TraceRepository(db=db)
+
+        trace = repo.get_trace(trace_id, include_spans=True)
+        if not trace:
+            console.print(f"[bold red]Trace '{trace_id}' not found.[/bold red]")
+            raise typer.Exit(code=1)
+
+        otlp_payload = OtlpExporter.export_trace(trace)
+        json_str = json.dumps(otlp_payload, indent=2)
+
+        if out_file:
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(json_str, encoding="utf-8")
+            console.print(f"[bold green]Exported trace '{trace_id}' to {out_file}[/bold green]")
+        else:
+            console.print_json(json_str)
+

@@ -18,6 +18,7 @@ from runport.traces.models import (
 )
 from runport.traces.reporter import DiagnosticReporter
 from runport.traces.repository import TraceRepository
+from runport.traces.otlp import OtlpIngester, OtlpExporter
 
 __all__ = [
     "TraceImporter",
@@ -34,4 +35,6 @@ __all__ = [
     "SpanStatus",
     "Trace",
     "TraceRepository",
+    "OtlpIngester",
+    "OtlpExporter",
 ]

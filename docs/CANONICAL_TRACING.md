@@ -198,4 +198,31 @@ CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
 | Trajectory evaluators (`ToolSelectionScorer`, `ToolArgumentScorer`, `LoopDetectionScorer`, `StepBudgetScorer`, `RecoveryScorer`) | **Implemented (Phase 3)** | `runport.scorers.tools`, `runport.scorers.trajectory` |
 | Terminal Tree/Panel View & CLI (`runport trace`, `runport traces`) | **Implemented (Phase 4)** | Rich tree, panel, table |
 | Web Dashboard Trace Waterfall / Tree View & REST API | **Implemented (Phase 4)** | Interactive React Gantt timeline & inspector drawer |
-| OTLP Export & OpenInference Interoperability | **Planned (Phase 5)** | Next phase |
+| OTLP Export & OpenInference Interoperability | **Implemented (Phase 5)** | `runport.traces.otlp`, REST OTLP endpoints, CLI import/export |
+
+---
+
+## 6. OpenTelemetry & OpenInference Interoperability (`runport.traces.otlp`)
+
+Milestone 2 - Phase 5 provides full two-way interoperability with standard OpenTelemetry and OpenInference protocols:
+
+### Ingestion (`OtlpIngester`)
+- Accepts standard OTLP JSON trace payloads (`ExportTraceServiceRequest`).
+- Maps GenAI semantic conventions (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, etc.) and OpenInference conventions (`openinference.span.kind`) into Runport canonical `Trace` and `Span` models.
+- Guarantees strict invariants:
+  - **Null is not 0**: Unreported tokens, cost, or duration remain `None`.
+  - **Zero secret leakage**: All attributes, events, errors, inputs, and outputs pass through recursive secret scrubbing (`scrub_secrets`).
+  - **Hierarchy preservation**: Orphan parents are detached gracefully, and timestamps are normalized to UTC.
+
+### Export (`OtlpExporter`)
+- Converts canonical Runport `Trace` and `Span` trees into standard OTLP JSON format.
+- Emits W3C-compliant 32-hex trace IDs and 16-hex span IDs.
+- Preserves token counts, spend basis, and custom attributes.
+
+### REST Endpoints & CLI
+- `POST /api/traces/otlp` & `POST /api/v1/traces/otlp`: Ingests OTLP JSON payloads.
+- `GET /api/traces/{trace_id}/otlp`: Exports canonical trace in OTLP JSON format.
+- CLI:
+  - `runport import-otlp <file.json>`
+  - `runport export-otlp <trace_id> [-o <out.json>]`
+

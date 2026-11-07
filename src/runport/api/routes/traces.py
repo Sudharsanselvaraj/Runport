@@ -58,3 +58,44 @@ def get_run_traces(run_id: str) -> List[Dict[str, Any]]:
 
     traces = repo.get_traces_for_run(run_id, include_spans=True)
     return [t.model_dump(mode="json") for t in traces]
+
+
+@router.post("/traces/otlp", response_model=Dict[str, Any])
+@router.post("/v1/traces/otlp", response_model=Dict[str, Any])
+def ingest_otlp_traces(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Ingests OpenTelemetry OTLP JSON trace payloads into canonical storage."""
+    from runport.traces.otlp import OtlpIngester
+
+    db = DatabaseManager(settings.db_path)
+    db.init_db()
+    repo = TraceRepository(db=db)
+
+    try:
+        traces = OtlpIngester.ingest_to_repository(payload, repo)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to ingest OTLP payload: {str(e)}")
+
+    return {
+        "status": "ok",
+        "traces_ingested": len(traces),
+        "spans_ingested": sum(len(t.spans) for t in traces),
+        "trace_ids": [t.trace_id for t in traces],
+    }
+
+
+@router.get("/traces/{trace_id}/otlp", response_model=Dict[str, Any])
+def export_trace_otlp(trace_id: str) -> Dict[str, Any]:
+    """Exports a canonical trace in standard OpenTelemetry OTLP JSON format."""
+    from runport.traces.otlp import OtlpExporter
+
+    db = DatabaseManager(settings.db_path)
+    db.init_db()
+    repo = TraceRepository(db=db)
+
+    trace = repo.get_trace(trace_id, include_spans=True)
+    if trace is None:
+        raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found.")
+
+    return OtlpExporter.export_trace(trace)
+
+
