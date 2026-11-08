@@ -53,7 +53,7 @@ def test_successful_call_records_tool_latency_and_unavailable_cost(target):
     assert first.tokens_in is None and first.tokens_out is None
     assert first.latency_ms is not None and first.latency_ms == first.metadata["tool_latency_ms"]
     assert first.metadata["session_setup_ms"] is not None  # cold start is recorded apart from tool latency
-    assert first.metadata["protocol_version"] == "2025-06-18"
+    assert first.metadata["protocol_version"] in ("2026-07-28", "2025-06-18")
     assert first.metadata["server_info"] == {"name": "fixture", "version": "1.0"}
     assert first.metadata["schema_validation"]["status"] == "passed"
 

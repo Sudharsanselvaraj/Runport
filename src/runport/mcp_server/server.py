@@ -23,7 +23,7 @@ from runport.connectors.mcp import SUPPORTED_PROTOCOL_VERSIONS, validate_json_sc
 from runport.providers.base import scrub_secrets
 
 SERVER_INFO = {"name": "runport", "version": __version__}
-DEFAULT_PROTOCOL_VERSION = "2025-06-18"
+DEFAULT_PROTOCOL_VERSION = "2026-07-28"
 
 _STR = {"type": "string"}
 
@@ -83,6 +83,17 @@ class RunportMcpServer:
             ),
             "compare_runs": ("Side-by-side metrics of two runs.", _schema({"run_a": _STR, "run_b": _STR}, ["run_a", "run_b"]), self._compare),
         }
+        self._assert_no_approval_tools()
+
+    def _assert_no_approval_tools(self) -> None:
+        for name in self.tools:
+            if "approve_plan" in name.lower() or name.lower().startswith("approve"):
+                raise RuntimeError(f"Self-approval tool '{name}' is strictly forbidden by Runport security policy.")
+
+    def register_tool(self, name: str, description: str, schema: Dict[str, Any], fn: Callable[[Dict[str, Any]], Any]) -> None:
+        if "approve_plan" in name.lower() or name.lower().startswith("approve"):
+            raise ValueError(f"Self-approval tool '{name}' is strictly forbidden by Runport security policy.")
+        self.tools[name] = (description, schema, fn)
 
     # ------------------------------------------------------------------ protocol
 

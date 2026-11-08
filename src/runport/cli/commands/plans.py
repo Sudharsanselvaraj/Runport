@@ -1,5 +1,6 @@
 """Plan approval and the MCP server from the CLI."""
 
+from typing import Optional
 import typer
 from rich.console import Console
 
@@ -41,13 +42,63 @@ def register_plan_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
         console.print(f"Approved {plan.plan_id}. It can be executed once within 15 minutes.", markup=False)
 
-    mcp_app = typer.Typer(name="mcp", help="Runport as an MCP server for coding agents.", no_args_is_help=True)
+    mcp_app = typer.Typer(
+        name="mcp",
+        help="Runport as an MCP server for coding agents.",
+        no_args_is_help=False,
+    )
+
+    @mcp_app.callback(invoke_without_command=True)
+    def mcp_default(ctx: typer.Context) -> None:
+        """Serve Runport's MCP tools over stdio by default."""
+        if ctx.invoked_subcommand is None:
+            from runport.mcp_server.server import RunportMcpServer
+
+            RunportMcpServer().serve_stdio()
 
     @mcp_app.command("serve")
-    def mcp_serve() -> None:
-        """Serve Runport's MCP tools over stdio. Agents can plan and inspect; only a person can approve spend."""
+    def mcp_serve(
+        transport: str = typer.Option(
+            "stdio",
+            "--transport",
+            "-t",
+            help="Transport mode: 'stdio' (default) or 'http' (Streamable HTTP / SSE).",
+        ),
+        host: str = typer.Option(
+            "127.0.0.1",
+            "--host",
+            "-h",
+            help="Host address for HTTP transport.",
+        ),
+        port: int = typer.Option(
+            8000,
+            "--port",
+            "-p",
+            help="Port number for HTTP transport.",
+        ),
+        token: Optional[str] = typer.Option(
+            None,
+            "--token",
+            help="Optional Bearer token for authenticating HTTP connections.",
+        ),
+    ) -> None:
+        """Serve Runport's MCP tools over stdio or Streamable HTTP. Agents can plan and inspect; only a person can approve spend."""
         from runport.mcp_server.server import RunportMcpServer
 
-        RunportMcpServer().serve_stdio()
+        server = RunportMcpServer()
+        if transport.lower() == "stdio":
+            server.serve_stdio()
+        elif transport.lower() == "http":
+            import uvicorn
+            from fastapi import FastAPI
+            from runport.mcp_server.http import create_mcp_router
+
+            mcp_app = FastAPI(title="Runport MCP Server")
+            mcp_app.include_router(create_mcp_router(server=server, auth_token=token), prefix="/mcp")
+            console.print(f"[bold green]Starting Runport MCP Streamable HTTP server on http://{host}:{port}/mcp/sse ...[/bold green]")
+            uvicorn.run(mcp_app, host=host, port=port, log_level="info")
+        else:
+            console.print(f"[bold red]Unsupported transport:[/bold red] {transport}. Use 'stdio' or 'http'.")
+            raise typer.Exit(code=1)
 
     app.add_typer(mcp_app, name="mcp")

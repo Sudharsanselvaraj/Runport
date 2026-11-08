@@ -153,3 +153,143 @@ def test_remote_plan_cannot_run_without_a_person_and_never_leaks_the_secret(work
         assert refused.error_code == "TOOL_ERROR"
     finally:
         client.close()
+
+
+def test_mcp_protocol_version_negotiation_matrix():
+    """Verifies protocol version negotiation across supported revisions up to 2026-07-28."""
+    from runport.mcp_server.server import RunportMcpServer
+
+    server = RunportMcpServer()
+
+    # 1. 2026-07-28 (latest)
+    init_res = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2026-07-28"}})
+    assert init_res["result"]["protocolVersion"] == "2026-07-28"
+
+    # 2. 2025-06-18
+    init_res = server.handle({"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})
+    assert init_res["result"]["protocolVersion"] == "2025-06-18"
+
+    # 3. 2025-03-26
+    init_res = server.handle({"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}})
+    assert init_res["result"]["protocolVersion"] == "2025-03-26"
+
+    # 4. 2024-11-05
+    init_res = server.handle({"jsonrpc": "2.0", "id": 4, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}})
+    assert init_res["result"]["protocolVersion"] == "2024-11-05"
+
+    # 5. Unsupported version falls back to default latest (2026-07-28)
+    init_res = server.handle({"jsonrpc": "2.0", "id": 5, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}})
+    assert init_res["result"]["protocolVersion"] == "2026-07-28"
+
+
+def test_mcp_forbid_approval_tool_registration():
+    """Verifies that self-approval tools cannot be registered on RunportMcpServer."""
+    from runport.mcp_server.server import RunportMcpServer
+
+    server = RunportMcpServer()
+
+    # Tools list must not have any approve_plan or approval tools
+    tools = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
+    tool_names = [t["name"] for t in tools]
+    assert not any("approve_plan" in n or n.startswith("approve") for n in tool_names)
+
+    # Attempting to register an approval tool raises ValueError
+    with pytest.raises(ValueError, match="strictly forbidden"):
+        server.register_tool(
+            "approve_plan",
+            "Approve spend directly",
+            {"type": "object"},
+            lambda args: {"status": "APPROVED"},
+        )
+
+
+def test_mcp_streamable_http_sse_flow():
+    """Verifies MCP Streamable HTTP transport: SSE endpoint and JSON-RPC message dispatch."""
+    from fastapi.testclient import TestClient
+    from runport.api.app import create_app
+
+    client = TestClient(create_app(), base_url="http://127.0.0.1:8000")
+
+    # 1. Connect to SSE endpoint (read first chunk containing endpoint)
+    with client.stream("GET", "/mcp/sse") as stream:
+        lines = []
+        for line in stream.iter_lines():
+            if line:
+                lines.append(line)
+            if len(lines) >= 2:
+                break
+
+        assert any("event: endpoint" in l for l in lines)
+        data_line = [l for l in lines if l.startswith("data:")][0]
+        endpoint_path = data_line.replace("data:", "").strip()
+        assert "/messages?sessionId=" in endpoint_path
+
+    # 2. Extract sessionId from endpoint path
+    session_id = endpoint_path.split("sessionId=")[1]
+
+    # 3. Initialize over HTTP POST
+    init_resp = client.post(
+        f"/mcp/messages?sessionId={session_id}",
+        json={"jsonrpc": "2.0", "id": "init-1", "method": "initialize", "params": {"protocolVersion": "2026-07-28"}},
+    )
+    assert init_resp.status_code == 200
+    init_data = init_resp.json()
+    assert init_data["result"]["serverInfo"]["name"] == "runport"
+    assert init_data["result"]["protocolVersion"] == "2026-07-28"
+
+    # 4. List tools over HTTP POST
+    tools_resp = client.post(
+        f"/mcp/messages?sessionId={session_id}",
+        json={"jsonrpc": "2.0", "id": "tools-1", "method": "tools/list", "params": {}},
+    )
+    assert tools_resp.status_code == 200
+    tools_data = tools_resp.json()
+    tool_names = [t["name"] for t in tools_data["result"]["tools"]]
+    assert "create_benchmark_plan" in tool_names
+    assert "execute_approved_benchmark" in tool_names
+    assert not any("approve" == t or t.startswith("approve") for t in tool_names)
+
+    # 5. Call tool over HTTP POST
+    call_resp = client.post(
+        f"/mcp/messages?sessionId={session_id}",
+        json={"jsonrpc": "2.0", "id": "call-1", "method": "tools/call", "params": {"name": "list_connectors", "arguments": {}}},
+    )
+    assert call_resp.status_code == 200
+    call_data = call_resp.json()
+    assert "content" in call_data["result"]
+
+
+def test_mcp_http_bearer_token_authentication():
+    """Verifies Bearer token authentication gate on MCP HTTP transport."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from runport.mcp_server.http import create_mcp_router
+
+    app = FastAPI()
+    app.include_router(create_mcp_router(auth_token="mcp-secret-token-xyz"), prefix="/mcp")
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
+
+    # 1. Unauthenticated requests fail with 401
+    res_sse_unauth = client.get("/mcp/sse")
+    assert res_sse_unauth.status_code == 401
+
+    res_post_unauth = client.post("/mcp/messages", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+    assert res_post_unauth.status_code == 401
+
+    # 2. Invalid token fails with 401
+    res_bad_token = client.post(
+        "/mcp/messages",
+        headers={"Authorization": "Bearer wrong-token"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+    )
+    assert res_bad_token.status_code == 401
+
+    # 3. Valid Bearer token succeeds with 200
+    res_auth = client.post(
+        "/mcp/messages",
+        headers={"Authorization": "Bearer mcp-secret-token-xyz"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+    )
+    assert res_auth.status_code == 200
+    assert res_auth.json()["result"] == {}
+

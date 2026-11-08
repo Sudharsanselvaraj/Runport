@@ -14,6 +14,7 @@ from runport import __version__
 from runport.api.routes import budget, datasets, events, models, plan, reports, runs, setup, targets, traces
 from runport.api.v1 import api_v1_router
 from runport.api.v1.errors import ApiV1Error
+from runport.mcp_server.http import create_mcp_router
 
 
 _PUBLIC_API_PATHS = frozenset({"/api/health", "/api/docs", "/api/openapi.json", "/api/redoc"})
@@ -107,6 +108,9 @@ def create_app() -> FastAPI:
 
     # Versioned REST API v1
     app.include_router(api_v1_router, prefix="/api")
+
+    # MCP Streamable HTTP (SSE) Transport
+    app.include_router(create_mcp_router(path_prefix="/mcp"), prefix="/mcp")
 
     @app.exception_handler(ApiV1Error)
     async def api_v1_error_handler(request: Request, exc: ApiV1Error):

@@ -39,8 +39,8 @@ from runport.providers.base import scrub_secrets
 from runport.targets.base import BillingMode, CostBasis, Target, TargetResult, TargetStatus, TargetType, billing_for_url
 from runport.traces.domain import Span, SpanKind, SpanStatus
 
-LATEST_PROTOCOL_VERSION = "2025-06-18"
-SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+LATEST_PROTOCOL_VERSION = "2026-07-28"
+SUPPORTED_PROTOCOL_VERSIONS = ("2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 CLIENT_INFO = {"name": "runport", "version": __version__}
 _STDERR_TAIL_LINES = 20
 _SENSITIVE_ENV_NAME = re.compile(r"KEY|TOKEN|SECRET|PASS|AUTH|CREDENTIAL|COOKIE|PRIVATE", re.IGNORECASE)

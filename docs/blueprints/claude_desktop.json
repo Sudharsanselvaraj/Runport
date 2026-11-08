@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "runport": {
+      "command": "runport",
+      "args": ["mcp"],
+      "env": {
+        "RUNPORT_WORKSPACE_ROOT": "${workspaceFolder}"
+      }
+    },
+    "runport-http": {
+      "url": "http://127.0.0.1:8000/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${RUNPORT_API_KEY}"
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "runport": {
+      "command": "runport",
+      "args": ["mcp"],
+      "disabled": false,
+      "autoApprove": [
+        "list_connectors",
+        "list_models",
+        "list_targets",
+        "list_datasets",
+        "validate_target",
+        "create_benchmark_plan",
+        "request_benchmark_approval",
+        "get_plan_status",
+        "get_run",
+        "get_evaluation_results",
+        "compare_runs"
+      ]
+    },
+    "runport-sse": {
+      "url": "http://127.0.0.1:8000/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${env:RUNPORT_API_KEY}"
+      }
+    }
+  }
+}
