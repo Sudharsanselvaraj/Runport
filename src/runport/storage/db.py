@@ -202,6 +202,47 @@ CREATE TABLE IF NOT EXISTS run_jobs (
 CREATE INDEX IF NOT EXISTS idx_run_jobs_plan_id ON run_jobs(plan_id);
 CREATE INDEX IF NOT EXISTS idx_run_jobs_status ON run_jobs(status);
 
+CREATE TABLE IF NOT EXISTS organizations (
+    org_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+    project_id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(org_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS memberships (
+    membership_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    audit_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    principal TEXT NOT NULL,
+    action TEXT NOT NULL,
+    resource_type TEXT,
+    resource_id TEXT,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_org ON projects(org_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_project ON memberships(project_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_user_project ON memberships(user_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_project ON audit_log(project_id);
+
 """
 
 
@@ -233,6 +274,7 @@ class DatabaseManager:
             self._migrate_evaluation_runs(conn)
             self._migrate_canonical_traces(conn)
             self._migrate_api_v1_and_jobs(conn)
+            self._migrate_multi_tenancy_and_rbac(conn)
 
     @staticmethod
     def _migrate_evaluation_runs(conn: sqlite3.Connection) -> None:
@@ -470,6 +512,112 @@ class DatabaseManager:
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
             "VALUES (5, datetime('now'), 'Add api_keys and run_jobs tables and indexes')"
+        )
+        conn.commit()
+
+    @staticmethod
+    def _migrate_multi_tenancy_and_rbac(conn: sqlite3.Connection) -> None:
+        """Additive migration 6: Multi-tenant organizations, projects, memberships, audit_log, and project scoping.
+
+        Preserves all existing tables and data. Ensures default organization and project exist for local single-user mode.
+        """
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "organizations" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS organizations (
+                    org_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+        if "projects" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    project_id TEXT PRIMARY KEY,
+                    org_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    settings_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (org_id) REFERENCES organizations(org_id) ON DELETE CASCADE
+                )
+            """)
+        if "memberships" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS memberships (
+                    membership_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                )
+            """)
+        if "audit_log" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    audit_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    principal TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    resource_type TEXT,
+                    resource_id TEXT,
+                    details_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+        # Add project_id, principal, last_used_at to api_keys if missing
+        if "api_keys" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
+            if "project_id" not in cols:
+                conn.execute("ALTER TABLE api_keys ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            if "principal" not in cols:
+                conn.execute("ALTER TABLE api_keys ADD COLUMN principal TEXT")
+            if "last_used_at" not in cols:
+                conn.execute("ALTER TABLE api_keys ADD COLUMN last_used_at TEXT")
+
+        # Add project_id to evaluation_runs if missing
+        if "evaluation_runs" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_runs)").fetchall()}
+            if "project_id" not in cols:
+                conn.execute("ALTER TABLE evaluation_runs ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+
+        # Add project_id to traces if missing
+        if "traces" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(traces)").fetchall()}
+            if "project_id" not in cols:
+                conn.execute("ALTER TABLE traces ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+
+        # Add project_id to budget_ledger if missing
+        if "budget_ledger" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(budget_ledger)").fetchall()}
+            if "project_id" not in cols:
+                conn.execute("ALTER TABLE budget_ledger ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+
+        # Seed default organization and project for local single-tenant mode
+        conn.execute("""
+            INSERT OR IGNORE INTO organizations (org_id, name, created_at)
+            VALUES ('default-org', 'Default Organization', datetime('now'))
+        """)
+        conn.execute("""
+            INSERT OR IGNORE INTO projects (project_id, org_id, name, settings_json, created_at)
+            VALUES ('default', 'default-org', 'Default Project', '{}', datetime('now'))
+        """)
+
+        # Create indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_org ON projects(org_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_memberships_project ON memberships(project_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_memberships_user_project ON memberships(user_id, project_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_project ON audit_log(project_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_project ON api_keys(project_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_project ON traces(project_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_project ON evaluation_runs(project_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_project ON budget_ledger(project_id)")
+
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+            "VALUES (6, datetime('now'), 'Add multi-tenant organizations, projects, memberships, audit_log tables and project scoping')"
         )
         conn.commit()
 
@@ -1286,19 +1434,21 @@ class DatabaseManager:
         key_hash: str,
         name: str,
         scopes: List[str],
+        project_id: str = "default",
+        principal: Optional[str] = None,
         created_at: Optional[str] = None,
         expires_at: Optional[str] = None,
     ) -> None:
-        """Stores a hashed API key with assigned scopes."""
+        """Stores a hashed API key with assigned scopes and tenant scoping."""
         if created_at is None:
             created_at = datetime.now(timezone.utc).isoformat()
         with self.get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO api_keys (key_id, key_hash, name, scopes_json, created_at, expires_at, revoked)
-                VALUES (?, ?, ?, ?, ?, ?, 0)
+                INSERT INTO api_keys (key_id, key_hash, name, scopes_json, project_id, principal, created_at, expires_at, revoked)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
                 """,
-                (key_id, key_hash, name, json.dumps(scopes), created_at, expires_at),
+                (key_id, key_hash, name, json.dumps(scopes), project_id, principal, created_at, expires_at),
             )
             conn.commit()
 
@@ -1311,6 +1461,15 @@ class DatabaseManager:
                 return None
             d = dict(row)
             d["scopes"] = json.loads(d.get("scopes_json") or "[]")
+            # Update last_used_at in background
+            try:
+                conn.execute(
+                    "UPDATE api_keys SET last_used_at = ? WHERE key_id = ?",
+                    (datetime.now(timezone.utc).isoformat(), d["key_id"]),
+                )
+                conn.commit()
+            except Exception:
+                pass
             return d
 
     def revoke_api_key(self, key_id: str) -> bool:
@@ -1320,10 +1479,16 @@ class DatabaseManager:
             conn.commit()
             return cur.rowcount > 0
 
-    def list_api_keys(self) -> List[Dict[str, Any]]:
-        """Lists all registered API keys."""
+    def list_api_keys(self, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists registered API keys, optionally scoped to a project."""
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT key_id, name, scopes_json, created_at, expires_at, revoked FROM api_keys ORDER BY created_at DESC")
+            if project_id:
+                cur = conn.execute(
+                    "SELECT * FROM api_keys WHERE project_id = ? ORDER BY created_at DESC",
+                    (project_id,),
+                )
+            else:
+                cur = conn.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
             keys = []
             for row in cur.fetchall():
                 d = dict(row)
@@ -1419,6 +1584,173 @@ class DatabaseManager:
             for r in cur.fetchall():
                 d = dict(r)
                 d["cancelled"] = bool(d.get("cancelled"))
+                results.append(d)
+            return results
+
+    # -- Multi-Tenant Organization & Project Management -----------------------
+
+    def create_organization(self, org_id: str, name: str, created_at: Optional[str] = None) -> Dict[str, Any]:
+        """Creates an organization tenant."""
+        if created_at is None:
+            created_at = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO organizations (org_id, name, created_at) VALUES (?, ?, ?)",
+                (org_id, name, created_at),
+            )
+            conn.commit()
+        return {"org_id": org_id, "name": name, "created_at": created_at}
+
+    def get_organization(self, org_id: str) -> Optional[Dict[str, Any]]:
+        """Fetches organization by ID."""
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM organizations WHERE org_id = ?", (org_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_organizations(self) -> List[Dict[str, Any]]:
+        """Lists all organizations."""
+        with self.get_connection() as conn:
+            return [dict(r) for r in conn.execute("SELECT * FROM organizations ORDER BY created_at ASC").fetchall()]
+
+    def create_project(
+        self,
+        project_id: str,
+        org_id: str,
+        name: str,
+        settings: Optional[Dict[str, Any]] = None,
+        created_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Creates a project scoped to an organization."""
+        if created_at is None:
+            created_at = datetime.now(timezone.utc).isoformat()
+        settings_json = json.dumps(settings or {})
+        with self.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO projects (project_id, org_id, name, settings_json, created_at) VALUES (?, ?, ?, ?, ?)",
+                (project_id, org_id, name, settings_json, created_at),
+            )
+            conn.commit()
+        return {
+            "project_id": project_id,
+            "org_id": org_id,
+            "name": name,
+            "settings": settings or {},
+            "created_at": created_at,
+        }
+
+    def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Fetches project by ID."""
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM projects WHERE project_id = ?", (project_id,)).fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            d["settings"] = json.loads(d.get("settings_json") or "{}")
+            return d
+
+    def update_project_settings(self, project_id: str, settings: Dict[str, Any]) -> None:
+        """Updates project configuration settings."""
+        with self.get_connection() as conn:
+            conn.execute(
+                "UPDATE projects SET settings_json = ? WHERE project_id = ?",
+                (json.dumps(settings), project_id),
+            )
+            conn.commit()
+
+    def list_projects(self, org_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists projects, optionally filtered by organization."""
+        with self.get_connection() as conn:
+            if org_id:
+                cur = conn.execute("SELECT * FROM projects WHERE org_id = ? ORDER BY created_at ASC", (org_id,))
+            else:
+                cur = conn.execute("SELECT * FROM projects ORDER BY created_at ASC")
+            results = []
+            for r in cur.fetchall():
+                d = dict(r)
+                d["settings"] = json.loads(d.get("settings_json") or "{}")
+                results.append(d)
+            return results
+
+    def add_membership(
+        self,
+        membership_id: str,
+        user_id: str,
+        project_id: str,
+        role: str,
+        created_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Assigns a user to a project with a specific RBAC role."""
+        if created_at is None:
+            created_at = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO memberships (membership_id, user_id, project_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
+                (membership_id, user_id, project_id, role.lower(), created_at),
+            )
+            conn.commit()
+        return {
+            "membership_id": membership_id,
+            "user_id": user_id,
+            "project_id": project_id,
+            "role": role.lower(),
+            "created_at": created_at,
+        }
+
+    def get_membership(self, user_id: str, project_id: str) -> Optional[Dict[str, Any]]:
+        """Gets membership record for a user within a project."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM memberships WHERE user_id = ? AND project_id = ?",
+                (user_id, project_id),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def list_memberships(self, project_id: str) -> List[Dict[str, Any]]:
+        """Lists all memberships for a project."""
+        with self.get_connection() as conn:
+            rows = conn.execute("SELECT * FROM memberships WHERE project_id = ? ORDER BY created_at ASC", (project_id,)).fetchall()
+            return [dict(r) for r in rows]
+
+    # -- Append-Only Audit Log -------------------------------------------------
+
+    def record_audit_event(
+        self,
+        audit_id: str,
+        project_id: str,
+        principal: str,
+        action: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        created_at: Optional[str] = None,
+    ) -> None:
+        """Appends an event to the immutable audit log with automatic secret scrubbing."""
+        from runport.providers.base import scrub_secrets
+
+        if created_at is None:
+            created_at = datetime.now(timezone.utc).isoformat()
+        clean_details = scrub_secrets(details or {})
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO audit_log (audit_id, project_id, principal, action, resource_type, resource_id, details_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (audit_id, project_id, principal, action, resource_type, resource_id, json.dumps(clean_details), created_at),
+            )
+            conn.commit()
+
+    def list_audit_logs(self, project_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Lists audit log records for a project in reverse chronological order."""
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "SELECT * FROM audit_log WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+                (project_id, max(1, limit)),
+            )
+            results = []
+            for r in cur.fetchall():
+                d = dict(r)
+                d["details"] = json.loads(d.get("details_json") or "{}")
                 results.append(d)
             return results
 

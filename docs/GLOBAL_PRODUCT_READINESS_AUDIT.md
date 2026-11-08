@@ -267,21 +267,29 @@ To eliminate the risk of releasing multiple unstable public contracts simultaneo
 
 ---
 
-### Milestone 5: Framework Interoperability & Hosted Multi-Tenancy
+### Milestone 5: Framework Interoperability & Hosted Multi-Tenancy (COMPLETED)
 **Goal:** Expand Runport into a multi-team, enterprise-ready evaluation platform.
 
-- [ ] **Task 5.1: OpenTelemetry & OpenInference Ingestion**
-  - Implement `POST /api/v1/traces/otlp` accepting standard OTLP JSON/protobuf payloads.
-  - Map GenAI semantic conventions to Runport canonical spans.
-- [ ] **Task 5.2: Bidirectional Langfuse Interoperability**
-  - Export Runport traces to Langfuse v2 API format.
-  - Import Langfuse traces with automatic secret scrubbing.
-- [ ] **Task 5.3: Native LangGraph Streaming & Instrumentation**
-  - Add streaming adapter capturing node transitions as child spans in real time.
-- [ ] **Task 5.4: Multi-Tenant Architecture (`docs/MULTI_USER_SECURITY_MODEL.md`)**
-  - Implement PostgreSQL storage adapter (`DatabaseManager` interface).
-  - Add `organizations`, `projects`, and `memberships` tables with RBAC.
-  - Refactor process-global `settings` into per-tenant workspace context.
+- [x] **Task 5.1: OpenTelemetry & OpenInference Ingestion**
+  - Implemented `POST /api/v1/traces/otlp` accepting standard OTLP JSON trace payloads (`ExportTraceServiceRequest`).
+  - Mapped GenAI Semantic Conventions and OpenInference span kinds and attributes to canonical Runport spans.
+  - Added CLI `runport import-otlp` and `runport export-otlp` commands.
+- [x] **Task 5.2: Bidirectional Langfuse Interoperability**
+  - Export Runport canonical traces and spans to Langfuse v2 API format (`POST /api/v1/traces/langfuse/export`, `GET /api/v1/traces/{id}/langfuse`).
+  - Ingest Langfuse v2 batch payloads and trace exports (`POST /api/v1/traces/langfuse/import`) with automatic secret scrubbing.
+  - Added CLI commands `runport export-langfuse` and `runport import-langfuse`.
+  - Enforced "Null is not 0" across all token and cost metrics.
+- [x] **Task 5.3: Native LangGraph Streaming & Instrumentation**
+  - Implemented `LangGraphStreamingConnector`: native SSE streaming adapter capturing node transitions, tool invocations, and model outputs as child spans in real time without buffering.
+  - Implemented `RunportLangGraphTracer`: in-process callback handler instrumenting LangGraph and LangChain state machines into canonical Runport Traces and Spans.
+  - Added unit test suite in `tests/test_langgraph_streaming.py`.
+- [x] **Task 5.4: Multi-Tenant Architecture & RBAC (`docs/MULTI_USER_SECURITY_MODEL.md`)**
+  - Added additive SQLite Migration 6: `organizations`, `projects`, `memberships`, and `audit_log` tables.
+  - Scoped API keys, evaluation runs, traces, and ledger entries by `project_id`.
+  - Implemented RBAC permission matrix for `VIEWER`, `MEMBER`, `APPROVER`, `ADMIN`.
+  - Enforced self-approval prevention on billable plans.
+  - Implemented append-only audit logging with automatic credential scrubbing.
+  - Added comprehensive verification tests in `tests/test_multi_tenancy.py`.
 
 ---
 

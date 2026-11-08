@@ -296,3 +296,73 @@ def register_trace_commands(app: typer.Typer) -> None:
         else:
             console.print_json(json_str)
 
+    @app.command("export-langfuse")
+    def export_langfuse_cmd(
+        trace_id: str = typer.Argument(..., help="Trace ID to export in Langfuse format"),
+        out_file: Optional[Path] = typer.Option(None, "--output", "-o", help="Destination file path (stdout if omitted)"),
+    ) -> None:
+        """Export a canonical trace in standard Langfuse v2 batch format."""
+        import json
+        from runport.core.config import settings
+        from runport.storage.db import DatabaseManager
+        from runport.traces.langfuse import LangfuseExporter
+        from runport.traces.repository import TraceRepository
+
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        repo = TraceRepository(db=db)
+
+        trace = repo.get_trace(trace_id, include_spans=True)
+        if not trace:
+            console.print(f"[bold red]Trace '{trace_id}' not found.[/bold red]")
+            raise typer.Exit(code=1)
+
+        payload = LangfuseExporter.export_trace(trace)
+        json_str = json.dumps(payload, indent=2)
+
+        if out_file:
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(json_str, encoding="utf-8")
+            console.print(f"[bold green]Exported trace '{trace_id}' to {out_file} (Langfuse format)[/bold green]")
+        else:
+            console.print_json(json_str)
+
+    @app.command("import-langfuse")
+    def import_langfuse_cmd(
+        file_path: Path = typer.Argument(
+            ...,
+            help="JSON file containing Langfuse batch payload or trace export",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ) -> None:
+        """Ingest traces from a Langfuse v2 JSON payload into canonical storage."""
+        import json
+        from runport.core.config import settings
+        from runport.storage.db import DatabaseManager
+        from runport.traces.langfuse import LangfuseIngester
+        from runport.traces.repository import TraceRepository
+
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        repo = TraceRepository(db=db)
+
+        try:
+            content = json.loads(file_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            console.print(f"[bold red]Failed to parse JSON file:[/bold red] {e}")
+            raise typer.Exit(code=1)
+
+        try:
+            traces = LangfuseIngester.ingest_to_repository(content, repo)
+        except Exception as e:
+            console.print(f"[bold red]Failed to ingest Langfuse trace file:[/bold red] {e}")
+            raise typer.Exit(code=1)
+
+        total_spans = sum(len(t.spans) for t in traces)
+        console.print(
+            f"[bold green]Successfully ingested {len(traces)} trace(s) and {total_spans} span(s) from {file_path.name}[/bold green]"
+        )
+
