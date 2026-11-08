@@ -28,8 +28,8 @@ CONSUMED = "CONSUMED"
 
 # Channels through which a person (or an operator-held CI secret) approves spend. "mcp" and "sdk" are absent on purpose.
 # "local_only" approves only plans whose every target is LOCAL (nothing leaves the machine, nothing can bill);
-# ExecutionService enforces that condition before using it.
-APPROVAL_CHANNELS = frozenset({"cli_interactive", "web_ui", "ci_token", "local_only"})
+# ExecutionService enforces that condition before using it. "rest_v1" is operator-held REST API token with plans:approve.
+APPROVAL_CHANNELS = frozenset({"cli_interactive", "web_ui", "ci_token", "local_only", "rest_v1"})
 
 DEFAULT_PENDING_TTL_S = 15 * 60
 DEFAULT_APPROVED_TTL_S = 15 * 60

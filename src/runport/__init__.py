@@ -8,4 +8,8 @@ def __getattr__(name: str):  # lazy, so importing runport stays cheap
         from runport import sdk
 
         return getattr(sdk, name)
+    if name == "Client":
+        from runport.client import Client
+
+        return Client
     raise AttributeError(name)

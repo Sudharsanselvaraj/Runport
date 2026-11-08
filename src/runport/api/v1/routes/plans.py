@@ -1,0 +1,135 @@
+"""Plans creation and human approval endpoints for REST API v1.
+
+Specification: docs/SDK_API_CONTRACT.md section 2.2.
+Invariants:
+- A plan sends nothing: it cost-checks, fingerprints, and stores as PENDING.
+- Approval requires explicit fingerprint match; agents are forbidden from approving.
+"""
+
+from pathlib import Path
+from typing import Any, Dict
+from fastapi import APIRouter, Depends
+
+from runport.api.v1.auth import (
+    SCOPE_PLANS_APPROVE,
+    SCOPE_PLANS_CREATE,
+    SCOPE_RUNS_READ,
+    require_scope,
+)
+from runport.api.v1.errors import (
+    ApprovalInvalidError,
+    InvalidTargetSpecApiError,
+    NotFoundError,
+    PlanBlockedError,
+)
+from runport.api.v1.schemas import PlanApproveRequest, PlanCreateRequest, PlanResponse
+from runport.connectors.registry import TargetSpecError
+from runport.core.config import settings
+from runport.providers.base import LiveNotAuthorizedError
+from runport.services.approvals import ApprovalError
+from runport.services.execution import ExecutionService, PlanSummary, load_dataset_cases
+
+router = APIRouter(prefix="/plans", tags=["plans"])
+
+
+def _plan_to_response(plan: PlanSummary) -> PlanResponse:
+    return PlanResponse(
+        plan_id=plan.plan_id,
+        plan_fingerprint=plan.fingerprint,
+        status=plan.status,
+        expires_at=plan.expires_at,
+        target_ids=plan.target_ids,
+        case_count=plan.case_count,
+        dataset_label=plan.dataset_label,
+        projected_max_cost_usd=str(plan.projected_max_cost_usd) if plan.projected_max_cost_usd is not None else None,
+        per_target=plan.per_target,
+        blockers=plan.blockers,
+        confirmation_phrase=plan.confirmation_phrase,
+        requested_by=plan.requested_by,
+        approved_by=plan.approved_by,
+    )
+
+
+def _dataset_path(name: str) -> Path:
+    d_dir = (settings.workspace_root / "data" / "evaluation").resolve()
+    p = (d_dir / name).resolve()
+    if d_dir not in p.parents:
+        raise InvalidTargetSpecApiError("Dataset must reside in data/evaluation.")
+    if not p.is_file():
+        raise NotFoundError(f"Dataset '{name}' not found.")
+    return p
+
+
+@router.post("", response_model=PlanResponse)
+def create_plan(
+    req: PlanCreateRequest,
+    auth: Dict[str, Any] = Depends(require_scope(SCOPE_PLANS_CREATE)),
+) -> PlanResponse:
+    """Creates a costed, fingerprinted benchmark execution plan.
+
+    Sends no live requests. Plan remains PENDING until explicitly approved.
+    """
+    cases = load_dataset_cases(_dataset_path(req.dataset_name), req.sample_size)
+    if not cases:
+        raise InvalidTargetSpecApiError("Dataset contains 0 valid evaluation cases.")
+
+    service = ExecutionService()
+    try:
+        targets, specs = service.resolve(req.target_ids)
+    except (TargetSpecError, KeyError) as e:
+        raise InvalidTargetSpecApiError(f"Cannot resolve target: {e}") from e
+
+    operator_name = auth.get("name") or "api_v1"
+    plan = service.plan(targets, specs, cases, dataset_label=req.dataset_name, requested_by=operator_name)
+    return _plan_to_response(plan)
+
+
+@router.get("/{plan_id}", response_model=PlanResponse)
+def get_plan(
+    plan_id: str,
+    auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_READ)),
+) -> PlanResponse:
+    """Retrieves an execution plan by its plan ID."""
+    service = ExecutionService()
+    plan = service.get_plan(plan_id)
+    if not plan:
+        raise NotFoundError(f"Plan '{plan_id}' not found.")
+    return _plan_to_response(plan)
+
+
+@router.post("/{plan_id}/approve", response_model=PlanResponse)
+def approve_plan(
+    plan_id: str,
+    req: PlanApproveRequest,
+    auth: Dict[str, Any] = Depends(require_scope(SCOPE_PLANS_APPROVE)),
+) -> PlanResponse:
+    """Human operator approves a PENDING plan using its cryptographic fingerprint."""
+    service = ExecutionService()
+    plan = service.get_plan(plan_id)
+    if not plan:
+        raise NotFoundError(f"Plan '{plan_id}' not found.")
+
+    if plan.fingerprint != req.fingerprint.strip():
+        raise ApprovalInvalidError(
+            f"Provided fingerprint '{req.fingerprint}' does not match plan '{plan.fingerprint}'.",
+            details={"expected_fingerprint": plan.fingerprint, "provided_fingerprint": req.fingerprint},
+        )
+
+    if plan.blockers:
+        raise PlanBlockedError(
+            f"Plan has {len(plan.blockers)} preflight blocker(s) and cannot be approved.",
+            details={"blockers": plan.blockers},
+        )
+
+    approver_identity = req.approver or auth.get("name") or "operator"
+    try:
+        approved = service.approve(
+            plan_id,
+            req.fingerprint.strip(),
+            channel="rest_v1",
+            approver=approver_identity,
+        )
+    except (LiveNotAuthorizedError, ApprovalError) as e:
+        raise ApprovalInvalidError(str(e)) from e
+
+    return _plan_to_response(approved)

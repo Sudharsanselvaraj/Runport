@@ -173,6 +173,35 @@ CREATE INDEX IF NOT EXISTS idx_spans_kind ON spans(trace_id, kind);
 CREATE INDEX IF NOT EXISTS idx_spans_status ON spans(status);
 CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
 
+CREATE TABLE IF NOT EXISTS api_keys (
+    key_id TEXT PRIMARY KEY,
+    key_hash TEXT NOT NULL,
+    name TEXT NOT NULL,
+    scopes_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    expires_at TEXT,
+    revoked INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+
+CREATE TABLE IF NOT EXISTS run_jobs (
+    job_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    run_id TEXT,
+    status TEXT NOT NULL,
+    total_cases INTEGER NOT NULL DEFAULT 0,
+    completed_cases INTEGER NOT NULL DEFAULT 0,
+    failed_cases INTEGER NOT NULL DEFAULT 0,
+    booked_spend_usd TEXT,
+    error_message TEXT,
+    cancelled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_run_jobs_plan_id ON run_jobs(plan_id);
+CREATE INDEX IF NOT EXISTS idx_run_jobs_status ON run_jobs(status);
+
 """
 
 
@@ -203,6 +232,7 @@ class DatabaseManager:
             conn.commit()
             self._migrate_evaluation_runs(conn)
             self._migrate_canonical_traces(conn)
+            self._migrate_api_v1_and_jobs(conn)
 
     @staticmethod
     def _migrate_evaluation_runs(conn: sqlite3.Connection) -> None:
@@ -394,6 +424,52 @@ class DatabaseManager:
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
             "VALUES (4, datetime('now'), 'Add canonical traces and spans tables and indexes')"
+        )
+        conn.commit()
+
+    @staticmethod
+    def _migrate_api_v1_and_jobs(conn: sqlite3.Connection) -> None:
+        """Additive migration 5: Ensure api_keys and run_jobs tables and indexes exist.
+
+        Preserves all existing tables and data. Safe for existing user databases.
+        """
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "api_keys" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    key_id TEXT PRIMARY KEY,
+                    key_hash TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    scopes_json TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT,
+                    revoked INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+        if "run_jobs" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS run_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    plan_id TEXT NOT NULL,
+                    run_id TEXT,
+                    status TEXT NOT NULL,
+                    total_cases INTEGER NOT NULL DEFAULT 0,
+                    completed_cases INTEGER NOT NULL DEFAULT 0,
+                    failed_cases INTEGER NOT NULL DEFAULT 0,
+                    booked_spend_usd TEXT,
+                    error_message TEXT,
+                    cancelled INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    finished_at TEXT
+                )
+            """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_plan_id ON run_jobs(plan_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_status ON run_jobs(status)")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+            "VALUES (5, datetime('now'), 'Add api_keys and run_jobs tables and indexes')"
         )
         conn.commit()
 
@@ -1201,3 +1277,148 @@ class DatabaseManager:
             source=row["source"],
             created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc),
         )
+
+    # -- API Key Management ----------------------------------------------------
+
+    def create_api_key(
+        self,
+        key_id: str,
+        key_hash: str,
+        name: str,
+        scopes: List[str],
+        created_at: Optional[str] = None,
+        expires_at: Optional[str] = None,
+    ) -> None:
+        """Stores a hashed API key with assigned scopes."""
+        if created_at is None:
+            created_at = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO api_keys (key_id, key_hash, name, scopes_json, created_at, expires_at, revoked)
+                VALUES (?, ?, ?, ?, ?, ?, 0)
+                """,
+                (key_id, key_hash, name, json.dumps(scopes), created_at, expires_at),
+            )
+            conn.commit()
+
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+        """Retrieves an active (non-revoked) API key by its SHA-256 hash."""
+        with self.get_connection() as conn:
+            cur = conn.execute("SELECT * FROM api_keys WHERE key_hash = ? AND revoked = 0", (key_hash,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            d["scopes"] = json.loads(d.get("scopes_json") or "[]")
+            return d
+
+    def revoke_api_key(self, key_id: str) -> bool:
+        """Revokes an API key, rendering it invalid for all scopes."""
+        with self.get_connection() as conn:
+            cur = conn.execute("UPDATE api_keys SET revoked = 1 WHERE key_id = ?", (key_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def list_api_keys(self) -> List[Dict[str, Any]]:
+        """Lists all registered API keys."""
+        with self.get_connection() as conn:
+            cur = conn.execute("SELECT key_id, name, scopes_json, created_at, expires_at, revoked FROM api_keys ORDER BY created_at DESC")
+            keys = []
+            for row in cur.fetchall():
+                d = dict(row)
+                d["scopes"] = json.loads(d.get("scopes_json") or "[]")
+                keys.append(d)
+            return keys
+
+    # -- Asynchronous Job State Management -------------------------------------
+
+    def create_run_job(
+        self,
+        job_id: str,
+        plan_id: str,
+        status: str = "queued",
+        total_cases: int = 0,
+        run_id: Optional[str] = None,
+    ) -> None:
+        """Records a new asynchronous benchmark execution job."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO run_jobs (
+                    job_id, plan_id, run_id, status, total_cases, completed_cases, failed_cases,
+                    booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at
+                ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL)
+                """,
+                (job_id, plan_id, run_id, status, total_cases, now, now),
+            )
+            conn.commit()
+
+    def update_run_job(
+        self,
+        job_id: str,
+        status: Optional[str] = None,
+        run_id: Optional[str] = None,
+        completed_cases: Optional[int] = None,
+        failed_cases: Optional[int] = None,
+        booked_spend_usd: Optional[str] = None,
+        error_message: Optional[str] = None,
+        finished_at: Optional[str] = None,
+        cancelled: Optional[bool] = None,
+    ) -> None:
+        """Updates progress, status, or spend for a running/completed execution job."""
+        now = datetime.now(timezone.utc).isoformat()
+        updates = ["updated_at = ?"]
+        params: List[Any] = [now]
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+        if run_id is not None:
+            updates.append("run_id = ?")
+            params.append(run_id)
+        if completed_cases is not None:
+            updates.append("completed_cases = ?")
+            params.append(completed_cases)
+        if failed_cases is not None:
+            updates.append("failed_cases = ?")
+            params.append(failed_cases)
+        if booked_spend_usd is not None:
+            updates.append("booked_spend_usd = ?")
+            params.append(booked_spend_usd)
+        if error_message is not None:
+            updates.append("error_message = ?")
+            params.append(error_message)
+        if finished_at is not None:
+            updates.append("finished_at = ?")
+            params.append(finished_at)
+        if cancelled is not None:
+            updates.append("cancelled = ?")
+            params.append(1 if cancelled else 0)
+        params.append(job_id)
+        with self.get_connection() as conn:
+            conn.execute(f"UPDATE run_jobs SET {', '.join(updates)} WHERE job_id = ?", params)
+            conn.commit()
+
+    def get_run_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves execution job state by ID."""
+        with self.get_connection() as conn:
+            cur = conn.execute("SELECT * FROM run_jobs WHERE job_id = ?", (job_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            d["cancelled"] = bool(d.get("cancelled"))
+            return d
+
+    def list_run_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Lists recent execution jobs."""
+        with self.get_connection() as conn:
+            cur = conn.execute("SELECT * FROM run_jobs ORDER BY created_at DESC LIMIT ?", (max(1, limit),))
+            results = []
+            for r in cur.fetchall():
+                d = dict(r)
+                d["cancelled"] = bool(d.get("cancelled"))
+                results.append(d)
+            return results
+
