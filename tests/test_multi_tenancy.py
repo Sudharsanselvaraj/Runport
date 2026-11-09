@@ -236,3 +236,4 @@ def test_api_key_last_used_tracking(test_db):
     # Querying updates last_used_at
     key_after = test_db.get_api_key_by_hash("hash-tracked-01")
     assert key_after["last_used_at"] is not None
+

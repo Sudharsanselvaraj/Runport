@@ -1,6 +1,6 @@
 {
   "name": "@runport/sdk",
-  "version": "0.1.1-alpha.1",
+  "version": "1.0.0",
   "description": "TypeScript / JavaScript client SDK for Runport universal LLM and workflow benchmarking platform",
   "type": "module",
   "main": "./dist/index.js",

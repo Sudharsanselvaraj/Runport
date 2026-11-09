@@ -269,3 +269,4 @@ def test_runport_langgraph_tracer_error():
 
     trace = tracer.get_trace()
     assert trace.status == SpanStatus.ERROR
+

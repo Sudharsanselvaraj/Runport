@@ -180,6 +180,7 @@ class BaseProvider(ABC):
             # Scrub Bearer tokens and generic API key patterns
             scrubbed = re.sub(r"(Bearer\s+)[a-zA-Z0-9_\-\.]{8,}", r"\1[REDACTED_SECRET]", data, flags=re.IGNORECASE)
             scrubbed = re.sub(r"(sk-or-v1-[a-zA-Z0-9_\-]{16,}|sk-[a-zA-Z0-9_\-]{16,})", "[REDACTED_API_KEY]", scrubbed)
+            scrubbed = re.sub(r"(api[_-]?key\s*[:=]\s*)\S+", r"\1[REDACTED_API_KEY]", scrubbed, flags=re.IGNORECASE)
             scrubbed = re.sub(r"(authorization\s*[:=]\s*)\S+(?:\s+\S+)?", r"\1[REDACTED_SECRET]", scrubbed, flags=re.IGNORECASE)
             return scrubbed
         elif isinstance(data, dict):

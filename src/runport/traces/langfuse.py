@@ -590,3 +590,4 @@ class LangfuseIngester:
             return n if n >= 0 else None
         except (ValueError, TypeError):
             return None
+
