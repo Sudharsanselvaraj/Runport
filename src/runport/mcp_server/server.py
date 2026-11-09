@@ -14,6 +14,7 @@ What an agent cannot do, by construction:
 
 from __future__ import annotations
 
+import contextvars
 import json
 import sys
 from typing import IO, Any, Callable, Dict, List, Optional, Tuple
@@ -21,6 +22,8 @@ from typing import IO, Any, Callable, Dict, List, Optional, Tuple
 from runport import __version__
 from runport.connectors.mcp import SUPPORTED_PROTOCOL_VERSIONS, validate_json_schema
 from runport.providers.base import scrub_secrets
+
+current_mcp_auth: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar("current_mcp_auth", default=None)
 
 SERVER_INFO = {"name": "runport", "version": __version__}
 DEFAULT_PROTOCOL_VERSION = "2026-07-28"
@@ -112,7 +115,23 @@ class RunportMcpServer:
 
     # ------------------------------------------------------------------ protocol
 
-    def handle(self, msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def handle(self, msg: Dict[str, Any], auth: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        token = current_mcp_auth.set(auth)
+        try:
+            return self._handle_msg(msg)
+        finally:
+            current_mcp_auth.reset(token)
+
+    def _current_auth(self) -> Optional[Dict[str, Any]]:
+        return current_mcp_auth.get()
+
+    def _caller_project_id(self) -> Optional[str]:
+        auth = self._current_auth()
+        if auth is None or auth.get("is_master"):
+            return None
+        return auth.get("project_id")
+
+    def _handle_msg(self, msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or "method" not in msg:
             return None if not isinstance(msg, dict) or "id" not in msg else _error(msg.get("id"), -32600, "Invalid Request")
         method, mid, params = msg["method"], msg.get("id"), msg.get("params") or {}
@@ -265,12 +284,14 @@ class RunportMcpServer:
             targets, specs = svc.resolve(args["target_ids"])
         except (OSError, ValueError) as e:
             raise ToolError(str(e)) from e
+        pid = self._caller_project_id() or "default"
         plan = svc.plan(
             targets,
             specs,
             cases,
             dataset_label=args["dataset_name"],
             requested_by="mcp",
+            project_id=pid,
             source={"dataset_name": args["dataset_name"], "sample_size": args.get("sample_size")},
         )
         out = plan.to_dict()
@@ -278,7 +299,8 @@ class RunportMcpServer:
         return out
 
     def _plan_or_error(self, plan_id: str) -> Any:
-        plan = self._svc().get_plan(plan_id)
+        pid = self._caller_project_id()
+        plan = self._svc().get_plan(plan_id, project_id=pid)
         if plan is None:
             raise ToolError(f"No plan '{plan_id}'.")
         return plan
@@ -335,20 +357,26 @@ class RunportMcpServer:
         }
 
     def _get_run(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        run = self._svc().db.get_evaluation_run(args["run_id"])
+        pid = self._caller_project_id()
+        run = self._svc().db.get_evaluation_run(args["run_id"], project_id=pid)
         if not run:
             raise ToolError(f"No run '{args['run_id']}'.")
         return {"run": run}
 
     def _get_results(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        pid = self._caller_project_id()
+        run = self._svc().db.get_evaluation_run(args["run_id"], project_id=pid)
+        if not run:
+            raise ToolError(f"No run '{args['run_id']}'.")
         rows = self._svc().db.get_evaluation_results_for_run(args["run_id"])
         if args.get("only_failures"):
             rows = [r for r in rows if not r.get("generated_output") or (r.get("accuracy") is not None and r["accuracy"] < 0.5)]
         return {"run_id": args["run_id"], "results": rows[: int(args.get("limit") or 100)], "total": len(rows)}
 
     def _compare(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        pid = self._caller_project_id()
         db = self._svc().db
-        a, b = db.get_evaluation_run(args["run_a"]), db.get_evaluation_run(args["run_b"])
+        a, b = db.get_evaluation_run(args["run_a"], project_id=pid), db.get_evaluation_run(args["run_b"], project_id=pid)
         if not a or not b:
             raise ToolError("Both runs must exist.")
         keys = ["model_id", "total_cases", "completed_cases", "failed_cases", "total_cost_usd", "mean_latency_ms", "mean_accuracy", "mean_overall_score"]
@@ -357,15 +385,17 @@ class RunportMcpServer:
     def _list_jobs(self, args: Dict[str, Any]) -> Dict[str, Any]:
         from runport.api.v1.jobs import JobManager
 
+        pid = self._caller_project_id()
         limit = int(args.get("limit") or 50)
-        jobs = JobManager().list_jobs(limit=limit)
+        jobs = JobManager().list_jobs(limit=limit, project_id=pid)
         return {"jobs": jobs}
 
     def _cancel_job(self, args: Dict[str, Any]) -> Dict[str, Any]:
         from runport.api.v1.jobs import JobManager
 
+        pid = self._caller_project_id()
         try:
-            job = JobManager().cancel_job(args["job_id"])
+            job = JobManager().cancel_job(args["job_id"], project_id=pid)
             return {"job": job}
         except Exception as e:
             raise ToolError(f"Could not cancel job: {e}") from e
@@ -378,7 +408,7 @@ class RunportMcpServer:
             "runport://models": lambda: self._list_models({}),
             "runport://targets": lambda: self._list_targets({}),
             "runport://datasets": lambda: self._list_datasets({}),
-            "runport://runs": lambda: {"runs": self._svc().db.get_all_evaluation_runs(limit=50)},
+            "runport://runs": lambda: {"runs": self._svc().db.get_all_evaluation_runs(limit=50, project_id=self._caller_project_id())},
             "runport://budget": self._budget,
         }
         if uri in fixed:
@@ -393,7 +423,8 @@ class RunportMcpServer:
         return {"contents": [{"uri": uri, "mimeType": "application/json", "text": json.dumps(scrub_secrets(data), indent=2, default=str)}]}
 
     def _budget(self) -> Dict[str, Any]:
-        st = self._svc().budget_service.get_status()
+        pid = self._caller_project_id()
+        st = self._svc().budget_service.get_status(project_id=pid)
         return {
             "total_ceiling_usd": str(st.total_ceiling_usd),
             "cumulative_spend_usd": str(st.cumulative_spend_usd),

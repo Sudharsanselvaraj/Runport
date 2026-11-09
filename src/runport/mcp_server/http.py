@@ -81,12 +81,14 @@ def create_mcp_router(
 
         if token:
             if expected and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
+                request.state.api_credential = {"is_master": True, "project_id": None}
                 return
             try:
                 from runport.api.v1.auth import verify_api_credential
                 from runport.api.v1.errors import UnauthorizedError
 
-                verify_api_credential(token)
+                cred = verify_api_credential(token)
+                request.state.api_credential = cred
                 return
             except UnauthorizedError:
                 raise HTTPException(
@@ -107,6 +109,9 @@ def create_mcp_router(
                 status_code=401,
                 detail={"error": {"code": "unauthorized", "message": "Missing or invalid Bearer token for MCP transport."}},
             )
+
+        # Local unauthenticated default to master context
+        request.state.api_credential = {"is_master": True, "project_id": None}
 
     @router.get("/sse")
     async def sse_endpoint(
@@ -170,8 +175,9 @@ def create_mcp_router(
                 detail={"error": {"code": "invalid_request", "message": "JSON-RPC request must be an object"}},
             )
 
-        # Execute JSON-RPC message against RunportMcpServer
-        response_dict = mcp_server.handle(body)
+        # Execute JSON-RPC message against RunportMcpServer with authenticated caller context
+        auth = getattr(request.state, "api_credential", None)
+        response_dict = mcp_server.handle(body, auth=auth)
 
         # If a session is open and active, also mirror response as SSE message
         if sessionId and response_dict is not None:

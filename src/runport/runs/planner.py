@@ -27,6 +27,7 @@ class ExecutionPlan:
     is_live: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
     fingerprint: str = ""
+    project_id: str = "default"
 
     def __post_init__(self):
         if not self.fingerprint:

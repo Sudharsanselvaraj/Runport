@@ -36,8 +36,9 @@ def get_budget_status(auth: Dict[str, Any] = Depends(require_scope(SCOPE_BUDGET_
     db.init_db()
     service = BudgetService(db=db, policy=settings.budget)
 
-    bstatus = service.get_status()
-    unresolved = db.get_unresolved()
+    project_id = None if auth.get("is_master") else auth.get("project_id")
+    bstatus = service.get_status(project_id=project_id)
+    unresolved = db.get_unresolved(project_id=project_id)
 
     return BudgetStatusResponse(
         policy=BudgetPolicyInfo(
@@ -68,8 +69,9 @@ def reconcile_transaction(
     db.init_db()
     service = BudgetService(db=db, policy=settings.budget)
 
-    # Check if transaction exists and is unresolved
-    unresolved = db.get_unresolved()
+    # Check if transaction exists and is unresolved within caller's project
+    project_id = None if auth.get("is_master") else auth.get("project_id")
+    unresolved = db.get_unresolved(project_id=project_id)
     tx_ids = {u["transaction_id"] for u in unresolved}
     if req.transaction_id not in tx_ids:
         raise NotFoundError(f"Unresolved transaction '{req.transaction_id}' not found.")
@@ -78,5 +80,6 @@ def reconcile_transaction(
         transaction_id=req.transaction_id,
         actual_usd=req.reconciled_usd,
         notes=req.notes,
+        project_id=project_id,
     )
     return {"status": "reconciled", "transaction_id": req.transaction_id, "amount_usd": str(req.reconciled_usd)}

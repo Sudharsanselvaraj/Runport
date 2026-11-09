@@ -178,4 +178,6 @@ jobs:
       - name: Run TypeScript SDK Tests
         working-directory: packages/sdk-ts
         run: |
+          npm install
+          npm run build
           npm test

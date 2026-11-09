@@ -207,9 +207,17 @@ class GenericRunner:
 
                     if billable:
                         try:
-                            plan_project_id = getattr(plan, "project_id", "default") if hasattr(plan, "project_id") else "default"
+                            plan_project_id = (
+                                getattr(plan, "project_id", None)
+                                or (plan.metadata.get("project_id") if hasattr(plan, "metadata") and isinstance(plan.metadata, dict) else None)
+                                or "default"
+                            )
                             reservation_id = self.budget_service.reserve(
-                                run_id, worst_case_estimate, run_cap_usd=plan.budget_cap_usd or None, project_id=plan_project_id
+                                run_id,
+                                worst_case_estimate,
+                                run_cap_usd=plan.budget_cap_usd or None,
+                                project_id=plan_project_id,
+                                plan_id=getattr(plan, "plan_id", None),
                             )
                         except BudgetExceededError as e:
                             if not run_res.case_results:
@@ -374,7 +382,11 @@ class GenericRunner:
                         # Rejected as unauthorized, or provably never sent: nothing can have been billed.
                         not_billed = res.status == TargetStatus.UNAUTHORIZED or res.request_sent is False
                         deterministic_tx_id = f"tx-{run_id}-{case_id}"
-                        plan_project_id = getattr(plan, "project_id", "default") if hasattr(plan, "project_id") else "default"
+                        plan_project_id = (
+                            getattr(plan, "project_id", None)
+                            or (plan.metadata.get("project_id") if hasattr(plan, "metadata") and isinstance(plan.metadata, dict) else None)
+                            or "default"
+                        )
 
                         if res.cost_usd is not None and basis != CostBasis.UNRESOLVED.value:
                             newly_booked = self.budget_service.record_spend(
@@ -456,7 +468,11 @@ class GenericRunner:
                 run_res.mean_latency_ms = total_lat / executed
 
             # Persist run and results (run first for foreign key integrity)
-            project_id = plan.metadata.get("project_id", "default") if hasattr(plan, "metadata") and isinstance(plan.metadata, dict) else "default"
+            project_id = (
+                getattr(plan, "project_id", None)
+                or (plan.metadata.get("project_id") if hasattr(plan, "metadata") and isinstance(plan.metadata, dict) else None)
+                or "default"
+            )
             run_dict = {
                 "run_id": run_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

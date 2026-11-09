@@ -123,6 +123,8 @@ class RunJobResponse(BaseModel):
     error_message: Optional[str] = Field(default=None, description="Error details if job failed")
     cancelled: bool = Field(default=False, description="Whether cancellation was requested")
     idempotency_key: Optional[str] = Field(default=None, description="Idempotency key if provided upon submission")
+    project_id: Optional[str] = Field(default="default", description="Project ID owning this job")
+    requested_by: Optional[str] = Field(default=None, description="Caller identifier who requested this job")
     created_at: str = Field(..., description="Job submission timestamp in UTC")
     updated_at: str = Field(..., description="Last progress update timestamp in UTC")
     finished_at: Optional[str] = Field(default=None, description="Completion timestamp in UTC")

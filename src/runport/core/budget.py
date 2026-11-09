@@ -64,14 +64,14 @@ class BudgetService:
             policy = effective_policy(active_policy, settings.data_dir)  # a typed, audited pilot-ceiling override applies; nothing else changes
         self.policy = policy
 
-    def get_status(self) -> BudgetStatus:
-        """Computes current budget status against configured local ceilings."""
+    def get_status(self, project_id: Optional[str] = None) -> BudgetStatus:
+        """Computes current budget status against configured local ceilings, optionally scoped by project."""
         self.db.init_db()
-        _, total_spend = self.db.get_cumulative_spend(include_estimates=False)
-        _, pilot_spend = self.db.get_pilot_spend(include_estimates=False)
-        _, simulated = self.db.get_simulated_spend()
-        unresolved = len(self.db.get_unresolved())
-        by_basis = self.db.get_spend_by_basis()
+        _, total_spend = self.db.get_cumulative_spend(include_estimates=False, project_id=project_id)
+        _, pilot_spend = self.db.get_pilot_spend(include_estimates=False, project_id=project_id)
+        _, simulated = self.db.get_simulated_spend(project_id=project_id)
+        unresolved = len(self.db.get_unresolved(project_id=project_id))
+        by_basis = self.db.get_spend_by_basis(project_id=project_id)
 
         rem_total = max(Decimal("0.00"), self.policy.total_budget_usd - total_spend)
         rem_pilot = max(Decimal("0.00"), self.policy.pilot_budget_usd - pilot_spend)
@@ -144,6 +144,7 @@ class BudgetService:
         run_cap_usd: Optional[Decimal] = None,
         is_pilot: bool = True,
         project_id: str = "default",
+        plan_id: Optional[str] = None,
     ) -> Optional[str]:
         """Atomically reserve worst-case spend for one case against the per-run, total and pilot ceilings.
 
@@ -164,6 +165,7 @@ class BudgetService:
             pilot_cap_usd=self.policy.pilot_budget_usd,
             run_cap_usd=cap,
             project_id=project_id,
+            plan_id=plan_id,
         )
         if reason:
             raise BudgetExceededError(f"Budget reservation refused: {reason}.")
@@ -177,6 +179,11 @@ class BudgetService:
         """Atomically releases all open budget reservations for a run ID."""
         self.db.init_db()
         return self.db.release_run_reservations(run_id)
+
+    def release_plan_reservations(self, plan_id: str) -> int:
+        """Atomically releases all open budget reservations for a plan ID."""
+        self.db.init_db()
+        return self.db.release_plan_reservations(plan_id)
 
     def check_preflight_budget(
         self,
@@ -259,6 +266,17 @@ class BudgetService:
             project_id=project_id,
         )
 
-    def unresolved(self):
+    def unresolved(self, project_id: Optional[str] = None):
         self.db.init_db()
-        return self.db.get_unresolved()
+        return self.db.get_unresolved(project_id=project_id)
+
+    def reconcile_unresolved_spend(
+        self,
+        transaction_id: str,
+        actual_usd: Decimal,
+        notes: str = "",
+        project_id: Optional[str] = None,
+    ) -> None:
+        """Resolves an unresolved entry, optionally verifying project ownership."""
+        self.db.init_db()
+        self.db.reconcile_transaction(transaction_id, actual_usd, note=notes, project_id=project_id)

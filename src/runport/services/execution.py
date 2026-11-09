@@ -163,7 +163,9 @@ class ExecutionService:
 
     # -- planning --------------------------------------------------------------------------------
 
-    def _plan_object(self, specs: Mapping[str, Mapping[str, Any]], cases: Sequence[Mapping[str, Any]], nonce: str) -> ExecutionPlan:
+    def _plan_object(
+        self, specs: Mapping[str, Mapping[str, Any]], cases: Sequence[Mapping[str, Any]], nonce: str, project_id: str = "default"
+    ) -> ExecutionPlan:
         return ExecutionPlan(
             plan_id=f"live-{nonce[:8]}",
             target_ids=sorted(specs),
@@ -173,6 +175,7 @@ class ExecutionService:
             budget_cap_usd=self.workspace.budget.per_run_usd,
             prompt_template_hash=_sha({tid: spec_digest(s) for tid, s in specs.items()}),
             is_live=True,
+            project_id=project_id,
         )
 
     def plan(
@@ -193,7 +196,9 @@ class ExecutionService:
         if set(targets) != set(specs):
             raise ValueError("targets and specs must name the same target ids")
         nonce = secrets.token_hex(16)
-        plan = self._plan_object(specs, cases, nonce)
+        plan = self._plan_object(specs, cases, nonce, project_id=project_id)
+        plan.project_id = project_id
+        plan.metadata["project_id"] = project_id
 
         per_case_cap = self.workspace.budget.per_case_usd
         per_target: List[Dict[str, Any]] = []
@@ -304,8 +309,10 @@ class ExecutionService:
             raise ApprovalError(f"No plan '{plan_id}'; nothing was sent.")
         if rec.summary.get("blockers"):
             raise ApprovalError(f"Plan '{plan_id}' has unresolved blockers and cannot be executed; nothing was sent.")
-        plan = self._plan_object(specs, cases, rec.summary["nonce"])
-        plan.metadata["project_id"] = getattr(rec, "project_id", "default") or "default"
+        proj_id = getattr(rec, "project_id", "default") or "default"
+        plan = self._plan_object(specs, cases, rec.summary["nonce"], project_id=proj_id)
+        plan.project_id = proj_id
+        plan.metadata["project_id"] = proj_id
         if plan.fingerprint != rec.fingerprint:
             raise ApprovalError("The targets, cases or caps differ from the approved plan; nothing was sent. Create and approve a new plan.")
         self.approvals.consume(plan_id, rec.fingerprint)  # atomic: exactly one execution per approval

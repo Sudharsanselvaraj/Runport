@@ -110,8 +110,12 @@ CREATE TABLE IF NOT EXISTS budget_reservations (
     is_pilot INTEGER NOT NULL DEFAULT 1,
     created_at REAL NOT NULL,
     expires_at REAL NOT NULL,
-    project_id TEXT NOT NULL DEFAULT 'default'
+    project_id TEXT NOT NULL DEFAULT 'default',
+    plan_id TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_budget_reservations_project ON budget_reservations(project_id);
+CREATE INDEX IF NOT EXISTS idx_budget_reservations_run ON budget_reservations(run_id);
+CREATE INDEX IF NOT EXISTS idx_budget_reservations_plan ON budget_reservations(plan_id);
 
 CREATE TABLE IF NOT EXISTS idempotency_records (
     key TEXT NOT NULL,
@@ -693,6 +697,8 @@ class DatabaseManager:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(run_jobs)").fetchall()}
             if "idempotency_key" not in cols:
                 conn.execute("ALTER TABLE run_jobs ADD COLUMN idempotency_key TEXT")
+            if "requested_by" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN requested_by TEXT")
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_jobs_project_idempotency ON run_jobs(project_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
             )
@@ -701,8 +707,11 @@ class DatabaseManager:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(budget_reservations)").fetchall()}
             if "project_id" not in cols:
                 conn.execute("ALTER TABLE budget_reservations ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            if "plan_id" not in cols:
+                conn.execute("ALTER TABLE budget_reservations ADD COLUMN plan_id TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_project ON budget_reservations(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_run ON budget_reservations(run_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_plan ON budget_reservations(plan_id)")
 
         if "idempotency_records" not in tables:
             conn.execute("""
@@ -779,11 +788,15 @@ class DatabaseManager:
             conn.commit()
             return cur.rowcount == 1
 
-    def get_cumulative_spend(self, include_estimates: bool = False) -> tuple[int, Decimal]:
-        """Returns total historical spend as (micros, Decimal)."""
+    def get_cumulative_spend(self, include_estimates: bool = False, project_id: Optional[str] = None) -> tuple[int, Decimal]:
+        """Returns total historical spend as (micros, Decimal), optionally scoped by project."""
         with self.get_connection() as conn:
             where_clause = "WHERE is_simulated = 0" + ("" if include_estimates else " AND is_preflight_estimate = 0")
-            cursor = conn.execute(f"SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger {where_clause}")
+            params: List[Any] = []
+            if project_id is not None:
+                where_clause += " AND project_id = ?"
+                params.append(project_id)
+            cursor = conn.execute(f"SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger {where_clause}", params)
             row = cursor.fetchone()
             micros = row[0] if row else 0
             return micros, Decimal(micros) / Decimal("1000000")
@@ -810,41 +823,63 @@ class DatabaseManager:
             conn.commit()
         return {"ledger_rows": ledger, "runs": runs, "results": results, "backup": str(backup_path) if backup_path else None}
 
-    def get_unresolved(self) -> List[Dict[str, Any]]:
-        """Ledger entries for requests that may have been billed but whose cost is unknown. Amount is never invented."""
+    def get_unresolved(self, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Ledger entries for requests that may have been billed but whose cost is unknown, optionally scoped by project."""
         with self.get_connection() as conn:
+            where_clause = "WHERE is_unresolved = 1"
+            params: List[Any] = []
+            if project_id is not None:
+                where_clause += " AND project_id = ?"
+                params.append(project_id)
             cur = conn.execute(
-                "SELECT transaction_id, timestamp, run_id, model_id, provider, description FROM budget_ledger WHERE is_unresolved = 1 ORDER BY timestamp"
+                f"SELECT transaction_id, timestamp, run_id, model_id, provider, description, project_id FROM budget_ledger {where_clause} ORDER BY timestamp",
+                params,
             )
             return [dict(r) for r in cur.fetchall()]
 
-    def reconcile_transaction(self, transaction_id: str, amount_usd: Decimal, note: str = "") -> None:
+    def reconcile_transaction(self, transaction_id: str, amount_usd: Decimal, note: str = "", project_id: Optional[str] = None) -> None:
         """Resolve an unresolved entry with an amount the operator read from the provider dashboard (recorded as RECONCILED_MANUAL)."""
         with self.get_connection() as conn:
-            row = conn.execute("SELECT is_unresolved FROM budget_ledger WHERE transaction_id = ?", (transaction_id,)).fetchone()
+            where_clause = "WHERE transaction_id = ?"
+            params: List[Any] = [transaction_id]
+            if project_id is not None:
+                where_clause += " AND project_id = ?"
+                params.append(project_id)
+            row = conn.execute(f"SELECT is_unresolved FROM budget_ledger {where_clause}", params).fetchone()
             if row is None:
                 raise KeyError(f"No ledger entry {transaction_id}")
             if not row[0]:
                 raise ValueError(f"Ledger entry {transaction_id} is not unresolved")
             conn.execute(
-                "UPDATE budget_ledger SET is_unresolved = 0, amount_micros = ?, amount_usd = ?, cost_basis = 'RECONCILED_MANUAL', "
-                "description = description || ?  WHERE transaction_id = ?",
-                (int(amount_usd * 1_000_000), f"{amount_usd:.6f}", f" [reconciled manually: {note or 'amount from provider dashboard'}]", transaction_id),
+                f"UPDATE budget_ledger SET is_unresolved = 0, amount_micros = ?, amount_usd = ?, cost_basis = 'RECONCILED_MANUAL', "
+                f"description = description || ? {where_clause}",
+                [int(amount_usd * 1_000_000), f"{amount_usd:.6f}", f" [reconciled manually: {note or 'amount from provider dashboard'}]"] + params,
             )
             conn.commit()
 
-    def get_spend_by_basis(self) -> Dict[str, Decimal]:
+    def get_spend_by_basis(self, project_id: Optional[str] = None) -> Dict[str, Decimal]:
         """Actual-side spend grouped by how the cost was established (simulated and pre-run estimates excluded)."""
         with self.get_connection() as conn:
+            where_clause = "WHERE is_simulated = 0 AND is_preflight_estimate = 0 AND is_unresolved = 0"
+            params: List[Any] = []
+            if project_id is not None:
+                where_clause += " AND project_id = ?"
+                params.append(project_id)
             cur = conn.execute(
-                "SELECT cost_basis, COALESCE(SUM(amount_micros), 0) FROM budget_ledger WHERE is_simulated = 0 AND is_preflight_estimate = 0 AND is_unresolved = 0 GROUP BY cost_basis"
+                f"SELECT cost_basis, COALESCE(SUM(amount_micros), 0) FROM budget_ledger {where_clause} GROUP BY cost_basis",
+                params,
             )
             return {b: Decimal(m) / Decimal("1000000") for b, m in cur.fetchall()}
 
-    def get_simulated_spend(self) -> tuple[int, Decimal]:
+    def get_simulated_spend(self, project_id: Optional[str] = None) -> tuple[int, Decimal]:
         """Returns spend recorded by dry-run simulations. It never counts against any ceiling."""
         with self.get_connection() as conn:
-            row = conn.execute("SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger WHERE is_simulated = 1").fetchone()
+            where_clause = "WHERE is_simulated = 1"
+            params: List[Any] = []
+            if project_id is not None:
+                where_clause += " AND project_id = ?"
+                params.append(project_id)
+            row = conn.execute(f"SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger {where_clause}", params).fetchone()
             micros = row[0] if row else 0
             return micros, Decimal(micros) / Decimal("1000000")
 
@@ -860,6 +895,7 @@ class DatabaseManager:
         run_cap_usd: Decimal,
         ttl_s: float = 1800.0,
         project_id: str = "default",
+        plan_id: Optional[str] = None,
     ) -> Optional[str]:
         """Atomically reserve worst-case spend for one case. Returns None on success, or the reason it was refused.
 
@@ -905,7 +941,12 @@ class DatabaseManager:
                 return reason
 
             cols = {r[1] for r in conn.execute("PRAGMA table_info(budget_reservations)").fetchall()}
-            if "project_id" in cols:
+            if "project_id" in cols and "plan_id" in cols:
+                conn.execute(
+                    "INSERT INTO budget_reservations (reservation_id, run_id, amount_micros, is_pilot, created_at, expires_at, project_id, plan_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (reservation_id, run_id, amount, 1 if is_pilot else 0, now, now + ttl_s, project_id, plan_id),
+                )
+            elif "project_id" in cols:
                 conn.execute(
                     "INSERT INTO budget_reservations (reservation_id, run_id, amount_micros, is_pilot, created_at, expires_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (reservation_id, run_id, amount, 1 if is_pilot else 0, now, now + ttl_s, project_id),
@@ -936,6 +977,13 @@ class DatabaseManager:
             conn.commit()
             return cur.rowcount
 
+    def release_plan_reservations(self, plan_id: str) -> int:
+        """Releases all open budget reservations for a specific plan ID."""
+        with self.get_connection() as conn:
+            cur = conn.execute("DELETE FROM budget_reservations WHERE plan_id = ?", (plan_id,))
+            conn.commit()
+            return cur.rowcount
+
     def get_open_reservations(self) -> tuple[int, Decimal]:
         import time as _time
 
@@ -943,13 +991,17 @@ class DatabaseManager:
             micros = conn.execute("SELECT COALESCE(SUM(amount_micros), 0) FROM budget_reservations WHERE expires_at > ?", (_time.time(),)).fetchone()[0]
         return micros, Decimal(micros) / Decimal("1000000")
 
-    def get_pilot_spend(self, include_estimates: bool = False) -> tuple[int, Decimal]:
-        """Returns spend attributed to pilot evaluation as (micros, Decimal)."""
+    def get_pilot_spend(self, include_estimates: bool = False, project_id: Optional[str] = None) -> tuple[int, Decimal]:
+        """Returns spend attributed to pilot evaluation as (micros, Decimal), optionally scoped by project."""
         with self.get_connection() as conn:
             where_clause = "WHERE is_pilot = 1 AND is_simulated = 0"
             if not include_estimates:
                 where_clause += " AND is_preflight_estimate = 0"
-            cursor = conn.execute(f"SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger {where_clause}")
+            params: List[Any] = []
+            if project_id is not None:
+                where_clause += " AND project_id = ?"
+                params.append(project_id)
+            cursor = conn.execute(f"SELECT COALESCE(SUM(amount_micros), 0) FROM budget_ledger {where_clause}", params)
             row = cursor.fetchone()
             micros = row[0] if row else 0
             return micros, Decimal(micros) / Decimal("1000000")
@@ -1716,6 +1768,7 @@ class DatabaseManager:
         heartbeat_at: Optional[str] = None,
         attempt_count: int = 0,
         idempotency_key: Optional[str] = None,
+        requested_by: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Records a new asynchronous benchmark execution job.
 
@@ -1729,58 +1782,59 @@ class DatabaseManager:
         now = datetime.now(timezone.utc).isoformat()
         with self.get_connection() as conn:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(run_jobs)").fetchall()}
+            insert_cols = [
+                "job_id",
+                "plan_id",
+                "run_id",
+                "status",
+                "total_cases",
+                "completed_cases",
+                "failed_cases",
+                "booked_spend_usd",
+                "error_message",
+                "cancelled",
+                "created_at",
+                "updated_at",
+                "finished_at",
+                "project_id",
+                "requested_by_key_id",
+                "worker_id",
+                "lease_expires_at",
+                "heartbeat_at",
+                "attempt_count",
+            ]
+            insert_vals: List[Any] = [
+                job_id,
+                plan_id,
+                run_id,
+                status,
+                total_cases,
+                0,
+                0,
+                None,
+                None,
+                0,
+                now,
+                now,
+                None,
+                project_id,
+                requested_by_key_id,
+                worker_id,
+                lease_expires_at,
+                heartbeat_at,
+                attempt_count,
+            ]
+            if "idempotency_key" in cols:
+                insert_cols.append("idempotency_key")
+                insert_vals.append(idempotency_key)
+            if "requested_by" in cols:
+                insert_cols.append("requested_by")
+                insert_vals.append(requested_by or requested_by_key_id)
+
+            placeholders = ", ".join(["?"] * len(insert_vals))
+            sql = f"INSERT INTO run_jobs ({', '.join(insert_cols)}) VALUES ({placeholders})"
             try:
-                if "idempotency_key" in cols:
-                    conn.execute(
-                        """
-                        INSERT INTO run_jobs (
-                            job_id, plan_id, run_id, status, total_cases, completed_cases, failed_cases,
-                            booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at,
-                            project_id, requested_by_key_id, worker_id, lease_expires_at, heartbeat_at, attempt_count, idempotency_key
-                        ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            job_id,
-                            plan_id,
-                            run_id,
-                            status,
-                            total_cases,
-                            now,
-                            now,
-                            project_id,
-                            requested_by_key_id,
-                            worker_id,
-                            lease_expires_at,
-                            heartbeat_at,
-                            attempt_count,
-                            idempotency_key,
-                        ),
-                    )
-                else:
-                    conn.execute(
-                        """
-                        INSERT INTO run_jobs (
-                            job_id, plan_id, run_id, status, total_cases, completed_cases, failed_cases,
-                            booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at,
-                            project_id, requested_by_key_id, worker_id, lease_expires_at, heartbeat_at, attempt_count
-                        ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            job_id,
-                            plan_id,
-                            run_id,
-                            status,
-                            total_cases,
-                            now,
-                            now,
-                            project_id,
-                            requested_by_key_id,
-                            worker_id,
-                            lease_expires_at,
-                            heartbeat_at,
-                            attempt_count,
-                        ),
-                    )
+                conn.execute(sql, insert_vals)
                 conn.commit()
             except sqlite3.IntegrityError:
                 if idempotency_key:
@@ -1807,7 +1861,8 @@ class DatabaseManager:
         attempt_count: Optional[int] = None,
         started_at: Optional[str] = None,
         cancelled_at: Optional[str] = None,
-    ) -> None:
+        expected_worker_id: Optional[str] = None,
+    ) -> bool:
         """Updates progress, status, or spend for a running/completed execution job."""
         now = datetime.now(timezone.utc).isoformat()
         updates = ["updated_at = ?"]
@@ -1854,10 +1909,15 @@ class DatabaseManager:
         if cancelled_at is not None:
             updates.append("cancelled_at = ?")
             params.append(cancelled_at)
+        where_clause = "WHERE job_id = ?"
         params.append(job_id)
+        if expected_worker_id is not None:
+            where_clause += " AND (worker_id IS NULL OR worker_id = ?)"
+            params.append(expected_worker_id)
         with self.get_connection() as conn:
-            conn.execute(f"UPDATE run_jobs SET {', '.join(updates)} WHERE job_id = ?", params)
+            cur = conn.execute(f"UPDATE run_jobs SET {', '.join(updates)} {where_clause}", params)
             conn.commit()
+            return cur.rowcount > 0
 
     def claim_run_job(self, job_id: str, worker_id: str, lease_duration_s: int = 60) -> bool:
         """Atomically claims a queued or expired job for execution by worker_id."""
@@ -1921,7 +1981,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cur = conn.execute(
                 """
-                SELECT job_id, run_id, cancelled FROM run_jobs
+                SELECT job_id, plan_id, run_id, cancelled FROM run_jobs
                 WHERE status IN ('running', 'claimed')
                   AND (lease_expires_at IS NULL OR lease_expires_at < ?)
                 """,
@@ -1930,6 +1990,7 @@ class DatabaseManager:
             rows = cur.fetchall()
             for row in rows:
                 jid = row["job_id"]
+                pid = row["plan_id"]
                 rid = row["run_id"]
                 was_cancelled = bool(row["cancelled"])
                 new_status = "cancelled" if was_cancelled else "failed"
@@ -1947,6 +2008,8 @@ class DatabaseManager:
                 )
                 if rid:
                     conn.execute("DELETE FROM budget_reservations WHERE run_id = ?", (rid,))
+                if pid:
+                    conn.execute("DELETE FROM budget_reservations WHERE plan_id = ?", (pid,))
                 recovered_ids.append(jid)
             conn.commit()
         return recovered_ids

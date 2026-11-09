@@ -134,9 +134,9 @@ class JobManager:
             if existing:
                 return existing
 
-        # Load cases to determine count
+        # Load cases to determine count across all targets
         cases = load_dataset_cases(dataset_path, sample_size)
-        total_cases = len(cases)
+        total_cases = len(cases) * max(1, len(target_ids))
 
         job_id = f"job-{uuid.uuid4().hex[:12]}"
         run_id = f"run-{uuid.uuid4().hex[:12]}"
@@ -151,6 +151,7 @@ class JobManager:
             project_id=project_id,
             requested_by_key_id=requested_by_key_id,
             idempotency_key=idempotency_key,
+            requested_by=requested_by,
         )
         if created_job and created_job.get("job_id") != job_id:
             return created_job
@@ -212,12 +213,15 @@ class JobManager:
         target_ids: List[str],
         dataset_path: str,
         sample_size: Optional[int],
+        heartbeat_interval_s: float = 15.0,
     ) -> None:
         """Background thread executing the benchmark case by case with cancellation and lease checks."""
         db = DatabaseManager(settings.db_path)
         db.init_db()
 
         worker_id = f"worker-{uuid.uuid4().hex[:8]}"
+        stop_heartbeat = threading.Event()
+        outcome = None
 
         try:
             # Atomically claim the job established by submit_job
@@ -234,6 +238,31 @@ class JobManager:
                 lease_duration_s=60,
             )
 
+            # Independent background heartbeat renewal thread running every 15 seconds
+            def _heartbeat_loop() -> None:
+                while not stop_heartbeat.wait(heartbeat_interval_s):
+                    try:
+                        renewed = db.renew_job_lease(ctx.job_id, worker_id, lease_duration_s=60)
+                        if not renewed:
+                            job = db.get_run_job(ctx.job_id)
+                            if job and (job.get("cancelled") or str(job.get("status", "")).lower() == "cancelled"):
+                                cancel_token.set()
+                                ctx.cancel_event.set()
+                            else:
+                                cancel_token.lease_lost = True
+                                cancel_token.set()
+                                ctx.cancel_event.set()
+                            break
+                    except Exception:
+                        logger.warning("Heartbeat renewal error for job %s", ctx.job_id, exc_info=True)
+
+            hb_thread = threading.Thread(
+                target=_heartbeat_loop,
+                daemon=True,
+                name=f"heartbeat-{ctx.job_id}",
+            )
+            hb_thread.start()
+
             service = ExecutionService()
             plan = service.get_plan(ctx.plan_id)
             if not plan:
@@ -242,6 +271,7 @@ class JobManager:
                     status="failed",
                     error_message=f"Plan '{ctx.plan_id}' no longer exists.",
                     finished_at=datetime.now(timezone.utc).isoformat(),
+                    expected_worker_id=worker_id,
                 )
                 return
 
@@ -266,16 +296,17 @@ class JobManager:
             failed_cases = sum(r.failed_cases + r.invalid_cases for r in outcome.runs)
             spend_usd = sum((r.total_spend_usd for r in outcome.runs), Decimal("0.00"))
 
-            # Record final status
+            # Record final status with worker fencing
             db.update_run_job(
                 ctx.job_id,
                 status=final_status,
-                run_id=outcome.run_id,
+                run_id=outcome.run_id if outcome else run_id,
                 completed_cases=completed_cases,
                 failed_cases=failed_cases,
                 booked_spend_usd=f"{spend_usd:.6f}",
                 finished_at=datetime.now(timezone.utc).isoformat(),
                 cancelled=was_cancelled,
+                expected_worker_id=worker_id,
             )
 
         except Exception as e:
@@ -285,8 +316,13 @@ class JobManager:
                 status="failed",
                 error_message=str(e),
                 finished_at=datetime.now(timezone.utc).isoformat(),
+                expected_worker_id=worker_id,
             )
         finally:
+            stop_heartbeat.set()
             db.release_run_reservations(run_id)
+            if outcome and getattr(outcome, "run_id", None):
+                db.release_run_reservations(outcome.run_id)
+            db.release_plan_reservations(ctx.plan_id)
             with self._active_lock:
                 self._active_jobs.pop(ctx.job_id, None)
