@@ -4,7 +4,8 @@ Specification: docs/SDK_API_CONTRACT.md section 2.2 and Task 3.2.
 Features:
 - Non-blocking execution worker pool.
 - Cooperative cancellation tokens stopping cleanly after the active case.
-- In-memory active registry + SQLite persistence for state across restarts.
+- Durable worker leases, atomic job claiming, and heartbeat renewals.
+- Multi-process stale worker detection and crash recovery.
 - Strictly executes via ExecutionService and GenericRunner (no bypass runner).
 """
 
@@ -13,14 +14,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 import threading
-import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 
-from runport.api.v1.errors import NotFoundError, PlanBlockedError
-from runport.connectors.registry import TargetSpecError
+from runport.api.v1.errors import NotFoundError
 from runport.core.config import settings
-from runport.runs.executor import GenericRunner
 from runport.services.execution import ExecutionService, load_dataset_cases
 from runport.storage.db import DatabaseManager
 
@@ -37,8 +35,55 @@ class JobContext:
         self.thread: Optional[threading.Thread] = None
 
 
+class CooperativeCancelToken(threading.Event):
+    """A cooperative cancellation token that simultaneously checks persistent database
+
+    cancellation signals and extends worker lease heartbeats at each test case boundary.
+    """
+
+    def __init__(
+        self,
+        job_id: str,
+        worker_id: str,
+        db: DatabaseManager,
+        in_memory_event: Optional[threading.Event] = None,
+        lease_duration_s: int = 60,
+    ):
+        super().__init__()
+        self.job_id = job_id
+        self.worker_id = worker_id
+        self.db = db
+        self.in_memory_event = in_memory_event
+        self.lease_duration_s = lease_duration_s
+        self.lease_lost = False
+
+    def is_set(self) -> bool:
+        if super().is_set() or (self.in_memory_event and self.in_memory_event.is_set()):
+            return True
+        try:
+            # Renew lease heartbeat before checking
+            renewed = self.db.renew_job_lease(self.job_id, self.worker_id, self.lease_duration_s)
+            if not renewed:
+                # If renewal failed, check if job was cancelled or lease expired/lost
+                job = self.db.get_run_job(self.job_id)
+                if job and (job.get("cancelled") or str(job.get("status", "")).lower() == "cancelled"):
+                    super().set()
+                    if self.in_memory_event:
+                        self.in_memory_event.set()
+                    return True
+                else:
+                    self.lease_lost = True
+                    super().set()
+                    if self.in_memory_event:
+                        self.in_memory_event.set()
+                    return True
+        except Exception:
+            pass
+        return False
+
+
 class JobManager:
-    """Manages asynchronous benchmark job queues, workers, and cancellation."""
+    """Manages asynchronous benchmark job queues, workers, leases, and cancellation."""
 
     _instance: Optional[JobManager] = None
     _lock = threading.Lock()
@@ -52,32 +97,20 @@ class JobManager:
                 cls._instance.recover_interrupted_jobs()
             return cls._instance
 
-    def recover_interrupted_jobs(self) -> int:
-        """Recovers jobs that were interrupted in 'queued' or 'running' state by a process restart.
+    def recover_interrupted_jobs(self, grace_period_s: int = 0) -> int:
+        """Recovers jobs whose worker leases expired without heartbeat renewal.
 
         Reconciles orphaned states so jobs do not remain indefinitely stuck as active.
+        Healthy workers actively executing with unexpired leases are never interrupted.
         """
         db = DatabaseManager(settings.db_path)
         db.init_db()
-        interrupted = 0
-        now = datetime.now(timezone.utc).isoformat()
         try:
-            for job in db.list_run_jobs(limit=500):
-                if str(job.get("status", "")).lower() in ("queued", "running"):
-                    is_cancelled = bool(job.get("cancelled"))
-                    new_status = "cancelled" if is_cancelled else "failed"
-                    err = None if is_cancelled else "Execution interrupted by process shutdown or restart."
-                    db.update_run_job(
-                        job["job_id"],
-                        status=new_status,
-                        cancelled=is_cancelled,
-                        error_message=err,
-                        finished_at=now,
-                    )
-                    interrupted += 1
+            recovered_ids = db.recover_stale_jobs(grace_period_s=grace_period_s)
+            return len(recovered_ids)
         except Exception:
-            logger.exception("Failed to recover interrupted run jobs during startup.")
-        return interrupted
+            logger.exception("Failed to recover stale run jobs during startup.")
+            return 0
 
     def submit_job(
         self,
@@ -128,30 +161,22 @@ class JobManager:
         return db.get_run_job(job_id, project_id=project_id) or {}
 
     def cancel_job(self, job_id: str, project_id: Optional[str] = None) -> Dict[str, Any]:
-        """Signals cooperative cancellation for a running or queued job, scoped by project."""
+        """Signals cooperative cancellation for a running or queued job across processes."""
         db = DatabaseManager(settings.db_path)
         db.init_db()
 
-        job = db.get_run_job(job_id, project_id=project_id)
-        if not job:
-            raise NotFoundError(f"Job '{job_id}' not found.")
-
-        # Signal in-memory worker
+        # Signal in-memory worker if local
         with self._active_lock:
             ctx = self._active_jobs.get(job_id)
             if ctx:
                 ctx.cancel_event.set()
 
-        # Update database status
-        if str(job.get("status", "")).lower() in ("queued", "running"):
-            db.update_run_job(
-                job_id,
-                cancelled=True,
-                status="cancelled",
-                finished_at=datetime.now(timezone.utc).isoformat(),
-            )
+        # Atomically update persistent database state
+        job = db.request_job_cancellation(job_id, project_id=project_id)
+        if not job:
+            raise NotFoundError(f"Job '{job_id}' not found.")
 
-        return db.get_run_job(job_id, project_id=project_id) or {}
+        return job
 
     def get_job(self, job_id: str, project_id: Optional[str] = None) -> Dict[str, Any]:
         """Retrieves current job status and progress, scoped by project."""
@@ -177,24 +202,26 @@ class JobManager:
         dataset_path: str,
         sample_size: Optional[int],
     ) -> None:
-        """Background thread executing the benchmark case by case with cancellation checks."""
+        """Background thread executing the benchmark case by case with cancellation and lease checks."""
         db = DatabaseManager(settings.db_path)
         db.init_db()
 
+        worker_id = f"worker-{uuid.uuid4().hex[:8]}"
+
         try:
-            # Check early cancellation from in-memory token or persistent database state
-            persisted = db.get_run_job(ctx.job_id)
-            if ctx.cancel_event.is_set() or (persisted and (persisted.get("cancelled") or persisted.get("status") == "cancelled")):
-                ctx.cancel_event.set()
-                db.update_run_job(
-                    ctx.job_id,
-                    status="cancelled",
-                    cancelled=True,
-                    finished_at=datetime.now(timezone.utc).isoformat(),
-                )
+            # Atomically claim the job established by submit_job
+            claimed = db.claim_run_job(ctx.job_id, worker_id, lease_duration_s=60)
+            if not claimed:
+                # Another worker claimed it or it was cancelled while queued
                 return
 
-            db.update_run_job(ctx.job_id, status="running")
+            cancel_token = CooperativeCancelToken(
+                job_id=ctx.job_id,
+                worker_id=worker_id,
+                db=db,
+                in_memory_event=ctx.cancel_event,
+                lease_duration_s=60,
+            )
 
             service = ExecutionService()
             plan = service.get_plan(ctx.plan_id)
@@ -210,22 +237,24 @@ class JobManager:
             targets, specs = service.resolve(target_ids)
             cases = load_dataset_cases(dataset_path, sample_size)
 
-            # Execute run through ExecutionService with cancellation token
+            # Execute run through ExecutionService with cancellation and lease renewal token
             outcome = service.execute(
                 plan_id=ctx.plan_id,
                 targets=targets,
                 specs=specs,
                 cases=cases,
-                cancel_token=ctx.cancel_event,
+                cancel_token=cancel_token,
             )
 
-            # Check if any run halted due to cancellation
-            was_cancelled = ctx.cancel_event.is_set() or any(getattr(r, "halt_kind", None) == "cancelled" for r in outcome.runs)
+            # Check if any run halted due to cancellation or lease loss
+            was_cancelled = ctx.cancel_event.is_set() or cancel_token.is_set() or any(getattr(r, "halt_kind", None) == "cancelled" for r in outcome.runs)
+
+            final_status = "interrupted" if cancel_token.lease_lost else ("cancelled" if was_cancelled else "completed")
 
             # Record final status
             db.update_run_job(
                 ctx.job_id,
-                status="cancelled" if was_cancelled else "completed",
+                status=final_status,
                 run_id=outcome.run_id,
                 completed_cases=len(outcome.results),
                 failed_cases=sum(1 for r in outcome.results if r.is_error),

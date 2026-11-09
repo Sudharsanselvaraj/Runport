@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Dict, Any
@@ -645,6 +645,10 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE run_jobs ADD COLUMN heartbeat_at TEXT")
             if "attempt_count" not in cols:
                 conn.execute("ALTER TABLE run_jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
+            if "started_at" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN started_at TEXT")
+            if "cancelled_at" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN cancelled_at TEXT")
 
             conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_project ON run_jobs(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_project_status ON run_jobs(project_id, status)")
@@ -1653,6 +1657,12 @@ class DatabaseManager:
         error_message: Optional[str] = None,
         finished_at: Optional[str] = None,
         cancelled: Optional[bool] = None,
+        worker_id: Optional[str] = None,
+        lease_expires_at: Optional[str] = None,
+        heartbeat_at: Optional[str] = None,
+        attempt_count: Optional[int] = None,
+        started_at: Optional[str] = None,
+        cancelled_at: Optional[str] = None,
     ) -> None:
         """Updates progress, status, or spend for a running/completed execution job."""
         now = datetime.now(timezone.utc).isoformat()
@@ -1682,10 +1692,163 @@ class DatabaseManager:
         if cancelled is not None:
             updates.append("cancelled = ?")
             params.append(1 if cancelled else 0)
+        if worker_id is not None:
+            updates.append("worker_id = ?")
+            params.append(worker_id)
+        if lease_expires_at is not None:
+            updates.append("lease_expires_at = ?")
+            params.append(lease_expires_at)
+        if heartbeat_at is not None:
+            updates.append("heartbeat_at = ?")
+            params.append(heartbeat_at)
+        if attempt_count is not None:
+            updates.append("attempt_count = ?")
+            params.append(attempt_count)
+        if started_at is not None:
+            updates.append("started_at = ?")
+            params.append(started_at)
+        if cancelled_at is not None:
+            updates.append("cancelled_at = ?")
+            params.append(cancelled_at)
         params.append(job_id)
         with self.get_connection() as conn:
             conn.execute(f"UPDATE run_jobs SET {', '.join(updates)} WHERE job_id = ?", params)
             conn.commit()
+
+    def claim_run_job(self, job_id: str, worker_id: str, lease_duration_s: int = 60) -> bool:
+        """Atomically claims a queued or expired job for execution by worker_id."""
+        now_dt = datetime.now(timezone.utc)
+        now_str = now_dt.isoformat()
+        lease_expiry = (now_dt + timedelta(seconds=lease_duration_s)).isoformat()
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                """
+                UPDATE run_jobs
+                SET status = 'running',
+                    worker_id = ?,
+                    started_at = COALESCE(started_at, ?),
+                    heartbeat_at = ?,
+                    lease_expires_at = ?,
+                    attempt_count = attempt_count + 1,
+                    updated_at = ?
+                WHERE job_id = ?
+                  AND cancelled = 0
+                  AND (
+                      status = 'queued'
+                      OR (status IN ('queued', 'running', 'claimed') AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
+                  )
+                """,
+                (worker_id, now_str, now_str, lease_expiry, now_str, job_id, now_str),
+            )
+            conn.commit()
+            return cur.rowcount == 1
+
+    def renew_job_lease(self, job_id: str, worker_id: str, lease_duration_s: int = 60) -> bool:
+        """Extends worker heartbeat and lease while job is actively running."""
+        now_dt = datetime.now(timezone.utc)
+        now_str = now_dt.isoformat()
+        lease_expiry = (now_dt + timedelta(seconds=lease_duration_s)).isoformat()
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                """
+                UPDATE run_jobs
+                SET heartbeat_at = ?,
+                    lease_expires_at = ?,
+                    updated_at = ?
+                WHERE job_id = ?
+                  AND worker_id = ?
+                  AND cancelled = 0
+                  AND status = 'running'
+                """,
+                (now_str, lease_expiry, now_str, job_id, worker_id),
+            )
+            conn.commit()
+            return cur.rowcount == 1
+
+    def recover_stale_jobs(self, grace_period_s: int = 0) -> List[str]:
+        """Detects jobs whose worker leases expired without heartbeat renewal and reconciles them.
+
+        Healthy workers actively executing with unexpired leases are never interrupted.
+        """
+        now_dt = datetime.now(timezone.utc)
+        cutoff = (now_dt - timedelta(seconds=grace_period_s)).isoformat()
+        now_str = now_dt.isoformat()
+        recovered_ids: List[str] = []
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT job_id, cancelled FROM run_jobs
+                WHERE status IN ('running', 'claimed')
+                  AND (lease_expires_at IS NULL OR lease_expires_at < ?)
+                """,
+                (cutoff,),
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                jid = row["job_id"]
+                was_cancelled = bool(row["cancelled"])
+                new_status = "cancelled" if was_cancelled else "failed"
+                err = "Execution was cancelled." if was_cancelled else "Execution interrupted: worker lease expired without heartbeat renewal (worker lost)."
+                conn.execute(
+                    """
+                    UPDATE run_jobs
+                    SET status = ?,
+                        error_message = ?,
+                        finished_at = ?,
+                        updated_at = ?
+                    WHERE job_id = ? AND status IN ('running', 'claimed')
+                    """,
+                    (new_status, err, now_str, now_str, jid),
+                )
+                recovered_ids.append(jid)
+            conn.commit()
+        return recovered_ids
+
+    def request_job_cancellation(self, job_id: str, project_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Atomically signals cancellation for a job across processes."""
+        now_str = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            if project_id:
+                cur = conn.execute("SELECT * FROM run_jobs WHERE job_id = ? AND project_id = ?", (job_id, project_id))
+            else:
+                cur = conn.execute("SELECT * FROM run_jobs WHERE job_id = ?", (job_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            current_status = row["status"]
+            if current_status in ("completed", "failed", "interrupted"):
+                d = dict(row)
+                d["cancelled"] = bool(d.get("cancelled"))
+                return d
+
+            if current_status == "queued":
+                conn.execute(
+                    """
+                    UPDATE run_jobs
+                    SET cancelled = 1,
+                        cancelled_at = ?,
+                        status = 'cancelled',
+                        finished_at = ?,
+                        updated_at = ?
+                    WHERE job_id = ?
+                    """,
+                    (now_str, now_str, now_str, job_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE run_jobs
+                    SET cancelled = 1,
+                        cancelled_at = ?,
+                        updated_at = ?
+                    WHERE job_id = ?
+                    """,
+                    (now_str, now_str, job_id),
+                )
+            conn.commit()
+
+        return self.get_run_job(job_id, project_id=project_id)
 
     def get_run_job(self, job_id: str, project_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Retrieves execution job state by ID, optionally filtered by project_id."""
