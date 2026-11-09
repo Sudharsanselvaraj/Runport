@@ -16,7 +16,7 @@
   <a href="https://github.com/Sudharsanselvaraj/Runport/actions/workflows/ci.yml"><img src="https://github.com/Sudharsanselvaraj/Runport/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-8b7cf6.svg" alt="License: Apache 2.0" /></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-22d3ee.svg" alt="Python 3.11+" /></a>
-  <a href="https://github.com/Sudharsanselvaraj/Runport/releases"><img src="https://img.shields.io/badge/version-1.0.0-10b981.svg" alt="Version: 1.0.0" /></a>
+  <a href="https://github.com/Sudharsanselvaraj/Runport/releases"><img src="https://img.shields.io/badge/version-1.0.1-10b981.svg" alt="Version: 1.0.1" /></a>
   <a href="https://github.com/Sudharsanselvaraj/Runport/stargazers"><img src="https://img.shields.io/github/stars/Sudharsanselvaraj/Runport?style=flat&color=eab308" alt="GitHub stars" /></a>
 </p>
 

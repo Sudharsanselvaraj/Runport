@@ -267,10 +267,11 @@ class DatabaseManager:
         """Opens a connection with WAL mode and row factory."""
         if str(self.db_path) != ":memory:":
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
         if str(self.db_path) != ":memory:":
             conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA busy_timeout = 30000;")
         conn.execute("PRAGMA foreign_keys = ON;")
         return conn
 
@@ -872,7 +873,9 @@ class DatabaseManager:
         now = _time.time()
         conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
         try:
-            conn.execute("PRAGMA journal_mode = WAL;") if str(self.db_path) != ":memory:" else None
+            if str(self.db_path) != ":memory:":
+                conn.execute("PRAGMA journal_mode = WAL;")
+                conn.execute("PRAGMA busy_timeout = 30000;")
             conn.execute("BEGIN IMMEDIATE")
             conn.execute("DELETE FROM budget_reservations WHERE expires_at <= ?", (now,))
             if conn.execute("SELECT COUNT(*) FROM budget_ledger WHERE is_unresolved = 1").fetchone()[0]:

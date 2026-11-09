@@ -1,6 +1,6 @@
 """Runport: Universal open-source LLM, prompt, and workflow benchmarking platform."""
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 
 def __getattr__(name: str):  # lazy, so importing runport stays cheap

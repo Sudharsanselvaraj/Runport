@@ -36,11 +36,17 @@ from runport.traces.repository import TraceRepository
 
 
 def test_gate1_package_cleanliness_and_assets():
-    """Gate 1: Verifies version bump to 1.0.0 and inclusion of bundled web assets."""
+    """Gate 1: Verifies version matches pyproject.toml and inclusion of bundled web assets."""
     # 1. Version check
+    import tomllib
     import runport as rp
 
-    assert rp.__version__ == "1.0.0"
+    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with open(pyproject_path, "rb") as f:
+        pyproject_ver = tomllib.load(f)["project"]["version"]
+
+    assert rp.__version__ == pyproject_ver
+    assert rp.__version__ >= "1.0.0"
 
     # 2. Web asset presence
     web_dir = Path(__file__).resolve().parent.parent / "src" / "runport" / "_web"

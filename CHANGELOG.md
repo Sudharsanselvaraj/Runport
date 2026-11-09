@@ -5,6 +5,29 @@ All notable changes to Runport are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-11-09
+
+### Security & Reliability Hardening
+- **Strict Multi-Tenant Resource Isolation**:
+  - Enforced project-level authorization across runs, results, traces, plans, and asynchronous jobs.
+  - Cross-tenant resource queries return `404 Not Found` fail-closed to prevent resource enumeration.
+  - SQL-level tenant scoping applied before loading spans and trace records.
+- **Durable Asynchronous Worker Leases & Recovery**:
+  - Implemented lease expiration and heartbeat tracking (`worker_id`, `lease_expires_at`, `heartbeat_at`) in `run_jobs` table.
+  - Background worker thread renews active leases every 15 seconds.
+  - Automatic stale job recovery sweeps abandoned worker reservations and marks dead executions failed.
+  - Cooperative cancellation checked at case execution boundaries.
+- **Financial Concurrency & Execution Integrity**:
+  - Additive SQLite Migration 8: added `idempotency_key` column on `run_jobs` with unique partial index, and `project_id` on `budget_reservations`.
+  - Atomically reserved budget per case during concurrent execution, releasing held reservations immediately upon case completion or failure.
+  - Deterministic financial transaction IDs (`tx-{run_id}-{case_id}`) with `INSERT OR IGNORE` semantics preventing duplicate spend booking.
+- **Control-Plane MCP Parity**:
+  - Added `get_budget_status`, `list_jobs`, and `cancel_job` MCP tools.
+  - Strictly forbade agent self-approvals, preserving human confirmation requirements.
+- **SDK Multi-Tenant & Idempotency Support**:
+  - Extended Python SDK `plan()` and `benchmark()` with `project_id`.
+  - Added `X-Project-Id` and `Idempotency-Key` headers to TypeScript SDK `RunportClient`.
+
 ## [1.0.0] - 2026-11-09
 
 ### Added
