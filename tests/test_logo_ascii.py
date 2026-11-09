@@ -12,6 +12,8 @@ from runport.tui.banner import (
     APP_VERSION,
     CLI_WORDMARK,
     RUNPORT_EMBLEM,
+    RUNPORT_EMBLEM_LARGE,
+    RUNPORT_EMBLEM_LARGE_LINES,
     RUNPORT_EMBLEM_LINES,
     RUNPORT_EMBLEM_SOLID,
     RUNPORT_EMBLEM_SOLID_LINES,
@@ -67,12 +69,15 @@ def test_no_dependency_on_cwd(tmp_path, monkeypatch):
 
 def test_official_terminal_emblem_constants_dimensions():
     """Assert official terminal emblem lines are non-empty and uniform in column width."""
-    assert len(RUNPORT_EMBLEM_LINES) == 27
-    assert all(len(line) == 64 for line in RUNPORT_EMBLEM_LINES)
-    assert len(RUNPORT_EMBLEM_SOLID_LINES) == 31
-    assert all(len(line) == 72 for line in RUNPORT_EMBLEM_SOLID_LINES)
+    assert len(RUNPORT_EMBLEM_LINES) == 12
+    assert all(len(line) == 28 for line in RUNPORT_EMBLEM_LINES)
+    assert len(RUNPORT_EMBLEM_SOLID_LINES) == 12
+    assert all(len(line) == 28 for line in RUNPORT_EMBLEM_SOLID_LINES)
+    assert len(RUNPORT_EMBLEM_LARGE_LINES) == 27
+    assert all(len(line) == 64 for line in RUNPORT_EMBLEM_LARGE_LINES)
     assert len(RUNPORT_EMBLEM) > 0
     assert len(RUNPORT_EMBLEM_SOLID) > 0
+    assert len(RUNPORT_EMBLEM_LARGE) > 0
 
 
 def test_terminal_image_protocol_detection(monkeypatch):

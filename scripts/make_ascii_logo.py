@@ -18,7 +18,13 @@ BITS = {(0, 0): 1, (0, 1): 2, (0, 2): 4, (1, 0): 8, (1, 1): 16, (1, 2): 32, (0, 
 
 
 def _shape(path: str) -> Image.Image:
-    mask = np.array(Image.open(path).convert("L")) > 128
+    raw = Image.open(path)
+    if raw.mode == "RGBA":
+        bg = Image.new("RGB", raw.size, (0, 0, 0))
+        bg.paste(raw, mask=raw.split()[3])
+        mask = np.array(bg.convert("L")) > 128
+    else:
+        mask = np.array(raw.convert("L")) > 128
     ys, xs = np.where(mask)
     return Image.fromarray((mask[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1] * 255).astype("uint8"))
 

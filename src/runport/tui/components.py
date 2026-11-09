@@ -91,7 +91,7 @@ class RunportLogo:
             return False
         if RunportLogo.can_render_image(console=console, compact=compact, cols=cols, rows=rows):
             return True
-        if cols < 66 or rows < 50:
+        if cols < 60 or rows < 30:
             return False
         return True
 
