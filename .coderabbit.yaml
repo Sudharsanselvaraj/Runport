@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+version: "2"
+language: "en-US"
+tone_instructions: "You are a senior security engineer and systems architect reviewing Runport, a high-assurance, multi-tenant LLM evaluation and workflow benchmarking platform. Focus on security, strict multi-tenant isolation, fail-closed financial integrity, worker reliability, and API/SDK parity. Be concise, direct, and actionable. Avoid stylistic nitpicks already covered by automated linters (Ruff, Mypy, ESLint)."
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+  path_instructions:
+    - path: "src/runport/mcp_server/**"
+      instructions: |
+        P0 — MCP Security & Authorization:
+        - Check that every tool execution validates the caller's `project_id` and does not leak or operate on other tenants' plans, runs, or jobs.
+        - Check that tool dispatch strictly enforces granted API key scopes (`runs:read`, `runs:execute`, `plans:create`, `budget:read`, `budget:reconcile`).
+        - Verify that read-only credentials cannot invoke mutating tools (`execute_approved_benchmark`, `reconcile_budget`, `cancel_job`, etc.).
+        - Ensure master/admin privileges cannot be assumed by standard project keys.
+    - path: "src/runport/core/budget*/**,src/runport/storage/ledger*/**"
+      instructions: |
+        P0 — Financial Integrity & Multi-Tenant Spend:
+        - Multi-tenant isolation: All spend records, reservations, and reconciliations MUST be scoped strictly by `project_id`.
+        - Strict vocabulary: Provenance must strictly be one of `ACTUAL`, `ESTIMATED`, `UNRESOLVED`, `UNAVAILABLE`.
+        - "Null is not 0": Missing tokens, latency, confidence, or cost MUST remain `None` / `UNAVAILABLE`. Never default missing spend to zero.
+        - Fail-closed execution: Any unresolved spend or exhausted cap must halt execution immediately.
+    - path: "src/runport/runs/worker*/**,src/runport/api/v1/jobs*/**"
+      instructions: |
+        P1 — Worker Heartbeat & Crash Recovery:
+        - Heartbeat fencing: Ensure background execution workers update `heartbeat_at` periodically.
+        - Stale worker detection: Verify stale workers (heartbeat exceeded threshold) are safely terminated without clobbering active workers.
+        - Fail-closed cleanup: If a worker fails, halts, or is canceled, orphaned budget reservations must be released immediately.
+    - path: "src/runport/storage/**"
+      instructions: |
+        P1 — Database & Migration Safety:
+        - Migrations must be strictly idempotent (safe against duplicate column additions or index creation under concurrent processes).
+        - Queries must strictly enforce tenant boundaries (`WHERE project_id = ?`).
+    - path: "packages/sdk-ts/**"
+      instructions: |
+        P1 — TypeScript SDK Compatibility:
+        - Maintain strict API contract alignment with the FastAPI backend (`src/runport/api/v1/`) and Python SDK (`src/runport_sdk/`).
+        - Ensure compatibility with Node.js 22+ native `--experimental-strip-types`.
+        - Enforce strict typing and error propagation.
+    - path: "src/runport_sdk/**"
+      instructions: |
+        P1 — Python SDK Parity:
+        - Keep client methods in sync with REST API endpoints, supporting tenant authentication headers and streaming telemetry where applicable.
+
+chat:
+  auto_reply: true
