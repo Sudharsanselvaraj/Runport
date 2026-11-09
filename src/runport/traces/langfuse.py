@@ -252,11 +252,13 @@ class LangfuseIngester:
     """Parses and ingests Langfuse v2 batches or exports into canonical Runport Traces."""
 
     @classmethod
-    def ingest_to_repository(cls, payload: Dict[str, Any], repo: TraceRepository) -> List[Trace]:
+    def ingest_to_repository(cls, payload: Dict[str, Any], repo: TraceRepository, project_id: Optional[str] = None) -> List[Trace]:
         """Parses payload, sanitizes secrets, and persists traces into SQLite repository."""
         traces = cls.parse_traces(payload)
         for trace in traces:
-            repo.save_trace(trace)
+            if project_id:
+                trace.project_id = project_id
+            repo.save_trace(trace, project_id=project_id)
         return traces
 
     @classmethod

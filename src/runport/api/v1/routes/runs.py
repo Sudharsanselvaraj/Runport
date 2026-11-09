@@ -41,8 +41,9 @@ def submit_plan_run(
 
     Returns HTTP 202 Accepted with a run job tracking handle.
     """
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
     service = ExecutionService()
-    plan = service.get_plan(plan_id)
+    plan = service.get_plan(plan_id, project_id=project_id)
     if not plan:
         raise NotFoundError(f"Plan '{plan_id}' not found.")
 
@@ -65,9 +66,23 @@ def submit_plan_run(
         target_ids=plan.target_ids,
         dataset_path=str(dataset_p),
         sample_size=req.sample_size or plan.case_count,
-        requested_by=auth.get("name") or "api_v1",
+        requested_by=auth.get("principal") or auth.get("name") or "api_v1",
+        project_id=auth.get("project_id", "default"),
+        requested_by_key_id=auth.get("key_id"),
     )
     return RunJobResponse(**job)
+
+
+@router.get("/jobs", response_model=List[RunJobResponse])
+def list_jobs(
+    limit: int = Query(50, ge=1, le=500),
+    auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_READ)),
+) -> List[RunJobResponse]:
+    """Lists asynchronous execution jobs newest first, scoped by project."""
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    job_mgr = JobManager()
+    jobs = job_mgr.list_jobs(limit=limit, project_id=project_id)
+    return [RunJobResponse(**j) for j in jobs]
 
 
 @router.get("/jobs/{job_id}", response_model=RunJobResponse)
@@ -75,9 +90,10 @@ def get_job_status(
     job_id: str,
     auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_READ)),
 ) -> RunJobResponse:
-    """Retrieves progress, status, and telemetry for an asynchronous execution job."""
+    """Retrieves progress, status, and telemetry for an asynchronous execution job, scoped by project."""
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
     job_mgr = JobManager()
-    job = job_mgr.get_job(job_id)
+    job = job_mgr.get_job(job_id, project_id=project_id)
     return RunJobResponse(**job)
 
 
@@ -86,9 +102,10 @@ def cancel_job(
     job_id: str,
     auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_EXECUTE)),
 ) -> RunJobResponse:
-    """Cooperatively cancels an active or queued execution job."""
+    """Cooperatively cancels an active or queued execution job, scoped by project."""
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
     job_mgr = JobManager()
-    job = job_mgr.cancel_job(job_id)
+    job = job_mgr.cancel_job(job_id, project_id=project_id)
     return RunJobResponse(**job)
 
 
@@ -118,7 +135,8 @@ def get_run_detail(
     """Retrieves metadata and aggregate statistics for a specific evaluation run."""
     db = DatabaseManager(settings.db_path)
     db.init_db()
-    run = db.get_evaluation_run(run_id)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    run = db.get_evaluation_run(run_id, project_id=project_id)
     if not run:
         raise NotFoundError(f"Run '{run_id}' not found.")
     return RunDetailResponse(**run)
@@ -129,14 +147,15 @@ def get_run_results(
     run_id: str,
     auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_READ)),
 ) -> RunResultsListResponse:
-    """Retrieves per-case evaluation results with metrics and scores."""
+    """Retrieves per-case evaluation results with metrics and scores, scoped by project."""
     db = DatabaseManager(settings.db_path)
     db.init_db()
-    run = db.get_evaluation_run(run_id)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    run = db.get_evaluation_run(run_id, project_id=project_id)
     if not run:
         raise NotFoundError(f"Run '{run_id}' not found.")
 
-    raw_results = db.get_evaluation_results_for_run(run_id)
+    raw_results = db.get_evaluation_results_for_run(run_id, project_id=project_id)
     items = []
     for r in raw_results:
         items.append(
@@ -164,12 +183,16 @@ def get_case_trace(
     case_id: str,
     auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_READ)),
 ) -> Dict[str, Any]:
-    """Retrieves the full canonical trace and spans for an individual run case."""
+    """Retrieves the full canonical trace and spans for an individual run case, scoped by project."""
     db = DatabaseManager(settings.db_path)
     db.init_db()
-    repo = TraceRepository(db=db)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    run = db.get_evaluation_run(run_id, project_id=project_id)
+    if not run:
+        raise NotFoundError(f"Run '{run_id}' not found.")
 
-    traces = repo.get_traces_for_case(run_id, case_id, include_spans=True)
+    repo = TraceRepository(db=db)
+    traces = repo.get_traces_for_case(run_id, case_id, include_spans=True, project_id=project_id)
     if not traces:
         raise NotFoundError(f"No canonical trace found for run '{run_id}', case '{case_id}'.")
 

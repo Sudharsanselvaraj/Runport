@@ -18,13 +18,13 @@ class TraceRepository:
     def __init__(self, db: Optional[DatabaseManager] = None):
         self.db = db or DatabaseManager()
 
-    def create_trace(self, trace: Trace) -> None:
+    def create_trace(self, trace: Trace, project_id: Optional[str] = None) -> None:
         """Persists a new trace record. Fails with sqlite3.IntegrityError if duplicate ID."""
-        self.db.create_trace(trace)
+        self.db.create_trace(trace, project_id=project_id)
 
-    def save_trace(self, trace: Trace) -> None:
+    def save_trace(self, trace: Trace, project_id: Optional[str] = None) -> None:
         """Upserts a trace and any child spans atomically in a single transaction."""
-        self.db.save_trace(trace)
+        self.db.save_trace(trace, project_id=project_id)
 
     def create_span(self, span: Span) -> None:
         """Persists a single span record. Fails if (trace_id, span_id) already exists."""
@@ -34,9 +34,9 @@ class TraceRepository:
         """Persists multiple spans in an atomic transaction. Rolls back on error."""
         self.db.create_spans(spans)
 
-    def get_trace(self, trace_id: str, include_spans: bool = True) -> Optional[Trace]:
-        """Fetches a trace by ID, optionally including ordered child spans."""
-        return self.db.get_trace(trace_id, include_spans=include_spans)
+    def get_trace(self, trace_id: str, include_spans: bool = True, project_id: Optional[str] = None) -> Optional[Trace]:
+        """Fetches a trace by ID, optionally filtered by project_id and including ordered child spans."""
+        return self.db.get_trace(trace_id, include_spans=include_spans, project_id=project_id)
 
     def get_spans(self, trace_id: str) -> List[Span]:
         """Fetches all spans for a trace ordered chronologically."""
@@ -46,13 +46,13 @@ class TraceRepository:
         """Fetches spans within a trace filtered by immediate parent span."""
         return self.db.get_spans_by_parent(trace_id, parent_span_id)
 
-    def get_traces_for_run(self, run_id: str, include_spans: bool = False) -> List[Trace]:
-        """Returns all traces associated with a specific evaluation run."""
-        return self.db.get_traces_for_run(run_id, include_spans=include_spans)
+    def get_traces_for_run(self, run_id: str, include_spans: bool = False, project_id: Optional[str] = None) -> List[Trace]:
+        """Returns all traces associated with a specific evaluation run, optionally filtered by project_id."""
+        return self.db.get_traces_for_run(run_id, include_spans=include_spans, project_id=project_id)
 
-    def get_traces_for_case(self, run_id: str, case_id: str, include_spans: bool = False) -> List[Trace]:
-        """Returns all traces for a specific run case."""
-        return self.db.get_traces_for_case(run_id, case_id, include_spans=include_spans)
+    def get_traces_for_case(self, run_id: str, case_id: str, include_spans: bool = False, project_id: Optional[str] = None) -> List[Trace]:
+        """Returns all traces for a specific run case, optionally filtered by project_id."""
+        return self.db.get_traces_for_case(run_id, case_id, include_spans=include_spans, project_id=project_id)
 
     def list_traces(self, limit: int = 50, include_spans: bool = False, project_id: Optional[str] = None) -> List[Trace]:
         """Returns the most recent canonical traces across all runs."""

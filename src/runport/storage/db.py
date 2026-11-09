@@ -275,6 +275,7 @@ class DatabaseManager:
             self._migrate_canonical_traces(conn)
             self._migrate_api_v1_and_jobs(conn)
             self._migrate_multi_tenancy_and_rbac(conn)
+            self._migrate_tenant_resource_ownership(conn)
 
     @staticmethod
     def _migrate_evaluation_runs(conn: sqlite3.Connection) -> None:
@@ -621,6 +622,46 @@ class DatabaseManager:
         )
         conn.commit()
 
+    @staticmethod
+    def _migrate_tenant_resource_ownership(conn: sqlite3.Connection) -> None:
+        """Additive migration 7: Project-level resource ownership and worker lease metadata.
+
+        Adds project_id and worker lease columns to run_jobs and plan_approvals.
+        Establishes indexes idx_run_jobs_project_status and idx_plan_approvals_project.
+        """
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+
+        if "run_jobs" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(run_jobs)").fetchall()}
+            if "project_id" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            if "requested_by_key_id" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN requested_by_key_id TEXT")
+            if "worker_id" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN worker_id TEXT")
+            if "lease_expires_at" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN lease_expires_at TEXT")
+            if "heartbeat_at" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN heartbeat_at TEXT")
+            if "attempt_count" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
+
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_project ON run_jobs(project_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_project_status ON run_jobs(project_id, status)")
+
+        if "plan_approvals" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(plan_approvals)").fetchall()}
+            if "project_id" not in cols:
+                conn.execute("ALTER TABLE plan_approvals ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_plan_approvals_project ON plan_approvals(project_id)")
+
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+            "VALUES (7, datetime('now'), 'Add project_id and worker lease columns to run_jobs and plan_approvals')"
+        )
+        conn.commit()
+
     def record_transaction(
         self,
         transaction_id: str,
@@ -907,14 +948,15 @@ class DatabaseManager:
 
     def save_evaluation_run(self, run: Dict[str, Any]) -> None:
         """Saves a completed or aborted evaluation run header."""
+        pid = run.get("project_id", "default")
         with self.get_connection() as conn:
             conn.execute(
                 """
                 INSERT INTO evaluation_runs (
                     run_id, timestamp, model_id, dataset_path, total_cases,
                     completed_cases, failed_cases, total_cost_usd, mean_latency_ms,
-                    mean_accuracy, mean_groundedness, mean_overall_score, is_dry_run, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    mean_accuracy, mean_groundedness, mean_overall_score, is_dry_run, notes, project_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     completed_cases = excluded.completed_cases,
                     failed_cases = excluded.failed_cases,
@@ -923,7 +965,8 @@ class DatabaseManager:
                     mean_accuracy = excluded.mean_accuracy,
                     mean_groundedness = excluded.mean_groundedness,
                     mean_overall_score = excluded.mean_overall_score,
-                    notes = excluded.notes
+                    notes = excluded.notes,
+                    project_id = excluded.project_id
                 """,
                 (
                     run["run_id"],
@@ -940,6 +983,7 @@ class DatabaseManager:
                     float(run["mean_overall_score"]) if run.get("mean_overall_score") is not None else None,
                     1 if run.get("is_dry_run", False) else 0,
                     run.get("notes", ""),
+                    pid,
                 ),
             )
             conn.commit()
@@ -982,13 +1026,19 @@ class DatabaseManager:
             )
             conn.commit()
 
-    def get_evaluation_run(self, run_id: str) -> Optional[Dict[str, Any]]:
-        """Fetches a specific evaluation run by ID."""
+    def get_evaluation_run(self, run_id: str, project_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Fetches a specific evaluation run by ID, optionally filtered by project_id."""
         with self.get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM evaluation_runs WHERE run_id = ?",
-                (run_id,),
-            )
+            if project_id:
+                cursor = conn.execute(
+                    "SELECT * FROM evaluation_runs WHERE run_id = ? AND project_id = ?",
+                    (run_id, project_id),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM evaluation_runs WHERE run_id = ?",
+                    (run_id,),
+                )
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -1007,9 +1057,16 @@ class DatabaseManager:
                 )
             return [dict(row) for row in cursor.fetchall()]
 
-    def get_evaluation_results_for_run(self, run_id: str) -> List[Dict[str, Any]]:
-        """Returns all individual results for a run."""
+    def get_evaluation_results_for_run(self, run_id: str, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns all individual results for a run, optionally verifying parent run project ownership."""
         with self.get_connection() as conn:
+            if project_id:
+                run_check = conn.execute(
+                    "SELECT 1 FROM evaluation_runs WHERE run_id = ? AND project_id = ?",
+                    (run_id, project_id),
+                ).fetchone()
+                if not run_check:
+                    return []
             cursor = conn.execute(
                 "SELECT * FROM evaluation_results WHERE run_id = ? ORDER BY result_id",
                 (run_id,),
@@ -1020,15 +1077,21 @@ class DatabaseManager:
     # Canonical Trace & Span Persistence (Milestone 2 - Phase 1)
     # -------------------------------------------------------------------------
 
-    def create_trace(self, trace: Trace) -> None:
+    def create_trace(self, trace: Trace, project_id: Optional[str] = None) -> None:
         """Persists a new trace record. Fails with IntegrityError if trace_id already exists."""
+        pid = project_id or getattr(trace, "project_id", None)
         with self.get_connection() as conn:
+            if not pid and trace.run_id:
+                r = conn.execute("SELECT project_id FROM evaluation_runs WHERE run_id = ?", (trace.run_id,)).fetchone()
+                if r and r[0]:
+                    pid = r[0]
+            pid = pid or "default"
             conn.execute(
                 """
                 INSERT INTO traces (
                     trace_id, run_id, case_id, target_id, session_id, name, status,
-                    start_time, end_time, attributes_json, schema_version, source, source_ref, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    start_time, end_time, attributes_json, schema_version, source, source_ref, created_at, project_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     trace.trace_id,
@@ -1045,21 +1108,28 @@ class DatabaseManager:
                     trace.source,
                     trace.source_ref,
                     trace.created_at.isoformat(),
+                    pid,
                 ),
             )
             if trace.spans:
                 self._insert_spans_with_conn(conn, trace.spans)
             conn.commit()
 
-    def save_trace(self, trace: Trace) -> None:
+    def save_trace(self, trace: Trace, project_id: Optional[str] = None) -> None:
         """Upserts a trace and any child spans atomically in a single transaction."""
+        pid = project_id or getattr(trace, "project_id", None)
         with self.get_connection() as conn:
+            if not pid and trace.run_id:
+                r = conn.execute("SELECT project_id FROM evaluation_runs WHERE run_id = ?", (trace.run_id,)).fetchone()
+                if r and r[0]:
+                    pid = r[0]
+            pid = pid or "default"
             conn.execute(
                 """
                 INSERT INTO traces (
                     trace_id, run_id, case_id, target_id, session_id, name, status,
-                    start_time, end_time, attributes_json, schema_version, source, source_ref, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    start_time, end_time, attributes_json, schema_version, source, source_ref, created_at, project_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(trace_id) DO UPDATE SET
                     run_id=excluded.run_id,
                     case_id=excluded.case_id,
@@ -1072,7 +1142,8 @@ class DatabaseManager:
                     attributes_json=excluded.attributes_json,
                     schema_version=excluded.schema_version,
                     source=excluded.source,
-                    source_ref=excluded.source_ref
+                    source_ref=excluded.source_ref,
+                    project_id=excluded.project_id
                 """,
                 (
                     trace.trace_id,
@@ -1089,6 +1160,7 @@ class DatabaseManager:
                     trace.source,
                     trace.source_ref,
                     trace.created_at.isoformat(),
+                    pid,
                 ),
             )
             if trace.spans:
@@ -1210,10 +1282,13 @@ class DatabaseManager:
         for span in spans:
             self._insert_span_with_conn(conn, span)
 
-    def get_trace(self, trace_id: str, include_spans: bool = True) -> Optional[Trace]:
-        """Fetches a trace by ID. Optionally populates child spans."""
+    def get_trace(self, trace_id: str, include_spans: bool = True, project_id: Optional[str] = None) -> Optional[Trace]:
+        """Fetches a trace by ID, optionally filtered by project_id. Optionally populates child spans."""
         with self.get_connection() as conn:
-            cursor = conn.execute("SELECT * FROM traces WHERE trace_id = ?", (trace_id,))
+            if project_id:
+                cursor = conn.execute("SELECT * FROM traces WHERE trace_id = ? AND project_id = ?", (trace_id, project_id))
+            else:
+                cursor = conn.execute("SELECT * FROM traces WHERE trace_id = ?", (trace_id,))
             row = cursor.fetchone()
             if not row:
                 return None
@@ -1250,13 +1325,19 @@ class DatabaseManager:
                 )
             return [self._row_to_span(r) for r in cursor.fetchall()]
 
-    def get_traces_for_run(self, run_id: str, include_spans: bool = False) -> List[Trace]:
-        """Returns all traces associated with a specific evaluation run."""
+    def get_traces_for_run(self, run_id: str, include_spans: bool = False, project_id: Optional[str] = None) -> List[Trace]:
+        """Returns all traces associated with a specific evaluation run, optionally filtered by project_id."""
         with self.get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM traces WHERE run_id = ? ORDER BY start_time ASC, created_at ASC",
-                (run_id,),
-            )
+            if project_id:
+                cursor = conn.execute(
+                    "SELECT * FROM traces WHERE run_id = ? AND project_id = ? ORDER BY start_time ASC, created_at ASC",
+                    (run_id, project_id),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM traces WHERE run_id = ? ORDER BY start_time ASC, created_at ASC",
+                    (run_id,),
+                )
             rows = cursor.fetchall()
             traces = []
             for r in rows:
@@ -1264,13 +1345,19 @@ class DatabaseManager:
                 traces.append(self._row_to_trace(r, spans=spans))
             return traces
 
-    def get_traces_for_case(self, run_id: str, case_id: str, include_spans: bool = False) -> List[Trace]:
-        """Returns all traces for a specific run case."""
+    def get_traces_for_case(self, run_id: str, case_id: str, include_spans: bool = False, project_id: Optional[str] = None) -> List[Trace]:
+        """Returns all traces for a specific run case, optionally filtered by project_id."""
         with self.get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM traces WHERE run_id = ? AND case_id = ? ORDER BY start_time ASC, created_at ASC",
-                (run_id, case_id),
-            )
+            if project_id:
+                cursor = conn.execute(
+                    "SELECT * FROM traces WHERE run_id = ? AND case_id = ? AND project_id = ? ORDER BY start_time ASC, created_at ASC",
+                    (run_id, case_id, project_id),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM traces WHERE run_id = ? AND case_id = ? ORDER BY start_time ASC, created_at ASC",
+                    (run_id, case_id),
+                )
             rows = cursor.fetchall()
             traces = []
             for r in rows:
@@ -1382,6 +1469,7 @@ class DatabaseManager:
     def _row_to_trace(row: sqlite3.Row, spans: Optional[List[Span]] = None) -> Trace:
         from runport.traces.domain import SpanStatus, Trace
 
+        pid = row["project_id"] if "project_id" in row.keys() and row["project_id"] else "default"
         return Trace(
             trace_id=row["trace_id"],
             run_id=row["run_id"],
@@ -1396,6 +1484,7 @@ class DatabaseManager:
             schema_version=row["schema_version"],
             source=row["source"],
             source_ref=row["source_ref"],
+            project_id=pid,
             created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc),
             spans=spans or [],
         )
@@ -1517,6 +1606,12 @@ class DatabaseManager:
         status: str = "queued",
         total_cases: int = 0,
         run_id: Optional[str] = None,
+        project_id: str = "default",
+        requested_by_key_id: Optional[str] = None,
+        worker_id: Optional[str] = None,
+        lease_expires_at: Optional[str] = None,
+        heartbeat_at: Optional[str] = None,
+        attempt_count: int = 0,
     ) -> None:
         """Records a new asynchronous benchmark execution job."""
         now = datetime.now(timezone.utc).isoformat()
@@ -1525,10 +1620,25 @@ class DatabaseManager:
                 """
                 INSERT INTO run_jobs (
                     job_id, plan_id, run_id, status, total_cases, completed_cases, failed_cases,
-                    booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at
-                ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL)
+                    booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at,
+                    project_id, requested_by_key_id, worker_id, lease_expires_at, heartbeat_at, attempt_count
+                ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
                 """,
-                (job_id, plan_id, run_id, status, total_cases, now, now),
+                (
+                    job_id,
+                    plan_id,
+                    run_id,
+                    status,
+                    total_cases,
+                    now,
+                    now,
+                    project_id,
+                    requested_by_key_id,
+                    worker_id,
+                    lease_expires_at,
+                    heartbeat_at,
+                    attempt_count,
+                ),
             )
             conn.commit()
 
@@ -1577,10 +1687,13 @@ class DatabaseManager:
             conn.execute(f"UPDATE run_jobs SET {', '.join(updates)} WHERE job_id = ?", params)
             conn.commit()
 
-    def get_run_job(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves execution job state by ID."""
+    def get_run_job(self, job_id: str, project_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieves execution job state by ID, optionally filtered by project_id."""
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT * FROM run_jobs WHERE job_id = ?", (job_id,))
+            if project_id:
+                cur = conn.execute("SELECT * FROM run_jobs WHERE job_id = ? AND project_id = ?", (job_id, project_id))
+            else:
+                cur = conn.execute("SELECT * FROM run_jobs WHERE job_id = ?", (job_id,))
             row = cur.fetchone()
             if not row:
                 return None
@@ -1588,10 +1701,16 @@ class DatabaseManager:
             d["cancelled"] = bool(d.get("cancelled"))
             return d
 
-    def list_run_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Lists recent execution jobs."""
+    def list_run_jobs(self, limit: int = 50, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists recent execution jobs, optionally filtered by project_id."""
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT * FROM run_jobs ORDER BY created_at DESC LIMIT ?", (max(1, limit),))
+            if project_id:
+                cur = conn.execute(
+                    "SELECT * FROM run_jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+                    (project_id, max(1, limit)),
+                )
+            else:
+                cur = conn.execute("SELECT * FROM run_jobs ORDER BY created_at DESC LIMIT ?", (max(1, limit),))
             results = []
             for r in cur.fetchall():
                 d = dict(r)

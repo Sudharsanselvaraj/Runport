@@ -63,7 +63,7 @@ class JobManager:
         now = datetime.now(timezone.utc).isoformat()
         try:
             for job in db.list_run_jobs(limit=500):
-                if job.get("status") in ("queued", "running"):
+                if str(job.get("status", "")).lower() in ("queued", "running"):
                     is_cancelled = bool(job.get("cancelled"))
                     new_status = "cancelled" if is_cancelled else "failed"
                     err = None if is_cancelled else "Execution interrupted by process shutdown or restart."
@@ -86,6 +86,8 @@ class JobManager:
         dataset_path: str,
         sample_size: Optional[int] = None,
         requested_by: str = "api_v1",
+        project_id: str = "default",
+        requested_by_key_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Submits an approved plan for asynchronous execution."""
         db = DatabaseManager(settings.db_path)
@@ -98,13 +100,15 @@ class JobManager:
         job_id = f"job-{uuid.uuid4().hex[:12]}"
         run_id = f"run-{uuid.uuid4().hex[:12]}"
 
-        # Persist initial queued state
+        # Persist initial queued state with project ownership
         db.create_run_job(
             job_id=job_id,
             plan_id=plan_id,
             status="queued",
             total_cases=total_cases,
             run_id=run_id,
+            project_id=project_id,
+            requested_by_key_id=requested_by_key_id,
         )
 
         ctx = JobContext(job_id=job_id, plan_id=plan_id)
@@ -121,14 +125,14 @@ class JobManager:
         ctx.thread = worker
         worker.start()
 
-        return db.get_run_job(job_id) or {}
+        return db.get_run_job(job_id, project_id=project_id) or {}
 
-    def cancel_job(self, job_id: str) -> Dict[str, Any]:
-        """Signals cooperative cancellation for a running or queued job."""
+    def cancel_job(self, job_id: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+        """Signals cooperative cancellation for a running or queued job, scoped by project."""
         db = DatabaseManager(settings.db_path)
         db.init_db()
 
-        job = db.get_run_job(job_id)
+        job = db.get_run_job(job_id, project_id=project_id)
         if not job:
             raise NotFoundError(f"Job '{job_id}' not found.")
 
@@ -139,7 +143,7 @@ class JobManager:
                 ctx.cancel_event.set()
 
         # Update database status
-        if job["status"] in ("queued", "running"):
+        if str(job.get("status", "")).lower() in ("queued", "running"):
             db.update_run_job(
                 job_id,
                 cancelled=True,
@@ -147,23 +151,23 @@ class JobManager:
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
 
-        return db.get_run_job(job_id) or {}
+        return db.get_run_job(job_id, project_id=project_id) or {}
 
-    def get_job(self, job_id: str) -> Dict[str, Any]:
-        """Retrieves current job status and progress."""
+    def get_job(self, job_id: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+        """Retrieves current job status and progress, scoped by project."""
         db = DatabaseManager(settings.db_path)
         db.init_db()
 
-        job = db.get_run_job(job_id)
+        job = db.get_run_job(job_id, project_id=project_id)
         if not job:
             raise NotFoundError(f"Job '{job_id}' not found.")
         return job
 
-    def list_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Lists recent benchmark execution jobs."""
+    def list_jobs(self, limit: int = 50, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists recent benchmark execution jobs, optionally filtered by project_id."""
         db = DatabaseManager(settings.db_path)
         db.init_db()
-        return db.list_run_jobs(limit=limit)
+        return db.list_run_jobs(limit=limit, project_id=project_id)
 
     def _run_job_worker(
         self,

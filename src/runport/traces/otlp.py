@@ -432,11 +432,13 @@ class OtlpIngester:
         return traces
 
     @classmethod
-    def ingest_to_repository(cls, payload: Union[str, Dict[str, Any]], repo: TraceRepository) -> List[Trace]:
+    def ingest_to_repository(cls, payload: Union[str, Dict[str, Any]], repo: TraceRepository, project_id: Optional[str] = None) -> List[Trace]:
         """Parses OTLP payload and saves all canonical traces to the repository."""
         traces = cls.parse_payload(payload)
         for t in traces:
-            repo.save_trace(t)
+            if project_id:
+                t.project_id = project_id
+            repo.save_trace(t, project_id=project_id)
         return traces
 
 

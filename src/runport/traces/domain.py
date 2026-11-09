@@ -249,6 +249,7 @@ class Trace(BaseModel):
     spans: List[Span] = Field(default_factory=list, description="Ordered child spans belonging to this trace")
     source: str = Field(default="native", description="Ingestion or execution source")
     source_ref: Optional[str] = Field(default=None, description="External reference (e.g. OTel or Langfuse ID)")
+    project_id: str = Field(default="default", description="Project ownership identifier")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Record creation timestamp in UTC",

@@ -16,7 +16,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 from fastapi import Depends, Request
 
-from runport.api.v1.errors import ForbiddenError, UnauthorizedError
+from runport.api.v1.errors import ForbiddenError, NotFoundError, UnauthorizedError
 from runport.core.config import settings
 from runport.storage.db import DatabaseManager
 
@@ -165,3 +165,19 @@ def require_scope(required_scope: str) -> Callable[[Request], Dict[str, Any]]:
         raise UnauthorizedError("Valid API credentials required via Bearer token.")
 
     return _dependency
+
+
+def require_project_resource(auth: Dict[str, Any], resource_project_id: Optional[str]) -> None:
+    """Verifies that an authenticated principal has access to a tenant-scoped resource.
+
+    - Master credentials (is_master=True) have platform-wide access across all projects.
+    - Scoped API credentials can only access resources belonging to their assigned project_id.
+    - If the resource belongs to another project or has no project attribution, raises
+      NotFoundError to prevent resource enumeration.
+    """
+    if auth.get("is_master"):
+        return
+
+    caller_project = auth.get("project_id") or "default"
+    if not resource_project_id or resource_project_id != caller_project:
+        raise NotFoundError("Resource not found.")

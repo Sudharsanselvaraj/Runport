@@ -83,7 +83,15 @@ def create_plan(
         raise InvalidTargetSpecApiError(f"Cannot resolve target: {e}") from e
 
     operator_name = auth.get("principal") or auth.get("key_id") or auth.get("name") or "api_v1"
-    plan = service.plan(targets, specs, cases, dataset_label=req.dataset_name, requested_by=operator_name)
+    project_id = auth.get("project_id", "default") if not auth.get("is_master") else "default"
+    plan = service.plan(
+        targets,
+        specs,
+        cases,
+        dataset_label=req.dataset_name,
+        requested_by=operator_name,
+        project_id=project_id,
+    )
     return _plan_to_response(plan)
 
 
@@ -92,9 +100,10 @@ def get_plan(
     plan_id: str,
     auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_READ)),
 ) -> PlanResponse:
-    """Retrieves an execution plan by its plan ID."""
+    """Retrieves an execution plan by its plan ID, scoped by project."""
     service = ExecutionService()
-    plan = service.get_plan(plan_id)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    plan = service.get_plan(plan_id, project_id=project_id)
     if not plan:
         raise NotFoundError(f"Plan '{plan_id}' not found.")
     return _plan_to_response(plan)
@@ -108,7 +117,8 @@ def approve_plan(
 ) -> PlanResponse:
     """Human operator approves a PENDING plan using its cryptographic fingerprint."""
     service = ExecutionService()
-    plan = service.get_plan(plan_id)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    plan = service.get_plan(plan_id, project_id=project_id)
     if not plan:
         raise NotFoundError(f"Plan '{plan_id}' not found.")
 
@@ -137,11 +147,11 @@ def approve_plan(
 
     if not auth.get("is_master", False):
         if plan.requested_by and plan.requested_by == approver_identity:
-            project_id = auth.get("project_id", "default")
+            target_project_id = auth.get("project_id", "default")
             db = DatabaseManager(settings.db_path)
             db.init_db()
             tm = TenantManager(db=db)
-            tenant_ctx = tm.get_context(approver_identity, project_id)
+            tenant_ctx = tm.get_context(approver_identity, target_project_id)
             if tenant_ctx:
                 can_approve, reason = tenant_ctx.can_approve_plan(plan.requested_by, is_billable)
                 if not can_approve:
@@ -155,6 +165,7 @@ def approve_plan(
             req.fingerprint.strip(),
             channel="rest_v1",
             approver=approver_identity,
+            project_id=project_id,
         )
     except (LiveNotAuthorizedError, ApprovalError) as e:
         raise ApprovalInvalidError(str(e)) from e

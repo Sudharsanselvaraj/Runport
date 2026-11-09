@@ -50,6 +50,7 @@ class PlanSummary:
     confirmation_phrase: str
     approved_by: Optional[str] = None
     source: Dict[str, Any] = field(default_factory=dict)
+    project_id: str = "default"
 
     @property
     def is_permitted(self) -> bool:
@@ -71,6 +72,7 @@ class PlanSummary:
             "requested_by": self.requested_by,
             "approved_by": self.approved_by,
             "expected_confirmation_phrase": self.confirmation_phrase,
+            "project_id": self.project_id,
         }
 
 
@@ -163,6 +165,7 @@ class ExecutionService:
         dataset_label: str,
         requested_by: str,
         source: Optional[Dict[str, Any]] = None,
+        project_id: str = "default",
     ) -> PlanSummary:
         """`source` records how to reload the cases later (e.g. dataset name and sample size); it is not trusted:
         execution re-derives the fingerprint from whatever cases it is given."""
@@ -223,7 +226,7 @@ class ExecutionService:
             "blockers": blockers,
             "source": source or {},
         }
-        rec = self.approvals.register(plan.fingerprint, summary, requested_by=requested_by)
+        rec = self.approvals.register(plan.fingerprint, summary, requested_by=requested_by, project_id=project_id)
         return self._summary(rec)
 
     def _summary(self, rec: ApprovalRecord) -> PlanSummary:
@@ -243,10 +246,11 @@ class ExecutionService:
             confirmation_phrase=f"RUN LIVE {', '.join(s['target_ids'])} PLAN {rec.fingerprint}",
             approved_by=rec.approved_by,
             source=dict(s.get("source") or {}),
+            project_id=getattr(rec, "project_id", "default"),
         )
 
-    def get_plan(self, plan_id: str) -> Optional[PlanSummary]:
-        rec = self.approvals.get(plan_id)
+    def get_plan(self, plan_id: str, project_id: Optional[str] = None) -> Optional[PlanSummary]:
+        rec = self.approvals.get(plan_id, project_id=project_id)
         return self._summary(rec) if rec else None
 
     def find_plan(self, fingerprint: str) -> Optional[PlanSummary]:
@@ -255,15 +259,15 @@ class ExecutionService:
 
     # -- approval (separate operation, human channels only) ------------------------------------
 
-    def approve(self, plan_id: str, fingerprint: str, *, channel: str, approver: str) -> PlanSummary:
-        rec = self.approvals.get(plan_id)
+    def approve(self, plan_id: str, fingerprint: str, *, channel: str, approver: str, project_id: Optional[str] = None) -> PlanSummary:
+        rec = self.approvals.get(plan_id, project_id=project_id)
         if rec is None:
             raise ApprovalError(f"No plan '{plan_id}'.")
         if rec.summary.get("blockers"):
             raise ApprovalError("Plan has blockers and cannot be approved: " + "; ".join(rec.summary["blockers"]))
         if channel == "local_only" and any(t.get("billing") != BillingMode.LOCAL.value for t in rec.summary.get("per_target", [])):
             raise ApprovalError("local_only approval is only for plans whose every target runs locally; a person must approve this plan.")
-        return self._summary(self.approvals.approve(plan_id, fingerprint, channel=channel, approver=approver))
+        return self._summary(self.approvals.approve(plan_id, fingerprint, channel=channel, approver=approver, project_id=project_id))
 
     # -- execution -------------------------------------------------------------------------------
 

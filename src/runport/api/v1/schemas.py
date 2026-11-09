@@ -144,6 +144,7 @@ class RunDetailResponse(BaseModel):
     mean_overall_score: Optional[float] = None
     is_dry_run: bool = False
     notes: Optional[str] = None
+    project_id: str = "default"
 
 
 class RunResultItem(BaseModel):

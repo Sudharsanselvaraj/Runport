@@ -31,9 +31,7 @@ def list_traces(
     project_id = auth.get("project_id") if not auth.get("is_master") else None
 
     if run_id:
-        traces = repo.get_traces_for_run(run_id, include_spans=False)
-        if project_id:
-            traces = [t for t in traces if getattr(t, "project_id", "default") == project_id]
+        traces = repo.get_traces_for_run(run_id, include_spans=False, project_id=project_id)
     else:
         traces = repo.list_traces(limit=limit, include_spans=False, project_id=project_id)
 
@@ -50,7 +48,8 @@ def get_trace(
     db.init_db()
     repo = TraceRepository(db=db)
 
-    trace = repo.get_trace(trace_id, include_spans=True)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    trace = repo.get_trace(trace_id, include_spans=True, project_id=project_id)
     if not trace:
         raise NotFoundError(f"Trace '{trace_id}' not found.")
 
@@ -67,7 +66,8 @@ def export_trace_otlp(
     db.init_db()
     repo = TraceRepository(db=db)
 
-    trace = repo.get_trace(trace_id, include_spans=True)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    trace = repo.get_trace(trace_id, include_spans=True, project_id=project_id)
     if not trace:
         raise NotFoundError(f"Trace '{trace_id}' not found.")
 
@@ -85,7 +85,8 @@ def ingest_traces(
     db.init_db()
     repo = TraceRepository(db=db)
 
-    traces = OtlpIngester.ingest_to_repository(payload, repo)
+    project_id = auth.get("project_id", "default")
+    traces = OtlpIngester.ingest_to_repository(payload, repo, project_id=project_id)
     return {
         "status": "ok",
         "traces_ingested": len(traces),
@@ -104,7 +105,8 @@ def export_trace_langfuse(
     db.init_db()
     repo = TraceRepository(db=db)
 
-    trace = repo.get_trace(trace_id, include_spans=True)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    trace = repo.get_trace(trace_id, include_spans=True, project_id=project_id)
     if not trace:
         raise NotFoundError(f"Trace '{trace_id}' not found.")
 
@@ -121,17 +123,18 @@ def export_langfuse_batch(
     db.init_db()
     repo = TraceRepository(db=db)
 
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
     traces = []
     if "trace_ids" in payload and isinstance(payload["trace_ids"], list):
         for tid in payload["trace_ids"]:
-            t = repo.get_trace(tid, include_spans=True)
+            t = repo.get_trace(tid, include_spans=True, project_id=project_id)
             if t:
                 traces.append(t)
     elif "run_id" in payload:
-        traces = repo.get_traces_for_run(payload["run_id"], include_spans=True)
+        traces = repo.get_traces_for_run(payload["run_id"], include_spans=True, project_id=project_id)
     else:
         limit = int(payload.get("limit", 50))
-        traces = repo.list_traces(limit=limit, include_spans=True)
+        traces = repo.list_traces(limit=limit, include_spans=True, project_id=project_id)
 
     return LangfuseExporter.export_traces(traces)
 
@@ -146,7 +149,8 @@ def import_langfuse_batch(
     db.init_db()
     repo = TraceRepository(db=db)
 
-    traces = LangfuseIngester.ingest_to_repository(payload, repo)
+    project_id = auth.get("project_id", "default")
+    traces = LangfuseIngester.ingest_to_repository(payload, repo, project_id=project_id)
     return {
         "status": "ok",
         "traces_ingested": len(traces),

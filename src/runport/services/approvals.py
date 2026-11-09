@@ -45,9 +45,11 @@ CREATE TABLE IF NOT EXISTS plan_approvals (
     expires_at REAL NOT NULL,
     approved_by TEXT,
     approved_at REAL,
-    consumed_at REAL
+    consumed_at REAL,
+    project_id TEXT NOT NULL DEFAULT 'default'
 );
 CREATE INDEX IF NOT EXISTS idx_plan_approvals_fingerprint ON plan_approvals(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_plan_approvals_project ON plan_approvals(project_id);
 """
 
 
@@ -67,6 +69,7 @@ class ApprovalRecord:
     approved_by: Optional[str]
     approved_at: Optional[float]
     consumed_at: Optional[float]
+    project_id: str = "default"
 
     def is_expired(self, now: Optional[float] = None) -> bool:
         return (now if now is not None else time.time()) >= self.expires_at
@@ -81,22 +84,33 @@ class ApprovalStore:
             conn.executescript(_SCHEMA)
             conn.commit()
 
-    def register(self, fingerprint: str, summary: Dict[str, Any], requested_by: str, ttl_s: float = DEFAULT_PENDING_TTL_S) -> ApprovalRecord:
+    def register(
+        self,
+        fingerprint: str,
+        summary: Dict[str, Any],
+        requested_by: str,
+        ttl_s: float = DEFAULT_PENDING_TTL_S,
+        project_id: str = "default",
+    ) -> ApprovalRecord:
         now = self._clock()
         plan_id = f"plan-{secrets.token_hex(8)}"
         with self.db.get_connection() as conn:
             conn.execute(
-                "INSERT INTO plan_approvals (plan_id, fingerprint, summary_json, status, requested_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (plan_id, fingerprint, json.dumps(summary, sort_keys=True, default=str), PENDING, requested_by, now, now + ttl_s),
+                "INSERT INTO plan_approvals (plan_id, fingerprint, summary_json, status, requested_by, created_at, expires_at, project_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (plan_id, fingerprint, json.dumps(summary, sort_keys=True, default=str), PENDING, requested_by, now, now + ttl_s, project_id),
             )
             conn.commit()
         record = self.get(plan_id)
         assert record is not None
         return record
 
-    def get(self, plan_id: str) -> Optional[ApprovalRecord]:
+    def get(self, plan_id: str, project_id: Optional[str] = None) -> Optional[ApprovalRecord]:
         with self.db.get_connection() as conn:
-            row = conn.execute("SELECT * FROM plan_approvals WHERE plan_id = ?", (plan_id,)).fetchone()
+            if project_id:
+                row = conn.execute("SELECT * FROM plan_approvals WHERE plan_id = ? AND project_id = ?", (plan_id, project_id)).fetchone()
+            else:
+                row = conn.execute("SELECT * FROM plan_approvals WHERE plan_id = ?", (plan_id,)).fetchone()
         return _row(row) if row else None
 
     def find_by_fingerprint(self, fingerprint: str) -> Optional[ApprovalRecord]:
@@ -105,26 +119,38 @@ class ApprovalStore:
             row = conn.execute("SELECT * FROM plan_approvals WHERE fingerprint = ? ORDER BY created_at DESC LIMIT 1", (fingerprint,)).fetchone()
         return _row(row) if row else None
 
-    def approve(self, plan_id: str, fingerprint: str, channel: str, approver: str, ttl_s: float = DEFAULT_APPROVED_TTL_S) -> ApprovalRecord:
+    def approve(
+        self,
+        plan_id: str,
+        fingerprint: str,
+        channel: str,
+        approver: str,
+        ttl_s: float = DEFAULT_APPROVED_TTL_S,
+        project_id: Optional[str] = None,
+    ) -> ApprovalRecord:
         if channel not in APPROVAL_CHANNELS:
             raise ApprovalError(f"Channel '{channel}' cannot approve live spend; a person must approve through the CLI, the Web UI or a CI token.")
         if channel == "local_only":
-            rec = self.get(plan_id)
+            rec = self.get(plan_id, project_id=project_id)
             targets = (rec.summary.get("per_target") if rec else None) or []
             if not targets or any(t.get("billing") != "local" for t in targets):
                 raise ApprovalError("local_only approval is only for plans whose every target runs locally.")
         now = self._clock()
+        where_extra = " AND project_id = ?" if project_id else ""
+        params = [APPROVED, f"{channel}:{approver}", now, now + ttl_s, plan_id, fingerprint, PENDING, now]
+        if project_id:
+            params.append(project_id)
         with self.db.get_connection() as conn:
             cur = conn.execute(
-                "UPDATE plan_approvals SET status = ?, approved_by = ?, approved_at = ?, expires_at = ? "
-                "WHERE plan_id = ? AND fingerprint = ? AND status = ? AND expires_at > ?",
-                (APPROVED, f"{channel}:{approver}", now, now + ttl_s, plan_id, fingerprint, PENDING, now),
+                f"UPDATE plan_approvals SET status = ?, approved_by = ?, approved_at = ?, expires_at = ? "
+                f"WHERE plan_id = ? AND fingerprint = ? AND status = ? AND expires_at > ?{where_extra}",
+                params,
             )
             conn.commit()
             changed = cur.rowcount
         if changed != 1:
             raise ApprovalError(self._why_not(plan_id, fingerprint, expected=PENDING))
-        record = self.get(plan_id)
+        record = self.get(plan_id, project_id=project_id)
         assert record is not None
         return record
 
@@ -160,6 +186,7 @@ class ApprovalStore:
 
 
 def _row(row: Any) -> ApprovalRecord:
+    proj_id = row["project_id"] if "project_id" in row.keys() else "default"
     return ApprovalRecord(
         plan_id=row["plan_id"],
         fingerprint=row["fingerprint"],
@@ -171,4 +198,5 @@ def _row(row: Any) -> ApprovalRecord:
         approved_by=row["approved_by"],
         approved_at=row["approved_at"],
         consumed_at=row["consumed_at"],
+        project_id=proj_id or "default",
     )
