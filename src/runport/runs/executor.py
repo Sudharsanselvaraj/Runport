@@ -467,6 +467,13 @@ class GenericRunner:
             if executed > 0:
                 run_res.mean_latency_ms = total_lat / executed
 
+            # If the worker lost its lease ownership, fail closed without committing stale state
+            if cancel_token and getattr(cancel_token, "lease_lost", False):
+                run_res.halt_kind = "interrupted"
+                run_res.halted_reason = "Worker lease expired or was revoked; aborted without persisting stale run state."
+                run_results.append(run_res)
+                break
+
             # Persist run and results (run first for foreign key integrity)
             project_id = (
                 getattr(plan, "project_id", None)

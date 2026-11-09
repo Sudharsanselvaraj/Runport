@@ -884,3 +884,185 @@ def test_heartbeat_consecutive_db_failures_fail_closed(audit_workspace, monkeypa
     assert job_record is not None
     assert job_record["status"] == "interrupted"
     assert job_record["completed_cases"] < 3
+
+
+def test_cross_tenant_cancellation_does_not_abort_in_flight_worker(audit_workspace, monkeypatch):
+    """P0 Regression: Project A must NOT be able to cancel Project B's in-flight job.
+
+    Verifies that calling cancel_job checks project authorization in the database
+    BEFORE signaling the in-memory cancel_event, ensuring the victim job is not killed.
+    """
+    db: DatabaseManager = audit_workspace["db"]
+    client = audit_workspace["remote_client"]
+    key_a = audit_workspace["key_a"]
+    key_b = audit_workspace["key_b"]
+    tmp_path = audit_workspace["tmp_path"]
+
+    sim_target = SlowSimulatedTarget("target-slow-tenant-b", sleep_s=0.15)
+    targets = {"target-slow-tenant-b": sim_target}
+    specs = {"target-slow-tenant-b": {"id": "target-slow-tenant-b", "type": "raw_model"}}
+    monkeypatch.setattr(ExecutionService, "resolve", lambda self, tids, **kw: (targets, specs))
+
+    dataset_file = tmp_path / "cases_tenant_b.jsonl"
+    with open(dataset_file, "w") as f:
+        f.write('{"id": "c1", "input": "test 1", "classification": "PUBLIC"}\n')
+        f.write('{"id": "c2", "input": "test 2", "classification": "PUBLIC"}\n')
+
+    cases = [
+        {"id": "c1", "input": "test 1", "classification": "PUBLIC"},
+        {"id": "c2", "input": "test 2", "classification": "PUBLIC"},
+    ]
+
+    svc = ExecutionService()
+    summary = svc.plan(
+        targets=targets,
+        specs=specs,
+        cases=cases,
+        dataset_label="eval_cases",
+        requested_by="beta@example.com",
+        project_id="proj-b",
+    )
+    svc.approve(
+        plan_id=summary.plan_id,
+        fingerprint=summary.fingerprint,
+        channel="cli_interactive",
+        approver="test-approver",
+        project_id="proj-b",
+    )
+
+    job_mgr = JobManager()
+    submitted_job = job_mgr.submit_job(
+        plan_id=summary.plan_id,
+        target_ids=["target-slow-tenant-b"],
+        dataset_path=str(dataset_file),
+        sample_size=2,
+        project_id="proj-b",
+    )
+    job_id = submitted_job["job_id"]
+
+    # Wait for the in-memory context to be registered and executing
+    time.sleep(0.04)
+    with job_mgr._active_lock:
+        ctx = job_mgr._active_jobs.get(job_id)
+    assert ctx is not None
+    assert ctx.cancel_event.is_set() is False
+
+    # 1. Project A operator attempts to cancel Project B's running job
+    resp_a = client.post(f"/api/v1/jobs/{job_id}/cancel", headers={"Authorization": f"Bearer {key_a}"})
+    assert resp_a.status_code == 404
+    assert "not found" in resp_a.json()["error"]["message"].lower()
+
+    # CRITICAL INVARIANT: Verify Project B's in-flight worker was NOT cancelled
+    assert ctx.cancel_event.is_set() is False
+    job_in_db = db.get_run_job(job_id, project_id="proj-b")
+    assert job_in_db is not None
+    assert bool(job_in_db.get("cancelled")) is False
+
+    # Allow Project B's job to complete undisturbed
+    if ctx.thread:
+        ctx.thread.join(timeout=3.0)
+
+    final_job = db.get_run_job(job_id, project_id="proj-b")
+    assert final_job is not None
+    assert final_job["status"] == "completed"
+    assert final_job["completed_cases"] == 2
+
+    # 2. Now submit another job and verify Project B CAN cancel it
+    summary2 = svc.plan(
+        targets=targets,
+        specs=specs,
+        cases=cases,
+        dataset_label="eval_cases_2",
+        requested_by="beta@example.com",
+        project_id="proj-b",
+    )
+    svc.approve(
+        plan_id=summary2.plan_id,
+        fingerprint=summary2.fingerprint,
+        channel="cli_interactive",
+        approver="test-approver",
+        project_id="proj-b",
+    )
+
+    submitted_job2 = job_mgr.submit_job(
+        plan_id=summary2.plan_id,
+        target_ids=["target-slow-tenant-b"],
+        dataset_path=str(dataset_file),
+        sample_size=2,
+        project_id="proj-b",
+    )
+    job_id2 = submitted_job2["job_id"]
+    time.sleep(0.04)
+    with job_mgr._active_lock:
+        ctx2 = job_mgr._active_jobs.get(job_id2)
+    assert ctx2 is not None
+
+    resp_b = client.post(f"/api/v1/jobs/{job_id2}/cancel", headers={"Authorization": f"Bearer {key_b}"})
+    assert resp_b.status_code == 200
+    assert resp_b.json()["cancelled"] is True
+
+    # Verify that in-memory cancel_event WAS signaled for the legitimate owner
+    assert ctx2.cancel_event.is_set() is True
+    if ctx2.thread:
+        ctx2.thread.join(timeout=3.0)
+
+    cancelled_job = db.get_run_job(job_id2, project_id="proj-b")
+    assert cancelled_job["status"] == "cancelled"
+    assert bool(cancelled_job["cancelled"]) is True
+
+
+def test_stale_worker_lease_loss_does_not_commit_state(audit_workspace, monkeypatch):
+    """P1 Regression: Worker that loses lease must fail-closed without persisting stale run/results."""
+    from runport.api.v1.jobs import CooperativeCancelToken
+
+    db: DatabaseManager = audit_workspace["db"]
+    tmp_path = audit_workspace["tmp_path"]
+
+    sim_target = SlowSimulatedTarget("target-slow-tenant-a", sleep_s=0.01)
+    targets = {"target-slow-tenant-a": sim_target}
+    specs = {"target-slow-tenant-a": {"id": "target-slow-tenant-a", "type": "raw_model"}}
+    monkeypatch.setattr(ExecutionService, "resolve", lambda self, tids, **kw: (targets, specs))
+
+    cases = [{"id": "c1", "input": "test 1", "classification": "PUBLIC"}]
+
+    svc = ExecutionService()
+    summary = svc.plan(
+        targets=targets,
+        specs=specs,
+        cases=cases,
+        dataset_label="eval_cases",
+        requested_by="alpha@example.com",
+        project_id="proj-a",
+    )
+    plan = svc.approve(
+        plan_id=summary.plan_id,
+        fingerprint=summary.fingerprint,
+        channel="cli_interactive",
+        approver="test-approver",
+        project_id="proj-a",
+    )
+
+    event = threading.Event()
+    cancel_token = CooperativeCancelToken(
+        job_id="job-lease-test",
+        worker_id="worker-stale",
+        db=db,
+        in_memory_event=event,
+    )
+    cancel_token.lease_lost = True
+    cancel_token.set()
+
+    initial_runs = db.get_all_evaluation_runs(limit=100, project_id="proj-a")
+
+    outcome = svc.execute(
+        plan_id=plan.plan_id,
+        targets=targets,
+        specs=specs,
+        cases=cases,
+        cancel_token=cancel_token,
+        project_id="proj-a",
+    )
+
+    assert any(getattr(r, "halt_kind", None) == "interrupted" for r in outcome.runs)
+    after_runs = db.get_all_evaluation_runs(limit=100, project_id="proj-a")
+    assert len(after_runs) == len(initial_runs)

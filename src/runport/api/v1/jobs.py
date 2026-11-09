@@ -178,16 +178,16 @@ class JobManager:
         db = DatabaseManager(settings.db_path)
         db.init_db()
 
-        # Signal in-memory worker if local
-        with self._active_lock:
-            ctx = self._active_jobs.get(job_id)
-            if ctx:
-                ctx.cancel_event.set()
-
-        # Atomically update persistent database state
+        # Atomically verify project authorization and update persistent database state FIRST
         job = db.request_job_cancellation(job_id, project_id=project_id)
         if not job:
             raise NotFoundError(f"Job '{job_id}' not found.")
+
+        # Only after database verifies project ownership, signal the local in-memory worker
+        with self._active_lock:
+            ctx = self._active_jobs.get(job_id)
+            if ctx and (project_id is None or ctx.project_id == project_id):
+                ctx.cancel_event.set()
 
         return job
 
