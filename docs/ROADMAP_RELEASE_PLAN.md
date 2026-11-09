@@ -14,14 +14,14 @@ published v0.1.0. Decide whether v0.1.0 is the `main` state of 2026-11-03 (tag t
 
 ## 1. Versions
 
-| Version | Theme | Contents | Depends on |
-|:---|:---|:---|:---|
-| **v0.2.0** | Safe foundations and developer integration | F0 integrity fixes; MCP server and client hardening; in-process Python SDK with public result models; capability matrix | merged branch work |
-| **v0.3.0** | Agent observability | F1 canonical trace schema and storage; spans from Dify, MCP, RAG; LangGraph streaming adapter with per-node spans; trajectory scorers | v0.2 |
-| **v0.4.0** | Remote integration | F3 API keys; F2 async jobs and REST v1; remote Python client; TypeScript SDK; MCP over Streamable HTTP | v0.3 |
-| **v0.5.0** | Interoperability | OTel/OpenInference ingestion; Langfuse import (canonical) and export; instrumentation API (decorators, OTel-native) | v0.3, v0.4 |
-| **v0.6.0** | Shared deployment | Organizations, projects, RBAC, Postgres, workers, per-project secrets, audit log | v0.4 |
-| **v1.0.0** | Stability | Framework adapters (LangChain, CrewAI, PydanticAI, LlamaIndex) on the instrumentation API, security audit, API freeze, migration guide | all |
+| Version | Theme | Contents | Status |
+|:---|:---|:---|:---:|
+| **v0.2.0** | Safe foundations and developer integration | F0 integrity fixes; MCP server and client hardening; in-process Python SDK with public result models; capability matrix | **COMPLETED** |
+| **v0.3.0** | Agent observability | F1 canonical trace schema and storage; spans from Dify, MCP, RAG; LangGraph streaming adapter with per-node spans; trajectory scorers | **COMPLETED** |
+| **v0.4.0** | Remote integration | F3 API keys; F2 async jobs and REST v1; remote Python client; TypeScript SDK; MCP over Streamable HTTP | **COMPLETED** |
+| **v0.5.0** | Interoperability | OTel/OpenInference ingestion; Langfuse import (canonical) and export; instrumentation API (decorators, OTel-native) | **COMPLETED** |
+| **v0.6.0** | Shared deployment | Organizations, projects, RBAC, workers, per-project secrets, audit log | **COMPLETED** |
+| **v1.0.0** | General Availability & Stability | Universal developer instrumentation API (`@trace`, `wrap_openai`, `wrap_anthropic`), automated 6 GA release gates, API freeze | **COMPLETED** |
 
 This differs from the proposal that put SDKs and MCP in v0.2 and multi-user in v0.5: MCP and an in-process SDK already exist and
 mainly need hardening, while the remote SDKs depend on identity and async jobs, which should come before them.

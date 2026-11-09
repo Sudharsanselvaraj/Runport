@@ -294,21 +294,21 @@
 .rp-faq-item {
   border-radius: 12px;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.038) 35%, rgba(255, 255, 255, 0.008) 75%, transparent 100%) padding-box,
-    linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 35%, rgba(255, 255, 255, 0.01) 75%, transparent 100%) border-box;
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.035) 25%, rgba(255, 255, 255, 0.005) 55%, transparent 75%) padding-box,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.01) 55%, transparent 75%) border-box;
   border: 1px solid transparent;
   overflow: hidden;
   transition: all var(--rp-fast) var(--rp-ease);
 }
 .rp-faq-item:hover {
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.055) 35%, rgba(255, 255, 255, 0.015) 75%, transparent 100%) padding-box,
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 35%, rgba(255, 255, 255, 0.02) 75%, transparent 100%) border-box;
+    linear-gradient(90deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.055) 25%, rgba(255, 255, 255, 0.012) 55%, transparent 75%) padding-box,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 25%, rgba(255, 255, 255, 0.018) 55%, transparent 75%) border-box;
 }
 .rp-faq-item.is-open {
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.045) 40%, rgba(255, 255, 255, 0.01) 80%, transparent 100%) padding-box,
-    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.07) 40%, rgba(255, 255, 255, 0.015) 80%, transparent 100%) border-box;
+    linear-gradient(90deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.045) 30%, rgba(255, 255, 255, 0.008) 60%, transparent 80%) padding-box,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.012) 60%, transparent 80%) border-box;
 }
 .rp-faq-q {
   width: 100%;
