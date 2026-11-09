@@ -111,11 +111,10 @@ def test_logo_capability_rules(monkeypatch):
     # Short height suppresses full logo
     assert RunportLogo.should_render(console, compact=False, cols=100, rows=25) is False
 
-    # Without image protocol support (e.g. macOS Terminal), can_render_image is False but should_render is True (renders solid emblem)
+    # Without protocol support (e.g. macOS Terminal) should_render is False
     monkeypatch.delenv("RUNPORT_IMAGE_PROTOCOL", raising=False)
     monkeypatch.setenv("TERM_PROGRAM", "Apple_Terminal")
-    assert RunportLogo.can_render_image(console, compact=False, cols=100, rows=50) is False
-    assert RunportLogo.should_render(console, compact=False, cols=100, rows=50) is True
+    assert RunportLogo.should_render(console, compact=False, cols=100, rows=50) is False
 
 
 # -----------------------------------------------------------------------------

@@ -19,28 +19,6 @@ from typing import Optional
 
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.segment import Segment
-from rich.text import Text
-
-# Official white solid geometric emblem lines (20 chars wide, 8 rows high)
-# Matches the geometry of the official white interlocking symbol.
-OFFICIAL_EMBLEM_LINES = [
-    "    ▄███ ▄██████▄   ",
-    "   ███▀ ██▀▀▀▀███▄  ",
-    "  ▄███ ▄██   ▄▄███  ",
-    " ▄███ ▄██▀    ▀████ ",
-    " ████ ▀██▄    ▄████ ",
-    "  ▀████▄▄▄▄   ▄████ ",
-    "   ▀▀▀▀▀███ ▄████▀  ",
-    "    ██████▀▄████▀   ",
-]
-
-
-def render_solid_emblem() -> Text:
-    """Renders the official white interlocking geometric symbol in pure white."""
-    text = Text()
-    for line in OFFICIAL_EMBLEM_LINES:
-        text.append(line + "\n", style="bold bright_white")
-    return text
 
 
 def get_logo_path() -> Optional[Path]:
