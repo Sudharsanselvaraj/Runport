@@ -32,6 +32,13 @@ Current unversioned `/api/*` routes stay for the bundled dashboard until it move
 (ingestion), `budget:read`, `budget:reconcile`. Agents' and CI keys never get `plans:approve` unless an operator grants it on purpose.
 Until multi-user hosting exists (`docs/MULTI_USER_SECURITY_MODEL.md`), the single `RUNPORT_API_TOKEN` maps to all scopes.
 
+### 2.1.1 Multi-Tenant Project Isolation
+
+Every resource (plans, runs, jobs, results, traces, and budget reservations) is strictly scoped to a `project_id`.
+Clients declare their target project via the `X-Project-Id` header (defaults to `'default'`). API keys restricted
+to a specific project cannot access or mutate resources outside their assigned scope. Cross-project queries return
+`404 Not Found` fail-closed to prevent resource enumeration.
+
 ### 2.2 Resources
 
 | Method and path | Purpose | Scope |
@@ -71,7 +78,11 @@ Rules: unmeasured numbers are `null`; costs are strings (decimal); `cost_basis` 
 
 ### 2.5 Idempotency and versioning
 
-`POST /plans/{id}/runs` accepts `Idempotency-Key`; a plan executes at most once regardless (`ApprovalStore.consume`).
+`POST /plans/{id}/runs` accepts `Idempotency-Key` (header or JSON field); a plan executes at most once regardless (`ApprovalStore.consume`).
+If a job with the given `idempotency_key` is already queued or running for that project, the endpoint returns the existing job (`202 Accepted`)
+without re-queueing or double-booking budget.
+All financial ledger transactions enforce unique deterministic IDs (`tx-{run_id}-{case_id}`) and `INSERT OR IGNORE` guarantees
+to ensure zero duplicate spend booking under network retries or concurrent worker execution.
 Breaking changes go to `/api/v2`. The SDKs follow semantic versioning and declare the API version they target.
 
 ---

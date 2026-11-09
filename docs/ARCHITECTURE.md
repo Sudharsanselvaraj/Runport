@@ -88,3 +88,17 @@ graph TB
 - **Rich Terminal UI (TUI)**: Full-screen dashboard, real-time telemetry graphs, candidate comparison roster, and trace inspector.
 - **Developer Launcher**: Arrow-key workflow menu for fast navigation.
 - **FastAPI & React Web Interface**: Localhost web application providing visual experiment planning, execution monitoring, and comparative reporting.
+
+### 3.5 Multi-Tenant Isolation & Durable Asynchronous Execution
+- **Resource Authorization**: Every API and SDK query validates project boundaries (`project_id`). Cross-tenant accesses return `404 Not Found` fail-closed.
+- **Durable Worker Leases**: Asynchronous background jobs track heartbeat timestamps and worker leases (`worker_id`, `lease_expires_at`). Abandoned workers trigger automatic lease expiration and budget reservation sweeps.
+- **Cooperative Cancellation**: Running jobs inspect cooperative cancellation tokens at case boundaries, ensuring clean shutdown and exact spend settlement.
+- **Financial Concurrency & Idempotency**: Preflight reservations reserve funds per concurrent case; transactions enforce deterministic IDs (`tx-{run_id}-{case_id}`) with `INSERT OR IGNORE` semantics preventing duplicate spend booking.
+
+### 3.6 Storage & Schema Migrations
+- **SQLite WAL Mode**: Thread-safe, append-only persistence with write-ahead logging.
+- **Schema Migrations**: Safe, additive migrations tracked in `schema_migrations`:
+  - Migrations 1–5: Core evaluation runs, nullable statistics, canonical traces, and budget reservations.
+  - Migration 6: Tenancy, organizations, projects, and memberships.
+  - Migration 7: Worker leases, heartbeats, and background job coordination.
+  - Migration 8: Run job idempotency keys (`Idempotency-Key`), project-scoped budget reservations, and reusable idempotency records.

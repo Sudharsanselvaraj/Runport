@@ -83,13 +83,14 @@ def plan(
     target_id: Optional[str] = None,
     sample_size: Optional[int] = None,
     service: Optional[ExecutionService] = None,
+    project_id: str = "default",
 ) -> SdkPlan:
     """Creates a fingerprinted plan with projected worst-case spend and blockers. Sends nothing."""
     service = service or ExecutionService()
     targets, specs = _target(target, target_id, service)
     cases = _cases(dataset, sample_size)
     label = str(dataset) if isinstance(dataset, (str, Path)) else "in-memory cases"
-    summary = service.plan(targets, specs, cases, dataset_label=label, requested_by="sdk")
+    summary = service.plan(targets, specs, cases, dataset_label=label, requested_by="sdk", project_id=project_id)
     return SdkPlan(summary, targets, specs, cases, service)
 
 
@@ -129,6 +130,7 @@ def benchmark(
     sample_size: Optional[int] = None,
     score: bool = True,
     service: Optional[ExecutionService] = None,
+    project_id: str = "default",
 ) -> ExecutionOutcome:
     """Plan, approve and execute in one call.
 
@@ -136,7 +138,7 @@ def benchmark(
     `local_only` channel: nothing leaves the machine and nothing can bill. Any other plan asks for the typed
     phrase in the terminal and is refused when there is no terminal.
     """
-    p = plan(target, dataset, target_id=target_id, sample_size=sample_size, service=service)
+    p = plan(target, dataset, target_id=target_id, sample_size=sample_size, service=service, project_id=project_id)
     if p.summary.blockers:
         raise RuntimeError("Plan is blocked: " + "; ".join(p.summary.blockers))
     if all(t.get("billing") == "local" for t in p.summary.per_target):

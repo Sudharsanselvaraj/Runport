@@ -25,17 +25,25 @@ import type {
 export class RunportClient {
   readonly baseUrl: string;
   readonly apiKey?: string;
+  readonly projectId?: string;
   readonly timeoutMs: number;
   private readonly fetchImpl: typeof globalThis.fetch;
 
   constructor(config: RunportConfig = {}) {
     this.baseUrl = (config.baseUrl ?? 'http://127.0.0.1:8000').replace(/\/+$/, '');
     this.apiKey = config.apiKey;
+    this.projectId = config.projectId;
     this.timeoutMs = config.timeoutMs ?? 30000;
     this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, params?: Record<string, string | number | undefined>): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    params?: Record<string, string | number | undefined>,
+    customHeaders?: Record<string, string>
+  ): Promise<T> {
     const url = new URL(`${this.baseUrl}/api/v1${path}`);
     if (params) {
       for (const [key, val] of Object.entries(params)) {
@@ -47,9 +55,13 @@ export class RunportClient {
 
     const headers: Record<string, string> = {
       Accept: 'application/json',
+      ...customHeaders,
     };
     if (this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+    if (this.projectId) {
+      headers['X-Project-Id'] = this.projectId;
     }
     if (body !== undefined && !(body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
@@ -152,10 +164,20 @@ export class RunportClient {
 
   readonly jobs = {
     submit: async (opts: RunSubmitOptions): Promise<Job> => {
-      return this.request<Job>('POST', `/plans/${encodeURIComponent(opts.planId)}/runs`, {
-        sample_size: opts.sampleSize,
-        idempotency_key: opts.idempotencyKey,
-      });
+      const headers: Record<string, string> = {};
+      if (opts.idempotencyKey) {
+        headers['Idempotency-Key'] = opts.idempotencyKey;
+      }
+      return this.request<Job>(
+        'POST',
+        `/plans/${encodeURIComponent(opts.planId)}/runs`,
+        {
+          sample_size: opts.sampleSize,
+          idempotency_key: opts.idempotencyKey,
+        },
+        undefined,
+        headers
+      );
     },
     get: async (jobId: string): Promise<Job> => {
       return this.request<Job>('GET', `/jobs/${encodeURIComponent(jobId)}`);

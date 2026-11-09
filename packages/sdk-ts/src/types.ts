@@ -9,6 +9,8 @@ export interface RunportConfig {
   baseUrl?: string;
   /** Bearer API token with required operation scopes */
   apiKey?: string;
+  /** Optional project ID for multi-tenant isolation */
+  projectId?: string;
   /** Request timeout in milliseconds (defaults to 30000ms) */
   timeoutMs?: number;
   /** Optional custom fetch implementation (useful for tests and edge runtimes) */
@@ -94,6 +96,7 @@ export interface Job {
   booked_spend_usd?: string | null;
   error_message?: string | null;
   cancelled: boolean;
+  idempotency_key?: string | null;
   created_at: string;
   updated_at: string;
   finished_at?: string | null;

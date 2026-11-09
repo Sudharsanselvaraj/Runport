@@ -456,6 +456,7 @@ class GenericRunner:
                 run_res.mean_latency_ms = total_lat / executed
 
             # Persist run and results (run first for foreign key integrity)
+            project_id = plan.metadata.get("project_id", "default") if hasattr(plan, "metadata") and isinstance(plan.metadata, dict) else "default"
             run_dict = {
                 "run_id": run_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -473,12 +474,15 @@ class GenericRunner:
                 "is_dry_run": 1 if not plan.is_live else 0,
                 "notes": f"Plan: {plan.plan_id} (Fingerprint: {plan.fingerprint[:12]})"
                 + (f" HALTED: {run_res.halted_reason}" if run_res.halted_reason else ""),
+                "project_id": project_id,
             }
             self.db.save_evaluation_run(run_dict)
             if persisted_results:
                 self.db.save_evaluation_results(persisted_results)
             if persisted_traces:
                 for trace in persisted_traces:
+                    if hasattr(trace, "project_id") and not getattr(trace, "project_id", None):
+                        trace.project_id = project_id
                     self.db.save_trace(trace)
 
             run_results.append(run_res)

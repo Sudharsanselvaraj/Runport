@@ -305,6 +305,7 @@ class ExecutionService:
         if rec.summary.get("blockers"):
             raise ApprovalError(f"Plan '{plan_id}' has unresolved blockers and cannot be executed; nothing was sent.")
         plan = self._plan_object(specs, cases, rec.summary["nonce"])
+        plan.metadata["project_id"] = getattr(rec, "project_id", "default") or "default"
         if plan.fingerprint != rec.fingerprint:
             raise ApprovalError("The targets, cases or caps differ from the approved plan; nothing was sent. Create and approve a new plan.")
         self.approvals.consume(plan_id, rec.fingerprint)  # atomic: exactly one execution per approval

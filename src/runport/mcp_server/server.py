@@ -82,6 +82,21 @@ class RunportMcpServer:
                 self._get_results,
             ),
             "compare_runs": ("Side-by-side metrics of two runs.", _schema({"run_a": _STR, "run_b": _STR}, ["run_a", "run_b"]), self._compare),
+            "get_budget_status": (
+                "Current spend against ceilings, remaining limits, and unresolved spend count.",
+                _schema({}),
+                lambda args: self._budget(),
+            ),
+            "list_jobs": (
+                "List recent asynchronous benchmark execution jobs.",
+                _schema({"limit": {"type": "integer", "minimum": 1, "maximum": 500}}),
+                self._list_jobs,
+            ),
+            "cancel_job": (
+                "Cooperatively cancel a running or queued job by job_id.",
+                _schema({"job_id": _STR}, ["job_id"]),
+                self._cancel_job,
+            ),
         }
         self._assert_no_approval_tools()
 
@@ -338,6 +353,22 @@ class RunportMcpServer:
             raise ToolError("Both runs must exist.")
         keys = ["model_id", "total_cases", "completed_cases", "failed_cases", "total_cost_usd", "mean_latency_ms", "mean_accuracy", "mean_overall_score"]
         return {"run_a": {k: a.get(k) for k in keys}, "run_b": {k: b.get(k) for k in keys}, "note": "Unmeasured metrics are null, not zero."}
+
+    def _list_jobs(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from runport.api.v1.jobs import JobManager
+
+        limit = int(args.get("limit") or 50)
+        jobs = JobManager().list_jobs(limit=limit)
+        return {"jobs": jobs}
+
+    def _cancel_job(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from runport.api.v1.jobs import JobManager
+
+        try:
+            job = JobManager().cancel_job(args["job_id"])
+            return {"job": job}
+        except Exception as e:
+            raise ToolError(f"Could not cancel job: {e}") from e
 
     # ------------------------------------------------------------------ resources and prompts
 

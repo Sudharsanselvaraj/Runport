@@ -146,4 +146,45 @@ describe('RunportClient', () => {
       }
     );
   });
+
+  it('propagates X-Project-Id and Idempotency-Key headers', async () => {
+    let capturedHeaders: HeadersInit | undefined;
+    const mockFetch: typeof globalThis.fetch = async (input, init) => {
+      capturedHeaders = init?.headers;
+      return new Response(
+        JSON.stringify({
+          job_id: 'job-idemp-1',
+          plan_id: 'plan-123',
+          status: 'queued',
+          total_cases: 5,
+          completed_cases: 0,
+          failed_cases: 0,
+          cancelled: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          idempotency_key: 'idemp-xyz-999',
+        }),
+        { status: 202, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const client = new RunportClient({
+      projectId: 'proj-finance',
+      apiKey: 'secret-key-123',
+      fetch: mockFetch,
+    });
+
+    const job = await client.jobs.submit({
+      planId: 'plan-123',
+      sampleSize: 5,
+      idempotencyKey: 'idemp-xyz-999',
+    });
+
+    assert.equal(job.job_id, 'job-idemp-1');
+    assert(capturedHeaders);
+    const headersObj = capturedHeaders as Record<string, string>;
+    assert.equal(headersObj['X-Project-Id'], 'proj-finance');
+    assert.equal(headersObj['Idempotency-Key'], 'idemp-xyz-999');
+    assert.equal(headersObj['Authorization'], 'Bearer secret-key-123');
+  });
 });
