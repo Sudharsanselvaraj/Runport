@@ -27,11 +27,11 @@ from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
-from runport.tui.logo_ascii import (
-    RUNPORT_BLOCK_WORDMARK,
-    RUNPORT_DOT_MATRIX_LINES,
-    RUNPORT_EMBLEM_LINES,
-    RUNPORT_EMBLEM_SOLID_LINES,
+from runport.tui.logo import (
+    TerminalImage,
+    detect_image_protocol,
+    is_logo_available,
+    render_official_logo,
 )
 from runport.tui.theme import (
     ACCENT_CYAN,
@@ -58,43 +58,48 @@ from runport.tui.theme import (
 
 
 class RunportLogo:
-    """Renders the official Runport dot-matrix or ASCII brand mark with theme-adaptive styling."""
+    """Official Runport brand symbol rendering and terminal capability rules."""
 
     @staticmethod
-    def should_render(console: Console, compact: bool, cols: int, rows: int) -> bool:
-        """Determines whether the compact high-resolution emblem can fit cleanly in the terminal."""
-        try:
-            if compact:
-                return False
-            if cols < 60 or rows < 32:
-                return False
-            enc = getattr(console.file, "encoding", None) or getattr(sys.stdout, "encoding", None) or "utf-8"
-            if str(enc).lower().replace("-", "").replace("_", "") not in ("utf8",):
-                return False
-            if bool(os.environ.get("NO_COLOR")) or getattr(console, "no_color", False):
-                return False
-            if os.environ.get("TERM", "").lower().strip() == "dumb":
-                return False
-            return True
-        except Exception:
+    def can_render_image(
+        console: Optional[Console] = None,
+        compact: bool = False,
+        cols: int = 80,
+        rows: int = 24,
+    ) -> bool:
+        """Determines whether the official image symbol can be rendered in the current terminal."""
+        if compact:
             return False
+        if cols < 60 or rows < 28:
+            return False
+        protocol = detect_image_protocol(console)
+        if not protocol:
+            return False
+        return is_logo_available()
+
+    @staticmethod
+    def should_render(console: Optional[Console], compact: bool, cols: int, rows: int) -> bool:
+        """Determines whether the terminal can display the logo."""
+        return RunportLogo.can_render_image(console=console, compact=compact, cols=cols, rows=rows)
+
+    @staticmethod
+    def render_image(
+        console: Optional[Console] = None,
+        rows: int = 6,
+        width_cells: int = 12,
+    ) -> Optional[TerminalImage]:
+        """Renders the official white interlocking geometric symbol as an inline terminal graphic."""
+        return render_official_logo(console=console, rows=rows, width_cells=width_cells)
 
     @staticmethod
     def render_emblem(solid: bool = False) -> Text:
-        """Renders the compact hexagonal emblem in single-colour muted lavender (#C5A6E8)."""
-        lines = RUNPORT_EMBLEM_SOLID_LINES if solid else RUNPORT_EMBLEM_LINES
-        text = Text()
-        for line in lines:
-            text.append(line + "\n", style=f"bold {ACCENT_LAVENDER}")
-        return text
+        """Deprecated: ASCII/Braille approximations have been removed."""
+        return Text()
 
     @staticmethod
     def render_compact() -> Text:
-        """Renders the compact block wordmark for tight terminal viewports."""
-        text = Text()
-        for line in RUNPORT_BLOCK_WORDMARK:
-            text.append(f"  {line}\n", style=f"bold {ACCENT_LAVENDER}")
-        return text
+        """Renders the clean official wordmark in restrained lavender."""
+        return Text("RUNPORT CLI", style=f"bold {ACCENT_LAVENDER}")
 
 
 class StatusIndicator:

@@ -35,13 +35,6 @@ from runport.tui.components import (
     TerminalFooter,
 )
 from runport.tui.input import KeyReader
-from runport.tui.logo_ascii import (
-    RUNPORT_BLOCK,
-    RUNPORT_EMBLEM,
-    RUNPORT_EMBLEM_LINES,
-    RUNPORT_EMBLEM_SOLID,
-    RUNPORT_EMBLEM_SOLID_LINES,
-)
 from runport.tui.theme import (
     ACCENT_CYAN,
     ACCENT_LAVENDER,
@@ -208,16 +201,11 @@ class WelcomeScreen:
             grid.add_row(TerminalFooter.render(hints=footer_hints, width=content_width))
             return Align.center(grid)
 
-        # Determine if terminal can fit emblem
-        solid_pref = os.environ.get("RUNPORT_LOGO_STYLE", "").lower().strip() == "solid"
-        show_emblem = _should_show_emblem(self.console, compact, cols, eff_rows)
-
-        # 1. Header / Logo Section
-        if show_emblem:
-            emblem_text = RunportLogo.render_emblem(solid=solid_pref)
-            grid.add_row(Align.center(emblem_text))
-        elif compact or not show_emblem:
-            grid.add_row(Align.center(RunportLogo.render_compact()))
+        # 1. Header / Logo Section: Official Symbol (White) if supported by terminal graphics
+        if _should_show_emblem(self.console, compact, cols, eff_rows):
+            image_renderable = RunportLogo.render_image(self.console, rows=6, width_cells=12)
+            if image_renderable is not None:
+                grid.add_row(image_renderable)
 
         # 2. Brand Title & Version Hierarchy
         grid.add_row(Align.center(Text("RUNPORT CLI", style=f"bold {ACCENT_LAVENDER}")))

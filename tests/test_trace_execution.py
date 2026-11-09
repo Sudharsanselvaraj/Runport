@@ -330,7 +330,6 @@ def test_generic_runner_preserves_nested_multi_level_trajectory(tmp_path: Path, 
 
 def test_mcp_tool_target_trajectory_emission(tmp_path: Path, temp_db: DatabaseManager):
     """McpToolTarget attaches a SpanKind.TOOL span with tool latency and arguments."""
-    from runport.connectors.mcp import McpToolTarget
     fixture_script = str(Path(__file__).parent / "fixtures" / "mcp_fixture_server.py")
 
     target = McpToolTarget(

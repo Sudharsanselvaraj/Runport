@@ -81,7 +81,10 @@ python_functions = ["test_*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/runport"]
-artifacts = ["src/runport/_web/**"]
+artifacts = [
+    "src/runport/_web/**",
+    "src/runport/assets/**",
+]
 
 [tool.ruff]
 line-length = 160

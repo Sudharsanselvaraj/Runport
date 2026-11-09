@@ -73,26 +73,25 @@ def test_palette_constants_match_opensre_specification():
 # -----------------------------------------------------------------------------
 # 2. RunportLogo Component Tests
 # -----------------------------------------------------------------------------
-def test_logo_dimensions_and_single_color():
-    """Asserts that the refined emblem is 8 lines, 20 chars wide, and single-colour lavender."""
-    assert len(RUNPORT_EMBLEM_LINES) == 8
-    assert all(len(line) == 20 for line in RUNPORT_EMBLEM_LINES)
-    assert len(RUNPORT_EMBLEM_SOLID_LINES) == 8
-    assert all(len(line) == 20 for line in RUNPORT_EMBLEM_SOLID_LINES)
+def test_logo_wordmark_and_official_asset():
+    """Asserts official logo asset resolution and lavender wordmark styling."""
+    from runport.tui.logo import get_logo_bytes, is_logo_available
 
-    text = RunportLogo.render_emblem(solid=False)
-    for span in text.spans:
-        assert ACCENT_LAVENDER.lower() in str(span.style).lower()
+    assert is_logo_available() is True
+    data = get_logo_bytes()
+    assert data is not None and len(data) > 0
 
-    text_solid = RunportLogo.render_emblem(solid=True)
-    for span in text_solid.spans:
+    compact_text = RunportLogo.render_compact()
+    assert "RUNPORT CLI" in compact_text.plain
+    for span in compact_text.spans:
         assert ACCENT_LAVENDER.lower() in str(span.style).lower()
 
 
 def test_logo_capability_rules(monkeypatch):
-    """Verifies terminal capability checks for rendering full vs compact logo."""
+    """Verifies terminal capability checks for rendering image logo vs fallback."""
     monkeypatch.setenv("TERM", "xterm-256color")
     monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("RUNPORT_IMAGE_PROTOCOL", "iterm2")
 
     class Utf8Stream(io.StringIO):
         encoding = "utf-8"
@@ -100,17 +99,22 @@ def test_logo_capability_rules(monkeypatch):
     buf = Utf8Stream()
     console = Console(file=buf, force_terminal=True, width=100, height=50)
 
-    # Fits on large terminal
+    # Fits on large terminal with supported protocol
     assert RunportLogo.should_render(console, compact=False, cols=100, rows=50) is True
 
-    # Compact suppresses full emblem
+    # Compact suppresses full logo
     assert RunportLogo.should_render(console, compact=True, cols=100, rows=50) is False
 
-    # Narrow width suppresses full emblem
+    # Narrow width suppresses full logo
     assert RunportLogo.should_render(console, compact=False, cols=50, rows=50) is False
 
-    # Short height suppresses full emblem
+    # Short height suppresses full logo
     assert RunportLogo.should_render(console, compact=False, cols=100, rows=25) is False
+
+    # Without protocol support (e.g. macOS Terminal) should_render is False
+    monkeypatch.delenv("RUNPORT_IMAGE_PROTOCOL", raising=False)
+    monkeypatch.setenv("TERM_PROGRAM", "Apple_Terminal")
+    assert RunportLogo.should_render(console, compact=False, cols=100, rows=50) is False
 
 
 # -----------------------------------------------------------------------------
@@ -213,9 +217,7 @@ def test_welcome_screen_hierarchy_on_standard_terminal(monkeypatch):
     plain = _clean_ansi(buf.getvalue())
 
     # Hierarchy checkpoints:
-    # 1. Compact logo
-    assert RUNPORT_EMBLEM_LINES[0].strip() in plain
-    # 2. RUNPORT CLI title
+    # 1. RUNPORT CLI title (in restrained lavender)
     assert "RUNPORT CLI" in plain
     # 3. Welcome heading
     assert "Welcome to Runport" in plain

@@ -125,7 +125,7 @@ def render_trace_tree(trace: Trace, highlight_span_id: Optional[str] = None) -> 
 
     def _add_children(node: Any, parent_id: Optional[str]) -> None:
         for span in children_map.get(parent_id, []):
-            is_hl = (highlight_span_id is not None and span.span_id == highlight_span_id)
+            is_hl = highlight_span_id is not None and span.span_id == highlight_span_id
             label = _format_span_label(span, is_highlighted=is_hl)
             sub_node = node.add(label)
             _add_children(sub_node, span.span_id)
@@ -138,9 +138,14 @@ def render_trace_tree(trace: Trace, highlight_span_id: Optional[str] = None) -> 
 
 def render_trace_panel(trace: Trace) -> Panel:
     """Renders a summary card containing trace metadata and operational telemetry."""
-    status_str = f"[bold green]OK[/bold green]" if trace.status == SpanStatus.OK else (
-        f"[bold red]{trace.status.value.upper()}[/bold red]" if trace.status == SpanStatus.ERROR else
-        f"[bold yellow]{trace.status.value.upper()}[/bold yellow]"
+    status_str = (
+        f"[bold green]OK[/bold green]"
+        if trace.status == SpanStatus.OK
+        else (
+            f"[bold red]{trace.status.value.upper()}[/bold red]"
+            if trace.status == SpanStatus.ERROR
+            else f"[bold yellow]{trace.status.value.upper()}[/bold yellow]"
+        )
     )
 
     # Compute duration if timestamps available
@@ -191,9 +196,10 @@ def render_traces_table(traces: List[Trace]) -> Table:
     table.add_column("Created", style="dim")
 
     for t in traces:
-        status_text = "[green]OK[/green]" if t.status == SpanStatus.OK else (
-            f"[red]{t.status.value.upper()}[/red]" if t.status == SpanStatus.ERROR else
-            f"[yellow]{t.status.value.upper()}[/yellow]"
+        status_text = (
+            "[green]OK[/green]"
+            if t.status == SpanStatus.OK
+            else (f"[red]{t.status.value.upper()}[/red]" if t.status == SpanStatus.ERROR else f"[yellow]{t.status.value.upper()}[/yellow]")
         )
 
         duration_str = "—"

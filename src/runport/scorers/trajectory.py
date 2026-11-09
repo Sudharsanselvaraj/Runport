@@ -301,7 +301,7 @@ class TrajectoryEfficiencyScorer(BaseScorer):
             )
 
         # Count successful, non-duplicate steps
-        seen_signatures: Set[str] = set()
+        seen_signatures: set[str] = set()
         productive = 0
         total = len(action_spans)
 
