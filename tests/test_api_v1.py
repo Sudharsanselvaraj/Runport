@@ -54,6 +54,7 @@ def test_env(tmp_path: Path, monkeypatch):
     # Seed catalog models
     from decimal import Decimal
     from runport.models.catalog import ModelCandidate, seed_default_portfolio
+
     seed_default_portfolio(
         db,
         [
@@ -420,6 +421,89 @@ def test_v1_scoped_api_key_enforcement(test_env):
     res_revoked = client.get("/api/v1/targets", headers=headers)
     assert res_revoked.status_code == 401
     assert res_revoked.json()["error"]["code"] == "unauthorized"
+
+
+def test_v1_corrupted_key_expiry_fails_closed(test_env):
+    """Corrupted or unparseable API key expiry timestamp fails closed (401 Unauthorized)."""
+    client = test_env["client"]
+    db = test_env["db"]
+
+    token = "rp_corrupted_expiry_key_test"
+    db.create_api_key(
+        key_id="k-corrupt",
+        key_hash=hash_api_key(token),
+        name="Corrupted Expiry Key",
+        scopes=["*"],
+        expires_at="not-a-valid-iso-date-string",
+    )
+
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.get("/api/v1/targets", headers=headers)
+    assert res.status_code == 401
+    assert res.json()["error"]["code"] == "unauthorized"
+    assert "expiration" in res.json()["error"]["message"].lower()
+
+
+def test_v1_self_approval_on_billable_plan_forbidden(test_env):
+    """A developer cannot approve their own billable plan under RBAC rules."""
+    client = test_env["client"]
+    db = test_env["db"]
+
+    dev_token = "rp_developer_token_abc"
+    db.create_api_key(
+        key_id="dev-user-01",
+        key_hash=hash_api_key(dev_token),
+        name="Developer One",
+        scopes=["*"],
+    )
+
+    headers = {"Authorization": f"Bearer {dev_token}"}
+
+    # 1. Create a billable plan (google/gemini-3.5-flash-lite has catalog pricing)
+    res_plan = client.post(
+        "/api/v1/plans",
+        headers=headers,
+        json={"target_ids": ["google/gemini-3.5-flash-lite"], "dataset_name": "test_dataset.jsonl", "sample_size": 1},
+    )
+    assert res_plan.status_code == 200
+    plan_data = res_plan.json()
+    plan_id = plan_data["plan_id"]
+    fp = plan_data["plan_fingerprint"]
+
+    # 2. Attempt self-approval using the same developer credentials -> 403 Forbidden
+    res_approve = client.post(
+        f"/api/v1/plans/{plan_id}/approve",
+        headers=headers,
+        json={"fingerprint": fp},
+    )
+    assert res_approve.status_code == 403
+    assert "self-approval is forbidden" in res_approve.json()["error"]["message"].lower()
+
+
+def test_v1_job_recovery_after_restart(test_env):
+    """JobManager recovers orphaned queued/running jobs on instantiation."""
+    from runport.api.v1.jobs import JobManager
+
+    db = test_env["db"]
+
+    # Manually seed an orphaned running job as if from a killed process
+    orphaned_id = "job-orphaned-999"
+    db.create_run_job(
+        job_id=orphaned_id,
+        plan_id="plan-dummy",
+        status="running",
+        total_cases=10,
+        run_id="run-dummy",
+    )
+
+    # Force recovery
+    mgr = JobManager()
+    recovered = mgr.recover_interrupted_jobs()
+    assert recovered >= 1
+
+    job = db.get_run_job(orphaned_id)
+    assert job["status"] == "failed"
+    assert "interrupted" in job["error_message"].lower()
 
 
 # =============================================================================

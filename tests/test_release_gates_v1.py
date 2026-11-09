@@ -39,6 +39,7 @@ def test_gate1_package_cleanliness_and_assets():
     """Gate 1: Verifies version bump to 1.0.0 and inclusion of bundled web assets."""
     # 1. Version check
     import runport as rp
+
     assert rp.__version__ == "1.0.0"
 
     # 2. Web asset presence
@@ -62,6 +63,7 @@ def test_gate1_package_cleanliness_and_assets():
     import runport.instrumentation
     import runport.connectors
     import runport.traces
+
     assert hasattr(runport.sdk, "benchmark")
     assert hasattr(runport.client, "Client")
     assert hasattr(runport.instrumentation, "trace")
@@ -210,10 +212,10 @@ def test_gate5_null_integrity(tmp_path: Path, monkeypatch):
                 kind=SpanKind.LLM,
                 status=SpanStatus.OK,
                 start_time=t0,
-                prompt_tokens=None,     # Unmeasured
-                completion_tokens=None, # Unmeasured
-                total_tokens=None,      # Unmeasured
-                cost_usd=None,          # Unpriced / missing
+                prompt_tokens=None,  # Unmeasured
+                completion_tokens=None,  # Unmeasured
+                total_tokens=None,  # Unmeasured
+                cost_usd=None,  # Unpriced / missing
                 cost_basis=None,
             )
         ],

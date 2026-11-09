@@ -18,6 +18,7 @@ from runport.api.v1.auth import (
 )
 from runport.api.v1.errors import (
     ApprovalInvalidError,
+    ForbiddenError,
     InvalidTargetSpecApiError,
     NotFoundError,
     PlanBlockedError,
@@ -25,9 +26,11 @@ from runport.api.v1.errors import (
 from runport.api.v1.schemas import PlanApproveRequest, PlanCreateRequest, PlanResponse
 from runport.connectors.registry import TargetSpecError
 from runport.core.config import settings
+from runport.core.tenancy import TenantManager
 from runport.providers.base import LiveNotAuthorizedError
 from runport.services.approvals import ApprovalError
 from runport.services.execution import ExecutionService, PlanSummary, load_dataset_cases
+from runport.storage.db import DatabaseManager
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -79,7 +82,7 @@ def create_plan(
     except (TargetSpecError, KeyError) as e:
         raise InvalidTargetSpecApiError(f"Cannot resolve target: {e}") from e
 
-    operator_name = auth.get("name") or "api_v1"
+    operator_name = auth.get("principal") or auth.get("key_id") or auth.get("name") or "api_v1"
     plan = service.plan(targets, specs, cases, dataset_label=req.dataset_name, requested_by=operator_name)
     return _plan_to_response(plan)
 
@@ -121,7 +124,31 @@ def approve_plan(
             details={"blockers": plan.blockers},
         )
 
-    approver_identity = req.approver or auth.get("name") or "operator"
+    # Derive approver identity from authenticated credentials or authorized approver parameter
+    if auth.get("is_master", False) and req.approver:
+        approver_identity = req.approver
+    else:
+        approver_identity = auth.get("principal") or auth.get("key_id") or auth.get("name") or req.approver or "operator"
+
+    # Enforce multi-tenant self-approval prevention on billable plans
+    is_billable = False
+    if plan.projected_max_cost_usd is not None and float(plan.projected_max_cost_usd) > 0.0:
+        is_billable = True
+
+    if not auth.get("is_master", False):
+        if plan.requested_by and plan.requested_by == approver_identity:
+            project_id = auth.get("project_id", "default")
+            db = DatabaseManager(settings.db_path)
+            db.init_db()
+            tm = TenantManager(db=db)
+            tenant_ctx = tm.get_context(approver_identity, project_id)
+            if tenant_ctx:
+                can_approve, reason = tenant_ctx.can_approve_plan(plan.requested_by, is_billable)
+                if not can_approve:
+                    raise ForbiddenError(reason)
+            elif is_billable:
+                raise ForbiddenError("Self-approval is forbidden on billable plans.")
+
     try:
         approved = service.approve(
             plan_id,

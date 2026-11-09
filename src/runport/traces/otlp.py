@@ -91,11 +91,7 @@ def encode_otlp_value(val: Any) -> Dict[str, Any]:
     if isinstance(val, list):
         return {"arrayValue": {"values": [encode_otlp_value(v) for v in val]}}
     if isinstance(val, dict):
-        return {
-            "kvlistValue": {
-                "values": [{"key": str(k), "value": encode_otlp_value(v)} for k, v in val.items()]
-            }
-        }
+        return {"kvlistValue": {"values": [{"key": str(k), "value": encode_otlp_value(v)} for k, v in val.items()]}}
     return {"stringValue": str(val)}
 
 

@@ -81,12 +81,14 @@ class LangfuseExporter:
             if "output" in trace.attributes:
                 trace_body["output"] = scrub_secrets(trace.attributes["output"])
 
-            batch.append({
-                "id": str(uuid.uuid4()),
-                "type": "trace-create",
-                "timestamp": trace_iso,
-                "body": trace_body,
-            })
+            batch.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "type": "trace-create",
+                    "timestamp": trace_iso,
+                    "body": trace_body,
+                }
+            )
 
             # Observations (Spans)
             for span in trace.spans:
@@ -146,31 +148,35 @@ class LangfuseExporter:
                     usage["unit"] = "TOKENS"
                     obs_body["usage"] = usage
 
-                batch.append({
-                    "id": str(uuid.uuid4()),
-                    "type": "observation-create",
-                    "timestamp": span_iso,
-                    "body": obs_body,
-                })
+                batch.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "type": "observation-create",
+                        "timestamp": span_iso,
+                        "body": obs_body,
+                    }
+                )
 
                 # Export span events as EVENT observations
                 for ev in span.events:
                     ev_iso = ev.timestamp.isoformat()
-                    batch.append({
-                        "id": str(uuid.uuid4()),
-                        "type": "observation-create",
-                        "timestamp": ev_iso,
-                        "body": {
-                            "id": f"{span.span_id}-ev-{uuid.uuid4().hex[:8]}",
-                            "traceId": span.trace_id,
-                            "parentObservationId": span.span_id,
-                            "type": "EVENT",
-                            "name": ev.name,
-                            "startTime": ev_iso,
-                            "metadata": scrub_secrets(ev.attributes),
-                            "level": "DEFAULT",
-                        },
-                    })
+                    batch.append(
+                        {
+                            "id": str(uuid.uuid4()),
+                            "type": "observation-create",
+                            "timestamp": ev_iso,
+                            "body": {
+                                "id": f"{span.span_id}-ev-{uuid.uuid4().hex[:8]}",
+                                "traceId": span.trace_id,
+                                "parentObservationId": span.span_id,
+                                "type": "EVENT",
+                                "name": ev.name,
+                                "startTime": ev_iso,
+                                "metadata": scrub_secrets(ev.attributes),
+                                "level": "DEFAULT",
+                            },
+                        }
+                    )
 
         return {"batch": batch}
 
@@ -551,9 +557,7 @@ class LangfuseIngester:
             ev_attrs = scrub_secrets(dict(ev.get("metadata") or {}))
 
             if parent_id and parent_id in spans_by_id:
-                spans_by_id[parent_id].events.append(
-                    SpanEvent(name=ev_name, timestamp=ev_time, attributes=ev_attrs)
-                )
+                spans_by_id[parent_id].events.append(SpanEvent(name=ev_name, timestamp=ev_time, attributes=ev_attrs))
 
         return spans
 
@@ -590,4 +594,3 @@ class LangfuseIngester:
             return n if n >= 0 else None
         except (ValueError, TypeError):
             return None
-

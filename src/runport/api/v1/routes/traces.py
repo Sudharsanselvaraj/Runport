@@ -28,10 +28,14 @@ def list_traces(
     db.init_db()
     repo = TraceRepository(db=db)
 
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+
     if run_id:
         traces = repo.get_traces_for_run(run_id, include_spans=False)
+        if project_id:
+            traces = [t for t in traces if getattr(t, "project_id", "default") == project_id]
     else:
-        traces = repo.list_traces(limit=limit, include_spans=False)
+        traces = repo.list_traces(limit=limit, include_spans=False, project_id=project_id)
 
     return [t.model_dump(mode="json") for t in traces]
 

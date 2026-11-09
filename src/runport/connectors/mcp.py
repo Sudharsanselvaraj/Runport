@@ -923,13 +923,15 @@ class McpToolTarget(Target):
             kind=SpanKind.TOOL,
             status=SpanStatus.ERROR if is_err else SpanStatus.OK,
             duration_ms=round(elapsed, 3),
-            attributes=scrub_secrets({
-                "tool": tool,
-                "arguments": arguments,
-                "server_info": meta.get("server_info"),
-                "protocol_version": meta.get("protocol_version"),
-                "content_types": meta.get("content_types"),
-            }),
+            attributes=scrub_secrets(
+                {
+                    "tool": tool,
+                    "arguments": arguments,
+                    "server_info": meta.get("server_info"),
+                    "protocol_version": meta.get("protocol_version"),
+                    "content_types": meta.get("content_types"),
+                }
+            ),
             error=err_msg,
         )
 

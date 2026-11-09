@@ -64,6 +64,7 @@ def client_env(tmp_path: Path, monkeypatch):
 
     app = create_app()
     from fastapi.testclient import TestClient
+
     tc = TestClient(app, base_url="http://127.0.0.1:8000")
     client = Client(http_client=tc)
     return {"client": client, "eval_dir": eval_dir}
@@ -91,9 +92,7 @@ def test_client_dataset_and_plan_lifecycle(client_env):
     # 1. Upload dataset
     ds = c.upload_dataset(
         name="uploaded_dataset.jsonl",
-        cases=[
-            {"id": "u-01", "query": "What is Runport?", "expected_answer": "Benchmark platform", "classification": "PUBLIC"}
-        ],
+        cases=[{"id": "u-01", "query": "What is Runport?", "expected_answer": "Benchmark platform", "classification": "PUBLIC"}],
     )
     assert ds.filename == "uploaded_dataset.jsonl"
     assert ds.case_count == 1

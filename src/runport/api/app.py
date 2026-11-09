@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from runport import __version__
 from runport.api.routes import budget, datasets, events, models, plan, reports, runs, setup, targets, traces
 from runport.api.v1 import api_v1_router
-from runport.api.v1.errors import ApiV1Error
+from runport.api.v1.auth import verify_api_credential
+from runport.api.v1.errors import ApiV1Error, UnauthorizedError
 from runport.mcp_server.http import create_mcp_router
 
 
@@ -30,26 +31,43 @@ def _host_name(host_header: str) -> str:
 
 
 def _access_policy_middleware(api_token: Optional[str], extra_allowed_hosts: str):
-    """Access policy for /api routes (static dashboard files are not gated).
+    """Access policy for /api and /mcp routes (static dashboard files are not gated).
 
-    * Token configured (RUNPORT_API_TOKEN): every /api request, local or remote, must present exactly that token
-      as `Authorization: Bearer <token>` or `X-Runport-Token`. Compared in constant time.
-    * No token configured (local development): only loopback clients are served, and only when the Host header is a
-      loopback name (or listed in RUNPORT_ALLOWED_HOSTS), which blocks DNS-rebinding from a browser. Remote clients
-      are refused outright, whatever credentials they send: remote access fails closed until a token is set.
+    * Token configured (RUNPORT_API_TOKEN or database-backed API keys):
+      Every protected request, local or remote, must present valid credentials as
+      `Authorization: Bearer <token>` or `X-Runport-Token`. Compared in constant time.
+    * No master token configured (local development):
+      - If a valid database-backed API key is presented, request is authenticated and allowed.
+      - Remote clients without valid credentials are fail-closed (HTTP 403).
+      - Local loopback clients are permitted only when the Host header is a loopback name
+        (or listed in RUNPORT_ALLOWED_HOSTS), preventing browser DNS-rebinding attacks.
     """
     allowed_hosts = _LOOPBACK_HOST_NAMES | {h.strip().lower() for h in extra_allowed_hosts.split(",") if h.strip()}
 
     async def middleware(request: Request, call_next):
         path = request.url.path
-        if not path.startswith("/api") or path in _PUBLIC_API_PATHS:
+        if (not path.startswith("/api") and not path.startswith("/mcp")) or path in _PUBLIC_API_PATHS:
             return await call_next(request)
 
+        auth_header = request.headers.get("Authorization", "").strip()
+        presented = auth_header[7:].strip() if auth_header.startswith("Bearer ") else request.headers.get("X-Runport-Token", "").strip()
+
+        valid_cred = None
+        if presented:
+            try:
+                valid_cred = verify_api_credential(presented)
+                request.state.api_credential = valid_cred
+            except UnauthorizedError:
+                valid_cred = None
+
         if api_token:
-            auth_header = request.headers.get("Authorization", "")
-            presented = auth_header[7:].strip() if auth_header.startswith("Bearer ") else request.headers.get("X-Runport-Token", "")
-            if not presented or not hmac.compare_digest(presented.encode("utf-8"), api_token.encode("utf-8")):
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized: a valid RUNPORT_API_TOKEN is required."})
+            if not valid_cred:
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized: a valid API token is required."})
+            return await call_next(request)
+
+        # No server api_token configured:
+        if valid_cred:
+            # Valid database-backed key authenticates remote or local client
             return await call_next(request)
 
         client_host = request.client.host if request.client else ""
@@ -110,7 +128,10 @@ def create_app() -> FastAPI:
     app.include_router(api_v1_router, prefix="/api")
 
     # MCP Streamable HTTP (SSE) Transport
-    app.include_router(create_mcp_router(path_prefix="/mcp"), prefix="/mcp")
+    app.include_router(
+        create_mcp_router(path_prefix="/mcp", auth_token=os.environ.get("RUNPORT_API_TOKEN")),
+        prefix="/mcp",
+    )
 
     @app.exception_handler(ApiV1Error)
     async def api_v1_error_handler(request: Request, exc: ApiV1Error):

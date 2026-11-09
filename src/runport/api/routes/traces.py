@@ -97,5 +97,3 @@ def export_trace_otlp(trace_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found.")
 
     return OtlpExporter.export_trace(trace)
-
-

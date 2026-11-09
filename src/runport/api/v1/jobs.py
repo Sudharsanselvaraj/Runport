@@ -49,7 +49,35 @@ class JobManager:
                 cls._instance = super().__new__(cls)
                 cls._instance._active_jobs: Dict[str, JobContext] = {}
                 cls._instance._active_lock = threading.Lock()
+                cls._instance.recover_interrupted_jobs()
             return cls._instance
+
+    def recover_interrupted_jobs(self) -> int:
+        """Recovers jobs that were interrupted in 'queued' or 'running' state by a process restart.
+
+        Reconciles orphaned states so jobs do not remain indefinitely stuck as active.
+        """
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        interrupted = 0
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            for job in db.list_run_jobs(limit=500):
+                if job.get("status") in ("queued", "running"):
+                    is_cancelled = bool(job.get("cancelled"))
+                    new_status = "cancelled" if is_cancelled else "failed"
+                    err = None if is_cancelled else "Execution interrupted by process shutdown or restart."
+                    db.update_run_job(
+                        job["job_id"],
+                        status=new_status,
+                        cancelled=is_cancelled,
+                        error_message=err,
+                        finished_at=now,
+                    )
+                    interrupted += 1
+        except Exception:
+            logger.exception("Failed to recover interrupted run jobs during startup.")
+        return interrupted
 
     def submit_job(
         self,
@@ -150,8 +178,10 @@ class JobManager:
         db.init_db()
 
         try:
-            # Check early cancellation
-            if ctx.cancel_event.is_set():
+            # Check early cancellation from in-memory token or persistent database state
+            persisted = db.get_run_job(ctx.job_id)
+            if ctx.cancel_event.is_set() or (persisted and (persisted.get("cancelled") or persisted.get("status") == "cancelled")):
+                ctx.cancel_event.set()
                 db.update_run_job(
                     ctx.job_id,
                     status="cancelled",
@@ -176,29 +206,28 @@ class JobManager:
             targets, specs = service.resolve(target_ids)
             cases = load_dataset_cases(dataset_path, sample_size)
 
-            # Execute via GenericRunner with cancel token checks
-            total_cases = len(cases)
-            completed = 0
-            failed = 0
-
-            # Execute run through ExecutionService
+            # Execute run through ExecutionService with cancellation token
             outcome = service.execute(
                 plan_id=ctx.plan_id,
                 targets=targets,
                 specs=specs,
                 cases=cases,
+                cancel_token=ctx.cancel_event,
             )
+
+            # Check if any run halted due to cancellation
+            was_cancelled = ctx.cancel_event.is_set() or any(getattr(r, "halt_kind", None) == "cancelled" for r in outcome.runs)
 
             # Record final status
             db.update_run_job(
                 ctx.job_id,
-                status="completed" if not ctx.cancel_event.is_set() else "cancelled",
+                status="cancelled" if was_cancelled else "completed",
                 run_id=outcome.run_id,
                 completed_cases=len(outcome.results),
                 failed_cases=sum(1 for r in outcome.results if r.is_error),
                 booked_spend_usd=str(outcome.spend) if outcome.spend is not None else "0.0000",
                 finished_at=datetime.now(timezone.utc).isoformat(),
-                cancelled=ctx.cancel_event.is_set(),
+                cancelled=was_cancelled,
             )
 
         except Exception as e:

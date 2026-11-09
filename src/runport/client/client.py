@@ -118,6 +118,7 @@ class Client:
     def upload_dataset(self, name: str, cases: List[Dict[str, Any]]) -> DatasetItem:
         """Uploads and registers an evaluation dataset (validated and hashed)."""
         import json
+
         content_lines = "\n".join(json.dumps(c) for c in cases) + "\n"
         files = {"file": (name, content_lines.encode("utf-8"), "application/json")}
         resp = self._client.post(f"{self.base_url}/api/v1/datasets", files=files)

@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+import threading
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -273,6 +274,7 @@ class ExecutionService:
         specs: Mapping[str, Mapping[str, Any]],
         cases: Sequence[Mapping[str, Any]],
         case_scorer: Optional[Callable[[Dict[str, Any], Any], Dict[str, Any]]] = None,
+        cancel_token: Optional[threading.Event] = None,
     ) -> ExecutionOutcome:
         rec = self.approvals.get(plan_id)
         if rec is None:
@@ -283,7 +285,14 @@ class ExecutionService:
         self.approvals.consume(plan_id, rec.fingerprint)  # atomic: exactly one execution per approval
         runner = GenericRunner(budget_service=self.budget_service, db=self.db, workspace=self.workspace)
         approver = TokenApprover(token=rec.fingerprint, enabled=True, operator=rec.approved_by or "unknown")
-        runs = runner.execute_plan(plan, dict(targets), [dict(c) for c in cases], approver=approver, case_scorer=case_scorer)
+        runs = runner.execute_plan(
+            plan,
+            dict(targets),
+            [dict(c) for c in cases],
+            approver=approver,
+            case_scorer=case_scorer,
+            cancel_token=cancel_token,
+        )
         return ExecutionOutcome(plan_id=plan_id, fingerprint=rec.fingerprint, runs=runs)
 
     def execute_by_ids(

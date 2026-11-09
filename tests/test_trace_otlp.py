@@ -583,4 +583,3 @@ def test_api_v1_otlp_alias(test_db: DatabaseManager):
     res = client.post("/api/v1/traces/otlp", json=payload)
     assert res.status_code == 200
     assert res.json()["status"] == "ok"
-

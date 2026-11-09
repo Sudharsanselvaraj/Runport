@@ -61,7 +61,7 @@ def _detect_repetition_loops(steps: List[str], max_repeats: int = 2) -> Optional
     n = len(steps)
     for period in range(2, min(6, n // 2 + 1)):
         # Check if the last 2*period steps form a repeating cycle
-        tail = steps[-(2 * period):]
+        tail = steps[-(2 * period) :]
         c1 = tail[:period]
         c2 = tail[period:]
         if c1 == c2:
@@ -105,10 +105,7 @@ class LoopDetectionScorer(BaseScorer):
             )
 
         # Filter to actionable steps (tool calls, workflow steps, agents)
-        action_spans = [
-            s for s in spans
-            if s.parent_span_id is not None or s.kind in (SpanKind.TOOL, SpanKind.WORKFLOW_STEP, SpanKind.AGENT)
-        ]
+        action_spans = [s for s in spans if s.parent_span_id is not None or s.kind in (SpanKind.TOOL, SpanKind.WORKFLOW_STEP, SpanKind.AGENT)]
         if not action_spans:
             # Trajectory with 0 or 1 step has no loop
             return ScoreResult(
@@ -248,9 +245,7 @@ class RecoveryScorer(BaseScorer):
 
         # Did any step succeed AFTER the first error?
         first_err_idx = min(spans.index(s) for s in error_spans)
-        has_subsequent_success = any(
-            s.status == SpanStatus.OK for s in spans[first_err_idx + 1 :]
-        )
+        has_subsequent_success = any(s.status == SpanStatus.OK for s in spans[first_err_idx + 1 :])
 
         recovered = final_ok and has_subsequent_success
 
@@ -288,10 +283,7 @@ class TrajectoryEfficiencyScorer(BaseScorer):
                 details={"reason": "Missing prediction or trajectory"},
             )
 
-        action_spans = [
-            s for s in spans
-            if s.parent_span_id is not None or s.kind in (SpanKind.TOOL, SpanKind.WORKFLOW_STEP, SpanKind.AGENT)
-        ]
+        action_spans = [s for s in spans if s.parent_span_id is not None or s.kind in (SpanKind.TOOL, SpanKind.WORKFLOW_STEP, SpanKind.AGENT)]
         if not action_spans:
             return ScoreResult(
                 metric_name=self.name,
@@ -383,11 +375,7 @@ class CompositeTrajectoryScorer(BaseScorer):
         else:
             comp_score = None
 
-        all_passed = (
-            (tool_res.passed is not False)
-            and (loop_res.passed is True)
-            and (budget_res.passed is True)
-        )
+        all_passed = (tool_res.passed is not False) and (loop_res.passed is True) and (budget_res.passed is True)
 
         return ScoreResult(
             metric_name=self.name,
@@ -446,4 +434,3 @@ def trajectory_case_scorer(case: Dict[str, Any], result: TargetResult) -> Dict[s
         "evaluator": "trajectory_eval_v1",
         "notes": "; ".join(notes_parts) if notes_parts else "Trajectory scored",
     }
-

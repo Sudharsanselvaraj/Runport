@@ -210,3 +210,38 @@ def test_ground_truth_scores_alone_produce_supervised_accuracy(tmp_path):
     rep = TestClient(create_app()).get("/api/reports/gt-run").json()
     assert rep["accuracy"] == 0.5 and rep["accuracy_basis"] == "ground_truth" and rep["wilson_ci"] is not None
     assert rep["score_kinds"] == {"ground_truth": 2, "unknown": 1}
+
+
+def test_remote_client_succeeds_with_database_backed_api_key(tmp_path, monkeypatch):
+    """Remote clients presenting valid database-backed API keys pass outer middleware."""
+    from fastapi.testclient import TestClient
+
+    from runport.api.app import create_app
+    from runport.api.v1.auth import hash_api_key
+    from runport.core.config import settings
+    from runport.storage.db import DatabaseManager
+
+    db = DatabaseManager(settings.db_path)
+    db.init_db()
+
+    token = "rp_remote_db_key_998877"
+    db.create_api_key(
+        key_id="k-remote-01",
+        name="Remote DB Key",
+        key_hash=hash_api_key(token),
+        scopes=["*"],
+    )
+
+    # 1. Unset RUNPORT_API_TOKEN: remote client with valid DB key succeeds
+    monkeypatch.delenv("RUNPORT_API_TOKEN", raising=False)
+    app = create_app()
+    remote = TestClient(app, client=("198.51.100.25", 8888), base_url="http://runport.example.com")
+    res = remote.get("/api/budget", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+
+    # 2. Set RUNPORT_API_TOKEN: remote client with valid DB key still succeeds
+    monkeypatch.setenv("RUNPORT_API_TOKEN", "server-master-secret-token")
+    app_with_master = create_app()
+    remote_master = TestClient(app_with_master, client=("198.51.100.25", 8888), base_url="http://runport.example.com")
+    res_with_master = remote_master.get("/api/budget", headers={"Authorization": f"Bearer {token}"})
+    assert res_with_master.status_code == 200

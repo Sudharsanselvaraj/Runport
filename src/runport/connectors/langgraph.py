@@ -352,9 +352,7 @@ class LangGraphStreamingConnector(Target):
                     start_time=now,
                     end_time=now,
                     duration_ms=0.0,
-                    attributes=scrub_secrets(
-                        node_output if isinstance(node_output, dict) else {"output": node_output}
-                    ),
+                    attributes=scrub_secrets(node_output if isinstance(node_output, dict) else {"output": node_output}),
                     source="langgraph_streaming",
                 )
 

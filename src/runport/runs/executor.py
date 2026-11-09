@@ -12,6 +12,7 @@ Guard Order:
 
 from datetime import datetime, timezone
 from decimal import Decimal
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -114,6 +115,7 @@ class GenericRunner:
         cases: Sequence[Dict[str, Any]],
         approver: Optional[BaseApprover] = None,
         case_scorer: Optional[Callable[[Dict[str, Any], TargetResult], Dict[str, Any]]] = None,
+        cancel_token: Optional[threading.Event] = None,
     ) -> List[GenericRunResult]:
         """Execute a validated execution plan across configured targets."""
         # --- Guard 1: Authorization Check ---
@@ -177,6 +179,11 @@ class GenericRunner:
             persisted_traces: List[Trace] = []
 
             for case in cases:
+                if cancel_token and cancel_token.is_set():
+                    run_res.halted_reason = f"Execution cancelled after {len(run_res.case_results)} cases."
+                    run_res.halt_kind = "cancelled"
+                    break
+
                 case_id = str(case.get("id") or case.get("case_id") or "case")
 
                 # --- Guard 3: Preflight Budget & Context Check ---
@@ -284,12 +291,10 @@ class GenericRunner:
 
                 cost_usd_str = f"{res.cost_usd:.6f}" if res.cost_usd is not None else None
                 cost_basis_str = (
-                    res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
-                ) if res.cost_basis is not None else None
+                    (res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)) if res.cost_basis is not None else None
+                )
 
-                tot_tokens = (
-                    res.tokens_in + res.tokens_out
-                ) if (res.tokens_in is not None and res.tokens_out is not None) else None
+                tot_tokens = (res.tokens_in + res.tokens_out) if (res.tokens_in is not None and res.tokens_out is not None) else None
 
                 root_attrs: Dict[str, Any] = {
                     "target_id": target_id,

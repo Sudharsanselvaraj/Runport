@@ -458,4 +458,3 @@ def test_trajectory_case_scorer_with_generic_runner(tmp_path: Path):
     assert row["score_kind"] == "ground_truth"
     assert row["evaluator"] == "trajectory_eval_v1"
     assert "Tool Selection: 1.00" in row["evaluator_notes"]
-

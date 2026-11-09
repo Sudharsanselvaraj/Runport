@@ -261,9 +261,7 @@ def register_trace_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
         total_spans = sum(len(t.spans) for t in traces)
-        console.print(
-            f"[bold green]Successfully ingested {len(traces)} trace(s) and {total_spans} span(s) from {file_path.name}[/bold green]"
-        )
+        console.print(f"[bold green]Successfully ingested {len(traces)} trace(s) and {total_spans} span(s) from {file_path.name}[/bold green]")
 
     @app.command("export-otlp")
     def export_otlp_cmd(
@@ -362,7 +360,4 @@ def register_trace_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
         total_spans = sum(len(t.spans) for t in traces)
-        console.print(
-            f"[bold green]Successfully ingested {len(traces)} trace(s) and {total_spans} span(s) from {file_path.name}[/bold green]"
-        )
-
+        console.print(f"[bold green]Successfully ingested {len(traces)} trace(s) and {total_spans} span(s) from {file_path.name}[/bold green]")

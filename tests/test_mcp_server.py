@@ -293,3 +293,50 @@ def test_mcp_http_bearer_token_authentication():
     assert res_auth.status_code == 200
     assert res_auth.json()["result"] == {}
 
+
+def test_mcp_remote_client_refused_without_credentials():
+    """Remote network clients accessing /mcp endpoints fail closed without credentials."""
+    from fastapi.testclient import TestClient
+    from runport.api.app import create_app
+
+    app = create_app()
+    remote = TestClient(app, client=("198.51.100.42", 5555), base_url="http://runport.example.com")
+
+    # Remote GET /mcp/sse is refused with 403
+    res_sse = remote.get("/mcp/sse")
+    assert res_sse.status_code == 403
+
+    # Remote POST /mcp/messages is refused with 403
+    res_msg = remote.post("/mcp/messages", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+    assert res_msg.status_code == 403
+
+
+def test_mcp_remote_client_authenticated_via_db_key(tmp_path, monkeypatch):
+    """Remote network clients can access /mcp transport using database-backed API keys."""
+    from fastapi.testclient import TestClient
+    from runport.api.app import create_app
+    from runport.api.v1.auth import hash_api_key
+    from runport.core.config import settings
+    from runport.storage.db import DatabaseManager
+
+    db = DatabaseManager(settings.db_path)
+    db.init_db()
+
+    token = "rp_live_mcp_key_778899"
+    db.create_api_key(
+        key_id="k-mcp",
+        name="MCP Remote Key",
+        key_hash=hash_api_key(token),
+        scopes=["*"],
+    )
+
+    app = create_app()
+    remote = TestClient(app, client=("198.51.100.42", 5555), base_url="http://runport.example.com")
+
+    res = remote.post(
+        "/mcp/messages",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+    )
+    assert res.status_code == 200
+    assert res.json()["result"] == {}

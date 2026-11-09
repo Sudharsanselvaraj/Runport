@@ -12,6 +12,7 @@ import asyncio
 import hmac
 import json
 import logging
+import os
 from typing import Any, AsyncGenerator, Dict, Optional
 import uuid
 
@@ -63,19 +64,48 @@ def create_mcp_router(
     mcp_server = server or RunportMcpServer()
     session_mgr = McpSessionManager()
 
-    def verify_auth(authorization: Optional[str] = Header(None)) -> None:
-        if not auth_token:
+    def verify_auth(
+        request: Request,
+        authorization: Optional[str] = Header(None),
+    ) -> None:
+        # 1. Credential already verified by outer middleware
+        if getattr(request.state, "api_credential", None) is not None:
             return
-        if not authorization or not authorization.startswith("Bearer "):
+
+        expected = auth_token or os.environ.get("RUNPORT_API_TOKEN")
+        token = None
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization[7:].strip()
+        elif request.headers.get("X-Runport-Token"):
+            token = request.headers.get("X-Runport-Token", "").strip()
+
+        if token:
+            if expected and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
+                return
+            try:
+                from runport.api.v1.auth import verify_api_credential
+                from runport.api.v1.errors import UnauthorizedError
+
+                verify_api_credential(token)
+                return
+            except UnauthorizedError:
+                raise HTTPException(
+                    status_code=401,
+                    detail={"error": {"code": "unauthorized", "message": "Invalid Bearer token for MCP transport."}},
+                )
+
+        # 2. No token provided
+        client_host = request.client.host if request.client else ""
+        if client_host and client_host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": {"code": "forbidden", "message": "Remote access requires valid API credentials."}},
+            )
+
+        if expected:
             raise HTTPException(
                 status_code=401,
                 detail={"error": {"code": "unauthorized", "message": "Missing or invalid Bearer token for MCP transport."}},
-            )
-        token = authorization[7:].strip()
-        if not hmac.compare_digest(token, auth_token):
-            raise HTTPException(
-                status_code=401,
-                detail={"error": {"code": "unauthorized", "message": "Invalid Bearer token for MCP transport."}},
             )
 
     @router.get("/sse")

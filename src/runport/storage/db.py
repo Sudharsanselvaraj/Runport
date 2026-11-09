@@ -992,13 +992,19 @@ class DatabaseManager:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def get_all_evaluation_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Returns recent evaluation runs sorted newest first."""
+    def get_all_evaluation_runs(self, limit: int = 50, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns recent evaluation runs sorted newest first, optionally filtered by project_id."""
         with self.get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM evaluation_runs ORDER BY timestamp DESC LIMIT ?",
-                (limit,),
-            )
+            if project_id:
+                cursor = conn.execute(
+                    "SELECT * FROM evaluation_runs WHERE project_id = ? ORDER BY timestamp DESC LIMIT ?",
+                    (project_id, limit),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM evaluation_runs ORDER BY timestamp DESC LIMIT ?",
+                    (limit,),
+                )
             return [dict(row) for row in cursor.fetchall()]
 
     def get_evaluation_results_for_run(self, run_id: str) -> List[Dict[str, Any]]:
@@ -1272,13 +1278,19 @@ class DatabaseManager:
                 traces.append(self._row_to_trace(r, spans=spans))
             return traces
 
-    def list_traces(self, limit: int = 50, include_spans: bool = False) -> List[Trace]:
-        """Returns the most recent canonical traces across all runs."""
+    def list_traces(self, limit: int = 50, include_spans: bool = False, project_id: Optional[str] = None) -> List[Trace]:
+        """Returns the most recent canonical traces across all runs, optionally filtered by project_id."""
         with self.get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM traces ORDER BY start_time DESC, created_at DESC LIMIT ?",
-                (max(1, limit),),
-            )
+            if project_id:
+                cursor = conn.execute(
+                    "SELECT * FROM traces WHERE project_id = ? ORDER BY start_time DESC, created_at DESC LIMIT ?",
+                    (project_id, max(1, limit)),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM traces ORDER BY start_time DESC, created_at DESC LIMIT ?",
+                    (max(1, limit),),
+                )
             rows = cursor.fetchall()
             traces = []
             for r in rows:
@@ -1753,4 +1765,3 @@ class DatabaseManager:
                 d["details"] = json.loads(d.get("details_json") or "{}")
                 results.append(d)
             return results
-

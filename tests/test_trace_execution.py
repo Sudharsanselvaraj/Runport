@@ -422,6 +422,7 @@ def test_dify_node_spans_conversion():
 
 def test_rag_pipeline_target_trajectory_emission():
     """RagPipelineTarget emits decoupled RETRIEVAL and LLM spans."""
+
     class FakeRetriever(BaseRetriever):
         def __init__(self):
             self.retriever_id = "test-bm25"
@@ -542,6 +543,7 @@ def test_error_and_timeout_status_mapping(tmp_path: Path, temp_db: DatabaseManag
 
 def test_unresolved_spend_halt_preserves_executed_traces(tmp_path: Path, temp_db: DatabaseManager):
     """When execution halts due to unresolved spend, already executed case traces are preserved in SQLite."""
+
     class SteppedTarget(Target):
         def __init__(self):
             super().__init__(
@@ -575,7 +577,9 @@ def test_unresolved_spend_halt_preserves_executed_traces(tmp_path: Path, temp_db
             )
 
     ds_file = tmp_path / "ds.jsonl"
-    ds_file.write_text('{"id": "c1", "classification": "SYNTHETIC"}\n{"id": "c2", "classification": "SYNTHETIC"}\n{"id": "c3", "classification": "SYNTHETIC"}\n')
+    ds_file.write_text(
+        '{"id": "c1", "classification": "SYNTHETIC"}\n{"id": "c2", "classification": "SYNTHETIC"}\n{"id": "c3", "classification": "SYNTHETIC"}\n'
+    )
 
     plan = create_execution_plan(["stepped-target"], ds_file, is_live=True)
     approver = TokenApprover(token=plan.fingerprint, enabled=True)
@@ -602,4 +606,3 @@ def test_unresolved_spend_halt_preserves_executed_traces(tmp_path: Path, temp_db
     assert len(traces) == 2
     case_ids = {t.case_id for t in traces}
     assert case_ids == {"c1", "c2"}
-

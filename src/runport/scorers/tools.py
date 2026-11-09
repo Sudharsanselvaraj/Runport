@@ -63,14 +63,16 @@ def _extract_tool_calls(spans: List[Span]) -> List[Dict[str, Any]]:
             except Exception:
                 pass
 
-        calls.append({
-            "span_id": span.span_id,
-            "tool": str(name),
-            "arguments": args if isinstance(args, dict) else {},
-            "status": span.status,
-            "duration_ms": span.duration_ms,
-            "error": span.error,
-        })
+        calls.append(
+            {
+                "span_id": span.span_id,
+                "tool": str(name),
+                "arguments": args if isinstance(args, dict) else {},
+                "status": span.status,
+                "duration_ms": span.duration_ms,
+                "error": span.error,
+            }
+        )
     return calls
 
 
@@ -179,7 +181,7 @@ class ToolSelectionScorer(BaseScorer):
         p = 0.0 if (p != p) else p  # handle NaN
         r = 0.0 if (r != r) else r
         f1 = 0.0 if (f1 != f1) else f1
-        passed = (f1 == 1.0)
+        passed = f1 == 1.0
         return ScoreResult(
             metric_name=self.name,
             score=round(f1, 4),

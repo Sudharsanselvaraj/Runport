@@ -55,6 +55,58 @@ def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.strip().encode("utf-8")).hexdigest()
 
 
+def verify_api_credential(token: str, db: Optional[DatabaseManager] = None) -> Dict[str, Any]:
+    """Validates an API token against RUNPORT_API_TOKEN or database-backed API keys.
+
+    Specification:
+    - Checks master environment token (RUNPORT_API_TOKEN) using constant-time comparison.
+    - Checks database-backed API keys via SHA-256 hash.
+    - Enforces expiration: fails closed with UnauthorizedError on expired keys or malformed expiry timestamps.
+    - Returns authenticated credential dict.
+    """
+    if not token or not token.strip():
+        raise UnauthorizedError("Valid API credentials required via Bearer token.")
+
+    clean_token = token.strip()
+    master_token = os.environ.get("RUNPORT_API_TOKEN")
+
+    # 1. Master environment token grants all scopes
+    if master_token:
+        if hmac.compare_digest(clean_token.encode("utf-8"), master_token.encode("utf-8")):
+            return {
+                "key_id": "master",
+                "name": "Master Environment Token",
+                "principal": "master",
+                "scopes": list(ALL_SCOPES),
+                "is_master": True,
+                "project_id": "default",
+            }
+
+    # 2. Database-backed API key lookup
+    if db is None:
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+
+    key_hash = hash_api_key(clean_token)
+    key_record = db.get_api_key_by_hash(key_hash)
+
+    if not key_record:
+        raise UnauthorizedError("Invalid or revoked API key.")
+
+    # Check expiration: fail-closed on expired key or malformed date
+    if key_record.get("expires_at"):
+        try:
+            exp = datetime.fromisoformat(key_record["expires_at"])
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > exp:
+                raise UnauthorizedError("API key has expired.")
+        except (ValueError, TypeError) as exc:
+            raise UnauthorizedError("Invalid or corrupted API key expiration format.") from exc
+
+    return key_record
+
+
 def extract_token(request: Request) -> Optional[str]:
     """Extracts bearer token from Authorization header or X-Runport-Token."""
     auth_header = request.headers.get("Authorization", "").strip()
@@ -74,52 +126,27 @@ def require_scope(required_scope: str) -> Callable[[Request], Dict[str, Any]]:
     """FastAPI dependency factory enforcing API key authentication and scoped access."""
 
     async def _dependency(request: Request) -> Dict[str, Any]:
+        # 1. Check if credential was already authenticated by middleware
+        credential = getattr(request.state, "api_credential", None)
         token = extract_token(request)
-        master_token = os.environ.get("RUNPORT_API_TOKEN")
-
-        # 1. Master environment token grants all scopes
-        if token and master_token:
-            if hmac.compare_digest(token.encode("utf-8"), master_token.encode("utf-8")):
-                return {
-                    "key_id": "master",
-                    "name": "Master Environment Token",
-                    "scopes": list(ALL_SCOPES),
-                    "is_master": True,
-                }
-
-        # 2. Database-backed API key lookup
         db = DatabaseManager(settings.db_path)
         db.init_db()
 
-        if token:
-            key_hash = hash_api_key(token)
-            key_record = db.get_api_key_by_hash(key_hash)
+        if credential is None and token:
+            credential = verify_api_credential(token, db=db)
 
-            if key_record:
-                # Check expiration
-                if key_record.get("expires_at"):
-                    try:
-                        exp = datetime.fromisoformat(key_record["expires_at"])
-                        if exp.tzinfo is None:
-                            exp = exp.replace(tzinfo=timezone.utc)
-                        if datetime.now(timezone.utc) > exp:
-                            raise UnauthorizedError("API key has expired.")
-                    except ValueError:
-                        pass
+        if credential is not None:
+            granted_scopes = set(credential.get("scopes", []))
+            if "*" in granted_scopes or required_scope in granted_scopes:
+                return credential
 
-                granted_scopes = set(key_record.get("scopes", []))
-                if "*" in granted_scopes or required_scope in granted_scopes:
-                    return key_record
+            raise ForbiddenError(
+                f"API key lacks required scope: '{required_scope}'.",
+                details={"granted_scopes": list(granted_scopes), "required_scope": required_scope},
+            )
 
-                raise ForbiddenError(
-                    f"API key lacks required scope: '{required_scope}'.",
-                    details={"granted_scopes": list(granted_scopes), "required_scope": required_scope},
-                )
-
-            # Token was provided but matched neither master token nor database key
-            raise UnauthorizedError("Invalid or revoked API key.")
-
-        # 3. No token provided: Check for local loopback development bypass
+        # 2. No token provided: Check for local loopback development bypass
+        master_token = os.environ.get("RUNPORT_API_TOKEN")
         client_host = request.client.host if request.client else ""
         if not master_token and client_host in _LOOPBACK_HOSTS:
             # Check if user has explicitly created any API keys
@@ -129,8 +156,10 @@ def require_scope(required_scope: str) -> Callable[[Request], Dict[str, Any]]:
                 return {
                     "key_id": "loopback-dev",
                     "name": "Local Loopback Operator",
+                    "principal": "local-operator",
                     "scopes": list(ALL_SCOPES),
                     "is_master": True,
+                    "project_id": "default",
                 }
 
         raise UnauthorizedError("Valid API credentials required via Bearer token.")

@@ -66,20 +66,20 @@ class RagPipelineTarget(OpenRouterTarget):
             kind=SpanKind.RETRIEVAL,
             status=SpanStatus.OK,
             duration_ms=round(ret.latency_ms, 3) if ret.latency_ms is not None else None,
-            attributes=scrub_secrets({
-                "retriever_id": ret.retriever_id,
-                "top_k": self.top_k,
-                "chunks_count": len(ret.chunks),
-                "record_ids": list(ret.retrieved_record_ids),
-                "hit_rate": ret.hit_rate,
-                "precision": ret.precision,
-            }),
+            attributes=scrub_secrets(
+                {
+                    "retriever_id": ret.retriever_id,
+                    "top_k": self.top_k,
+                    "chunks_count": len(ret.chunks),
+                    "record_ids": list(ret.retrieved_record_ids),
+                    "hit_rate": ret.hit_rate,
+                    "precision": ret.precision,
+                }
+            ),
         )
 
         gen_lat = res.metadata.get("generation_latency_ms")
-        tot_tokens = (
-            res.tokens_in + res.tokens_out
-        ) if (res.tokens_in is not None and res.tokens_out is not None) else None
+        tot_tokens = (res.tokens_in + res.tokens_out) if (res.tokens_in is not None and res.tokens_out is not None) else None
 
         generation_span = Span(
             trace_id="pending",

@@ -102,10 +102,11 @@ def list_runs(
     limit: int = Query(50, ge=1, le=500),
     auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_READ)),
 ) -> List[RunDetailResponse]:
-    """Lists historical evaluation runs newest first."""
+    """Lists historical evaluation runs newest first, scoped by project_id."""
     db = DatabaseManager(settings.db_path)
     db.init_db()
-    runs = db.get_all_evaluation_runs(limit=limit)
+    project_id = auth.get("project_id") if not auth.get("is_master") else None
+    runs = db.get_all_evaluation_runs(limit=limit, project_id=project_id)
     return [RunDetailResponse(**r) for r in runs]
 
 

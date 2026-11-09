@@ -162,3 +162,20 @@ jobs:
           sleep 3
           curl -sf http://127.0.0.1:8000/api/health || (kill $PID && exit 1)
           kill $PID
+
+  sdk-ts:
+    name: TypeScript SDK Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run TypeScript SDK Tests
+        working-directory: packages/sdk-ts
+        run: |
+          npm test
