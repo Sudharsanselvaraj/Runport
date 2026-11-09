@@ -244,9 +244,11 @@ class OtlpIngester:
     def parse_payload(cls, payload: Union[str, Dict[str, Any]]) -> List[Trace]:
         """Parses an ExportTraceServiceRequest payload into canonical Trace instances."""
         if isinstance(payload, str):
-            payload = json.loads(payload)
+            payload_dict: Dict[str, Any] = json.loads(payload)
+        else:
+            payload_dict = payload
 
-        resource_spans = payload.get("resourceSpans", [])
+        resource_spans = payload_dict.get("resourceSpans", [])
         if not resource_spans:
             return []
 

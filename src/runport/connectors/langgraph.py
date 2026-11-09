@@ -140,8 +140,13 @@ class LangGraphStreamingConnector(Target):
             "stream_mode": [self.stream_mode],
         }
 
-    def execute(self, inputs: Dict[str, Any]) -> TargetResult:
+    def execute(
+        self,
+        input_payload: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> TargetResult:
         """Executes LangGraph streaming request, accumulating text and trajectory spans."""
+        inputs = input_payload
         t0 = time.perf_counter()
         trace_id = f"tr-lg-{uuid.uuid4().hex[:12]}"
         root_span_id = f"root-{uuid.uuid4().hex[:8]}"
