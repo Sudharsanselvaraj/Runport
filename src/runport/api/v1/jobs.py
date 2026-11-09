@@ -29,9 +29,10 @@ logger = logging.getLogger(__name__)
 class JobContext:
     """In-memory active execution context for a job."""
 
-    def __init__(self, job_id: str, plan_id: str):
+    def __init__(self, job_id: str, plan_id: str, project_id: str = "default"):
         self.job_id = job_id
         self.plan_id = plan_id
+        self.project_id = project_id
         self.cancel_event = threading.Event()
         self.thread: Optional[threading.Thread] = None
 
@@ -156,7 +157,7 @@ class JobManager:
         if created_job and created_job.get("job_id") != job_id:
             return created_job
 
-        ctx = JobContext(job_id=job_id, plan_id=plan_id)
+        ctx = JobContext(job_id=job_id, plan_id=plan_id, project_id=project_id)
         with self._active_lock:
             self._active_jobs[job_id] = ctx
 
@@ -240,21 +241,45 @@ class JobManager:
 
             # Independent background heartbeat renewal thread running every 15 seconds
             def _heartbeat_loop() -> None:
+                consecutive_failures = 0
+                max_consecutive_failures = 3
                 while not stop_heartbeat.wait(heartbeat_interval_s):
                     try:
                         renewed = db.renew_job_lease(ctx.job_id, worker_id, lease_duration_s=60)
-                        if not renewed:
+                        if renewed:
+                            consecutive_failures = 0
+                        else:
+                            consecutive_failures += 1
                             job = db.get_run_job(ctx.job_id)
                             if job and (job.get("cancelled") or str(job.get("status", "")).lower() == "cancelled"):
                                 cancel_token.set()
                                 ctx.cancel_event.set()
-                            else:
+                                break
+                            elif consecutive_failures >= max_consecutive_failures or not job:
+                                logger.critical("Worker %s lost lease for job %s; failing closed.", worker_id, ctx.job_id)
                                 cancel_token.lease_lost = True
                                 cancel_token.set()
                                 ctx.cancel_event.set()
-                            break
+                                break
                     except Exception:
-                        logger.warning("Heartbeat renewal error for job %s", ctx.job_id, exc_info=True)
+                        consecutive_failures += 1
+                        logger.warning(
+                            "Heartbeat renewal error (%d/%d) for job %s",
+                            consecutive_failures,
+                            max_consecutive_failures,
+                            ctx.job_id,
+                            exc_info=True,
+                        )
+                        if consecutive_failures >= max_consecutive_failures:
+                            logger.critical(
+                                "Consecutive heartbeat failures (%d) reached for job %s; failing closed.",
+                                consecutive_failures,
+                                ctx.job_id,
+                            )
+                            cancel_token.lease_lost = True
+                            cancel_token.set()
+                            ctx.cancel_event.set()
+                            break
 
             hb_thread = threading.Thread(
                 target=_heartbeat_loop,
@@ -264,12 +289,12 @@ class JobManager:
             hb_thread.start()
 
             service = ExecutionService()
-            plan = service.get_plan(ctx.plan_id)
+            plan = service.get_plan(ctx.plan_id, project_id=ctx.project_id)
             if not plan:
                 db.update_run_job(
                     ctx.job_id,
                     status="failed",
-                    error_message=f"Plan '{ctx.plan_id}' no longer exists.",
+                    error_message=f"Plan '{ctx.plan_id}' no longer exists or not accessible.",
                     finished_at=datetime.now(timezone.utc).isoformat(),
                     expected_worker_id=worker_id,
                 )
@@ -285,6 +310,7 @@ class JobManager:
                 specs=specs,
                 cases=cases,
                 cancel_token=cancel_token,
+                project_id=ctx.project_id,
             )
 
             # Check if any run halted due to cancellation or lease loss
@@ -320,6 +346,8 @@ class JobManager:
             )
         finally:
             stop_heartbeat.set()
+            if "hb_thread" in locals() and hb_thread.is_alive():
+                hb_thread.join(timeout=5.0)
             db.release_run_reservations(run_id)
             if outcome and getattr(outcome, "run_id", None):
                 db.release_run_reservations(outcome.run_id)

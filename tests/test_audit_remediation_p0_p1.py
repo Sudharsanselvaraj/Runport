@@ -469,7 +469,7 @@ def test_autonomous_heartbeat_renewal_during_long_call(audit_workspace, monkeypa
         project_id="proj-a",
     )
 
-    ctx = JobContext(job_id=job_id, plan_id=summary.plan_id)
+    ctx = JobContext(job_id=job_id, plan_id=summary.plan_id, project_id="proj-a")
 
     # Execute worker with fast heartbeat interval (0.05s)
     worker_t = threading.Thread(
@@ -588,3 +588,298 @@ def test_multi_target_job_progress_and_requested_by(audit_workspace):
     assert persisted is not None
     assert persisted["total_cases"] == 12
     assert persisted.get("requested_by") == "admin-user@example.com"
+
+
+# =============================================================================
+# Additional Findings: Least-Privilege MCP Scopes, Cross-Project Plan Execution,
+# and Fail-Closed Heartbeat Outage
+# =============================================================================
+
+
+def test_mcp_least_privilege_scope_enforcement(audit_workspace):
+    """MCP enforces granted API key scopes on tools and returns ToolError with isError: True when scope is missing."""
+    db: DatabaseManager = audit_workspace["db"]
+    client: TestClient = audit_workspace["remote_client"]
+
+    # 1. Create an API key with ONLY 'runs:read' scope
+    key_readonly = "rp_live_alpha_readonly_token_888"
+    db.create_api_key(
+        key_id="key-alpha-readonly",
+        name="Alpha Read-Only",
+        key_hash=hash_api_key(key_readonly),
+        scopes=["runs:read"],
+        project_id="proj-a",
+        principal="readonly@example.com",
+    )
+
+    auth_header = {"Authorization": f"Bearer {key_readonly}"}
+
+    # runs:read is permitted for get_run
+    res_run = client.post(
+        "/mcp/messages",
+        headers=auth_header,
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "get_run", "arguments": {"run_id": "nonexistent"}}},
+    )
+    assert res_run.status_code == 200
+    # Fails because run doesn't exist, NOT because of scope
+    assert "Forbidden: credential lacks required scope" not in res_run.json()["result"]["content"][0]["text"]
+
+    # Forbidden: create_benchmark_plan requires plans:create
+    res_plan = client.post(
+        "/mcp/messages",
+        headers=auth_header,
+        json={
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "create_benchmark_plan", "arguments": {"target_ids": ["dummy"], "dataset_name": "eval.jsonl"}},
+        },
+    )
+    assert res_plan.status_code == 200
+    plan_data = res_plan.json()
+    assert plan_data["result"]["isError"] is True
+    assert "Forbidden: credential lacks required scope 'plans:create'" in plan_data["result"]["content"][0]["text"]
+
+    # Forbidden: execute_approved_benchmark requires runs:execute
+    res_exec = client.post(
+        "/mcp/messages",
+        headers=auth_header,
+        json={"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "execute_approved_benchmark", "arguments": {"plan_id": "plan-123"}}},
+    )
+    assert res_exec.status_code == 200
+    exec_data = res_exec.json()
+    assert exec_data["result"]["isError"] is True
+    assert "Forbidden: credential lacks required scope 'runs:execute'" in exec_data["result"]["content"][0]["text"]
+
+    # Forbidden: cancel_job requires runs:execute
+    res_cancel = client.post(
+        "/mcp/messages",
+        headers=auth_header,
+        json={"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "cancel_job", "arguments": {"job_id": "job-123"}}},
+    )
+    assert res_cancel.status_code == 200
+    cancel_data = res_cancel.json()
+    assert cancel_data["result"]["isError"] is True
+    assert "Forbidden: credential lacks required scope 'runs:execute'" in cancel_data["result"]["content"][0]["text"]
+
+    # Forbidden: get_budget_status requires budget:read
+    res_budget = client.post(
+        "/mcp/messages",
+        headers=auth_header,
+        json={"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "get_budget_status", "arguments": {}}},
+    )
+    assert res_budget.status_code == 200
+    budget_data = res_budget.json()
+    assert budget_data["result"]["isError"] is True
+    assert "Forbidden: credential lacks required scope 'budget:read'" in budget_data["result"]["content"][0]["text"]
+
+
+def test_mcp_resource_scope_enforcement(audit_workspace):
+    """MCP enforces required scopes when reading resources."""
+    db: DatabaseManager = audit_workspace["db"]
+    client: TestClient = audit_workspace["remote_client"]
+
+    # Create an API key with ONLY 'runs:read' scope
+    key_readonly = "rp_live_alpha_readonly_token_777"
+    db.create_api_key(
+        key_id="key-alpha-res-readonly",
+        name="Alpha Resource Read-Only",
+        key_hash=hash_api_key(key_readonly),
+        scopes=["runs:read"],
+        project_id="proj-a",
+        principal="res_readonly@example.com",
+    )
+    auth_header = {"Authorization": f"Bearer {key_readonly}"}
+
+    # Reading runport://runs is allowed for runs:read
+    res_runs = client.post(
+        "/mcp/messages",
+        headers=auth_header,
+        json={"jsonrpc": "2.0", "id": 1, "method": "resources/read", "params": {"uri": "runport://runs"}},
+    )
+    assert res_runs.status_code == 200
+    assert "error" not in res_runs.json()
+    assert res_runs.json()["result"]["contents"][0]["uri"] == "runport://runs"
+
+    # Reading runport://budget requires budget:read -> Must fail with InvalidParams (-32602)
+    res_budget = client.post(
+        "/mcp/messages",
+        headers=auth_header,
+        json={"jsonrpc": "2.0", "id": 2, "method": "resources/read", "params": {"uri": "runport://budget"}},
+    )
+    assert res_budget.status_code == 200
+    budget_res = res_budget.json()
+    assert "error" in budget_res
+    assert budget_res["error"]["code"] == -32602
+    assert "Forbidden: credential lacks required scope 'budget:read'" in budget_res["error"]["message"]
+
+
+def test_mcp_cross_project_approved_plan_execution_prevented(audit_workspace, monkeypatch):
+    """Remote MCP execution tool rejects attempts by Project A to execute Project B's approved plan."""
+    client: TestClient = audit_workspace["remote_client"]
+    key_a = audit_workspace["key_a"]
+    svc = ExecutionService()
+
+    sim_target = SlowSimulatedTarget("plan-sec-target", sleep_s=0.01)
+    targets = {"plan-sec-target": sim_target}
+    specs = {"plan-sec-target": {"id": "plan-sec-target", "type": "raw_model"}}
+    monkeypatch.setattr(ExecutionService, "resolve", lambda self, tids, **kw: (targets, specs))
+
+    cases = [{"id": "c1", "input": "test", "classification": "PUBLIC"}]
+    # Plan created and approved under Project B
+    summary_b = svc.plan(
+        targets=targets,
+        specs=specs,
+        cases=cases,
+        dataset_label="eval_cases",
+        requested_by="beta@example.com",
+        project_id="proj-b",
+    )
+    svc.approve(
+        plan_id=summary_b.plan_id,
+        fingerprint=summary_b.fingerprint,
+        channel="cli_interactive",
+        approver="beta-approver",
+        project_id="proj-b",
+    )
+
+    # Project A client (with full scopes) attempts to execute Project B's plan
+    req_exec = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "execute_approved_benchmark",
+            "arguments": {"plan_id": summary_b.plan_id},
+        },
+    }
+    res = client.post("/mcp/messages", headers={"Authorization": f"Bearer {key_a}"}, json=req_exec)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["result"]["isError"] is True
+    err_text = data["result"]["content"][0]["text"].lower()
+    assert "no plan" in err_text or "not found" in err_text or "refused" in err_text or "not executed" in err_text
+
+
+def test_execution_service_independent_project_validation(audit_workspace, monkeypatch):
+    """ExecutionService independently rejects execution if plan belongs to a different project."""
+    from runport.services.approvals import ApprovalError
+
+    svc = ExecutionService()
+    sim_target = SlowSimulatedTarget("plan-sec-target-2", sleep_s=0.01)
+    targets = {"plan-sec-target-2": sim_target}
+    specs = {"plan-sec-target-2": {"id": "plan-sec-target-2", "type": "raw_model"}}
+    monkeypatch.setattr(ExecutionService, "resolve", lambda self, tids, **kw: (targets, specs))
+
+    cases = [{"id": "c1", "input": "test", "classification": "PUBLIC"}]
+    summary_b = svc.plan(
+        targets=targets,
+        specs=specs,
+        cases=cases,
+        dataset_label="eval_cases",
+        requested_by="beta@example.com",
+        project_id="proj-b",
+    )
+    svc.approve(
+        plan_id=summary_b.plan_id,
+        fingerprint=summary_b.fingerprint,
+        channel="cli_interactive",
+        approver="beta-approver",
+        project_id="proj-b",
+    )
+
+    # 1. execute_by_ids with foreign project_id
+    with pytest.raises(ApprovalError) as exc_info1:
+        svc.execute_by_ids(summary_b.plan_id, cases, project_id="proj-a")
+    assert "no plan" in str(exc_info1.value).lower() or "belongs to another project" in str(exc_info1.value).lower()
+
+    # 2. execute with foreign project_id
+    with pytest.raises(ApprovalError) as exc_info2:
+        svc.execute(summary_b.plan_id, targets, specs, cases, project_id="proj-a")
+    assert "no plan" in str(exc_info2.value).lower() or "belongs to another project" in str(exc_info2.value).lower()
+
+
+def test_heartbeat_consecutive_db_failures_fail_closed(audit_workspace, monkeypatch):
+    """Worker immediately aborts execution when consecutive heartbeat lease renewals fail 3 times."""
+    import sqlite3
+    from runport.api.v1.jobs import JobContext
+
+    db: DatabaseManager = audit_workspace["db"]
+    job_mgr = JobManager()
+
+    job_id = "job-hb-fail-001"
+    run_id = "run-hb-fail-001"
+
+    svc = ExecutionService()
+    slow_target = SlowSimulatedTarget("slow-target-fail", sleep_s=0.15)
+    targets = {"slow-target-fail": slow_target}
+    specs = {"slow-target-fail": {"id": "slow-target-fail", "type": "raw_model"}}
+    monkeypatch.setattr(ExecutionService, "resolve", lambda self, tids, **kw: (targets, specs))
+
+    dataset_file = audit_workspace["tmp_path"] / "hb_fail_cases.jsonl"
+    dataset_file.write_text(
+        '{"id": "c1", "input": "test1", "classification": "PUBLIC"}\n'
+        '{"id": "c2", "input": "test2", "classification": "PUBLIC"}\n'
+        '{"id": "c3", "input": "test3", "classification": "PUBLIC"}\n'
+    )
+    cases = [
+        {"id": "c1", "input": "test1", "classification": "PUBLIC"},
+        {"id": "c2", "input": "test2", "classification": "PUBLIC"},
+        {"id": "c3", "input": "test3", "classification": "PUBLIC"},
+    ]
+
+    summary = svc.plan(
+        targets=targets,
+        specs=specs,
+        cases=cases,
+        dataset_label="eval_cases",
+        requested_by="alpha@example.com",
+        project_id="proj-a",
+    )
+    svc.approve(
+        plan_id=summary.plan_id,
+        fingerprint=summary.fingerprint,
+        channel="cli_interactive",
+        approver="test-approver",
+        project_id="proj-a",
+    )
+
+    db.create_run_job(
+        job_id=job_id,
+        plan_id=summary.plan_id,
+        status="queued",
+        total_cases=3,
+        run_id=run_id,
+        project_id="proj-a",
+    )
+
+    # Monkeypatch renew_job_lease on DatabaseManager to simulate repeated database connection failures
+    fail_attempts = 0
+
+    def failing_renew(self, jid, wid, lease_duration_s=60):
+        nonlocal fail_attempts
+        fail_attempts += 1
+        raise sqlite3.OperationalError("database is locked (simulated failure)")
+
+    monkeypatch.setattr(DatabaseManager, "renew_job_lease", failing_renew)
+
+    ctx = JobContext(job_id=job_id, plan_id=summary.plan_id, project_id="proj-a")
+
+    # Run with very fast heartbeat interval: 0.03s -> 3 failures occur within ~0.10s
+    worker_t = threading.Thread(
+        target=job_mgr._run_job_worker,
+        args=(ctx, run_id, ["slow-target-fail"], str(dataset_file), 3),
+        kwargs={"heartbeat_interval_s": 0.03},
+    )
+    worker_t.start()
+    worker_t.join(timeout=3.0)
+    assert not worker_t.is_alive()
+
+    # Verify that consecutive failures occurred and reached threshold 3
+    assert fail_attempts >= 3
+
+    # Verify that the job was interrupted fail-closed
+    job_record = db.get_run_job(job_id, project_id="proj-a")
+    assert job_record is not None
+    assert job_record["status"] == "interrupted"
+    assert job_record["completed_cases"] < 3

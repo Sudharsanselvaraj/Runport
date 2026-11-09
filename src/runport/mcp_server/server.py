@@ -20,10 +20,37 @@ import sys
 from typing import IO, Any, Callable, Dict, List, Optional, Tuple
 
 from runport import __version__
+from runport.api.v1.auth import (
+    SCOPE_BUDGET_READ,
+    SCOPE_DATASETS_READ,
+    SCOPE_PLANS_CREATE,
+    SCOPE_PLANS_READ,
+    SCOPE_RUNS_EXECUTE,
+    SCOPE_RUNS_READ,
+    SCOPE_TARGETS_READ,
+)
 from runport.connectors.mcp import SUPPORTED_PROTOCOL_VERSIONS, validate_json_schema
 from runport.providers.base import scrub_secrets
 
 current_mcp_auth: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar("current_mcp_auth", default=None)
+
+TOOL_SCOPES: Dict[str, str] = {
+    "list_connectors": SCOPE_TARGETS_READ,
+    "list_models": SCOPE_TARGETS_READ,
+    "list_targets": SCOPE_TARGETS_READ,
+    "validate_target": SCOPE_TARGETS_READ,
+    "list_datasets": SCOPE_DATASETS_READ,
+    "create_benchmark_plan": SCOPE_PLANS_CREATE,
+    "request_benchmark_approval": SCOPE_PLANS_CREATE,
+    "get_plan_status": SCOPE_PLANS_READ,
+    "execute_approved_benchmark": SCOPE_RUNS_EXECUTE,
+    "get_run": SCOPE_RUNS_READ,
+    "get_evaluation_results": SCOPE_RUNS_READ,
+    "compare_runs": SCOPE_RUNS_READ,
+    "get_budget_status": SCOPE_BUDGET_READ,
+    "list_jobs": SCOPE_RUNS_READ,
+    "cancel_job": SCOPE_RUNS_EXECUTE,
+}
 
 SERVER_INFO = {"name": "runport", "version": __version__}
 DEFAULT_PROTOCOL_VERSION = "2026-07-28"
@@ -131,6 +158,36 @@ class RunportMcpServer:
             return None
         return auth.get("project_id")
 
+    def _require_tool_scope(self, tool_name: str) -> None:
+        auth = self._current_auth()
+        if auth is None or auth.get("is_master"):
+            return
+        granted = set(auth.get("scopes", []))
+        if "*" in granted or "admin" in granted:
+            return
+        required_scope = TOOL_SCOPES.get(tool_name)
+        if required_scope and required_scope not in granted:
+            raise ToolError(f"Forbidden: credential lacks required scope '{required_scope}' for tool '{tool_name}'.")
+
+    def _require_resource_scope(self, uri: str) -> None:
+        auth = self._current_auth()
+        if auth is None or auth.get("is_master"):
+            return
+        granted = set(auth.get("scopes", []))
+        if "*" in granted or "admin" in granted:
+            return
+        req_scope = None
+        if uri.startswith("runport://runs"):
+            req_scope = SCOPE_RUNS_READ
+        elif uri.startswith("runport://budget"):
+            req_scope = SCOPE_BUDGET_READ
+        elif uri.startswith("runport://datasets"):
+            req_scope = SCOPE_DATASETS_READ
+        elif uri.startswith("runport://targets") or uri.startswith("runport://models") or uri.startswith("runport://connectors"):
+            req_scope = SCOPE_TARGETS_READ
+        if req_scope and req_scope not in granted:
+            raise _InvalidParams(f"Forbidden: credential lacks required scope '{req_scope}' for resource '{uri}'.")
+
     def _handle_msg(self, msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or "method" not in msg:
             return None if not isinstance(msg, dict) or "id" not in msg else _error(msg.get("id"), -32600, "Invalid Request")
@@ -179,6 +236,10 @@ class RunportMcpServer:
         name = params.get("name")
         if name not in self.tools:
             raise _InvalidParams(f"Unknown tool: {name}")
+        try:
+            self._require_tool_scope(name)
+        except ToolError as e:
+            return {"content": [{"type": "text", "text": scrub_secrets(str(e))}], "isError": True}
         _, schema, fn = self.tools[name]
         args = params.get("arguments") or {}
         errors, _ = validate_json_schema(args, schema)
@@ -322,12 +383,12 @@ class RunportMcpServer:
     def _execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
         from runport.core.budget import BudgetExceededError
         from runport.providers.base import ConfidentialityViolationError, LiveNotAuthorizedError
+        from runport.services.approvals import ApprovalError
         from runport.services.execution import load_dataset_cases, resolve_dataset, rubric_case_scorer
 
         svc = self._svc()
-        plan = svc.get_plan(args["plan_id"])
-        if plan is None:
-            raise ToolError(f"No plan '{args['plan_id']}'.")
+        pid = self._caller_project_id()
+        plan = self._plan_or_error(args["plan_id"])
         if plan.status != "APPROVED":
             raise ToolError(f"Plan is {plan.status}; a person must approve it first (runport approve {plan.plan_id}).")
         source = plan.source or {}
@@ -335,8 +396,13 @@ class RunportMcpServer:
             raise ToolError("This plan was not created through MCP and cannot be executed from here.")
         try:
             cases = load_dataset_cases(resolve_dataset(source["dataset_name"]), source.get("sample_size"))
-            outcome = svc.execute_by_ids(plan.plan_id, cases, case_scorer=rubric_case_scorer)
-        except (LiveNotAuthorizedError, BudgetExceededError, ConfidentialityViolationError, OSError, ValueError) as e:
+            outcome = svc.execute_by_ids(
+                plan.plan_id,
+                cases,
+                case_scorer=rubric_case_scorer,
+                project_id=pid,
+            )
+        except (LiveNotAuthorizedError, BudgetExceededError, ConfidentialityViolationError, OSError, ValueError, ApprovalError) as e:
             raise ToolError(f"Not executed: {e}") from e
         return {
             "plan_id": outcome.plan_id,
@@ -403,6 +469,7 @@ class RunportMcpServer:
     # ------------------------------------------------------------------ resources and prompts
 
     def _read_resource(self, uri: str) -> Dict[str, Any]:
+        self._require_resource_scope(uri)
         fixed: Dict[str, Callable[[], Any]] = {
             "runport://connectors": lambda: self._list_connectors({}),
             "runport://models": lambda: self._list_models({}),

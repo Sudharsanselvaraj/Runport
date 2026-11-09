@@ -15,7 +15,6 @@ from runport.api.routes import budget, datasets, events, models, plan, reports, 
 from runport.api.v1 import api_v1_router
 from runport.api.v1.auth import verify_api_credential
 from runport.api.v1.errors import ApiV1Error, UnauthorizedError
-from runport.mcp_server.http import create_mcp_router
 
 
 _PUBLIC_API_PATHS = frozenset({"/api/health", "/api/docs", "/api/openapi.json", "/api/redoc"})
@@ -128,6 +127,8 @@ def create_app() -> FastAPI:
     app.include_router(api_v1_router, prefix="/api")
 
     # MCP Streamable HTTP (SSE) Transport
+    from runport.mcp_server.http import create_mcp_router
+
     app.include_router(
         create_mcp_router(path_prefix="/mcp", auth_token=os.environ.get("RUNPORT_API_TOKEN")),
         prefix="/mcp",

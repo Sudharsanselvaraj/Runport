@@ -303,10 +303,13 @@ class ExecutionService:
         cases: Sequence[Mapping[str, Any]],
         case_scorer: Optional[Callable[[Dict[str, Any], Any], Dict[str, Any]]] = None,
         cancel_token: Optional[threading.Event] = None,
+        project_id: Optional[str] = None,
     ) -> ExecutionOutcome:
-        rec = self.approvals.get(plan_id)
+        rec = self.approvals.get(plan_id, project_id=project_id)
         if rec is None:
             raise ApprovalError(f"No plan '{plan_id}'; nothing was sent.")
+        if project_id and getattr(rec, "project_id", None) and rec.project_id != project_id:
+            raise ApprovalError(f"Plan '{plan_id}' belongs to another project; execution refused.")
         if rec.summary.get("blockers"):
             raise ApprovalError(f"Plan '{plan_id}' has unresolved blockers and cannot be executed; nothing was sent.")
         proj_id = getattr(rec, "project_id", "default") or "default"
@@ -335,13 +338,16 @@ class ExecutionService:
         *,
         allow_local_processes: bool = True,
         case_scorer: Optional[Callable[[Dict[str, Any], Any], Dict[str, Any]]] = None,
+        project_id: Optional[str] = None,
     ) -> ExecutionOutcome:
         """Execute a plan whose targets are workspace/catalog ids (the stored specs are rebuilt, not trusted blindly)."""
-        rec = self.approvals.get(plan_id)
+        rec = self.approvals.get(plan_id, project_id=project_id)
         if rec is None:
             raise ApprovalError(f"No plan '{plan_id}'; nothing was sent.")
+        if project_id and getattr(rec, "project_id", None) and rec.project_id != project_id:
+            raise ApprovalError(f"Plan '{plan_id}' belongs to another project; execution refused.")
         targets, specs = self.resolve(rec.summary["target_ids"], allow_local_processes=allow_local_processes)
-        return self.execute(plan_id, targets, specs, cases, case_scorer=case_scorer)
+        return self.execute(plan_id, targets, specs, cases, case_scorer=case_scorer, project_id=project_id)
 
 
 def rubric_case_scorer(case: Dict[str, Any], result: Any) -> Dict[str, Any]:

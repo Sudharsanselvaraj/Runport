@@ -24,6 +24,7 @@ from runport.storage.db import DatabaseManager
 SCOPE_TARGETS_READ = "targets:read"
 SCOPE_DATASETS_READ = "datasets:read"
 SCOPE_DATASETS_WRITE = "datasets:write"
+SCOPE_PLANS_READ = "plans:read"
 SCOPE_PLANS_CREATE = "plans:create"
 SCOPE_PLANS_APPROVE = "plans:approve"
 SCOPE_RUNS_EXECUTE = "runs:execute"
@@ -37,6 +38,7 @@ ALL_SCOPES = frozenset(
         SCOPE_TARGETS_READ,
         SCOPE_DATASETS_READ,
         SCOPE_DATASETS_WRITE,
+        SCOPE_PLANS_READ,
         SCOPE_PLANS_CREATE,
         SCOPE_PLANS_APPROVE,
         SCOPE_RUNS_EXECUTE,
