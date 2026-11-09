@@ -12,6 +12,7 @@ Features:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 import logging
 import threading
 from typing import Any, Dict, List, Optional
@@ -121,10 +122,17 @@ class JobManager:
         requested_by: str = "api_v1",
         project_id: str = "default",
         requested_by_key_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Submits an approved plan for asynchronous execution."""
         db = DatabaseManager(settings.db_path)
         db.init_db()
+
+        # Check existing idempotency key
+        if idempotency_key:
+            existing = db.get_run_job_by_idempotency_key(idempotency_key, project_id=project_id)
+            if existing:
+                return existing
 
         # Load cases to determine count
         cases = load_dataset_cases(dataset_path, sample_size)
@@ -133,8 +141,8 @@ class JobManager:
         job_id = f"job-{uuid.uuid4().hex[:12]}"
         run_id = f"run-{uuid.uuid4().hex[:12]}"
 
-        # Persist initial queued state with project ownership
-        db.create_run_job(
+        # Persist initial queued state with project ownership and optional idempotency key
+        created_job = db.create_run_job(
             job_id=job_id,
             plan_id=plan_id,
             status="queued",
@@ -142,7 +150,10 @@ class JobManager:
             run_id=run_id,
             project_id=project_id,
             requested_by_key_id=requested_by_key_id,
+            idempotency_key=idempotency_key,
         )
+        if created_job and created_job.get("job_id") != job_id:
+            return created_job
 
         ctx = JobContext(job_id=job_id, plan_id=plan_id)
         with self._active_lock:
@@ -251,14 +262,18 @@ class JobManager:
 
             final_status = "interrupted" if cancel_token.lease_lost else ("cancelled" if was_cancelled else "completed")
 
+            completed_cases = sum(r.successful_cases for r in outcome.runs)
+            failed_cases = sum(r.failed_cases + r.invalid_cases for r in outcome.runs)
+            spend_usd = sum((r.total_spend_usd for r in outcome.runs), Decimal("0.00"))
+
             # Record final status
             db.update_run_job(
                 ctx.job_id,
                 status=final_status,
                 run_id=outcome.run_id,
-                completed_cases=len(outcome.results),
-                failed_cases=sum(1 for r in outcome.results if r.is_error),
-                booked_spend_usd=str(outcome.spend) if outcome.spend is not None else "0.0000",
+                completed_cases=completed_cases,
+                failed_cases=failed_cases,
+                booked_spend_usd=f"{spend_usd:.6f}",
                 finished_at=datetime.now(timezone.utc).isoformat(),
                 cancelled=was_cancelled,
             )
@@ -272,5 +287,6 @@ class JobManager:
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
         finally:
+            db.release_run_reservations(run_id)
             with self._active_lock:
                 self._active_jobs.pop(ctx.job_id, None)

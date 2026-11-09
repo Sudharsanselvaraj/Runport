@@ -109,7 +109,18 @@ CREATE TABLE IF NOT EXISTS budget_reservations (
     amount_micros INTEGER NOT NULL,
     is_pilot INTEGER NOT NULL DEFAULT 1,
     created_at REAL NOT NULL,
-    expires_at REAL NOT NULL
+    expires_at REAL NOT NULL,
+    project_id TEXT NOT NULL DEFAULT 'default'
+);
+
+CREATE TABLE IF NOT EXISTS idempotency_records (
+    key TEXT NOT NULL,
+    project_id TEXT NOT NULL DEFAULT 'default',
+    action TEXT NOT NULL,
+    resource_id TEXT,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, key)
 );
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -276,6 +287,7 @@ class DatabaseManager:
             self._migrate_api_v1_and_jobs(conn)
             self._migrate_multi_tenancy_and_rbac(conn)
             self._migrate_tenant_resource_ownership(conn)
+            self._migrate_idempotency_and_reservations(conn)
 
     @staticmethod
     def _migrate_evaluation_runs(conn: sqlite3.Connection) -> None:
@@ -666,6 +678,51 @@ class DatabaseManager:
         )
         conn.commit()
 
+    @staticmethod
+    def _migrate_idempotency_and_reservations(conn: sqlite3.Connection) -> None:
+        """Additive migration 8: Idempotency keys, records, and budget reservation project scoping.
+
+        Adds idempotency_key to run_jobs with unique partial index on (project_id, idempotency_key).
+        Adds project_id to budget_reservations.
+        Creates idempotency_records table for reusable idempotent action records.
+        """
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+
+        if "run_jobs" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(run_jobs)").fetchall()}
+            if "idempotency_key" not in cols:
+                conn.execute("ALTER TABLE run_jobs ADD COLUMN idempotency_key TEXT")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_jobs_project_idempotency ON run_jobs(project_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+            )
+
+        if "budget_reservations" in tables:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(budget_reservations)").fetchall()}
+            if "project_id" not in cols:
+                conn.execute("ALTER TABLE budget_reservations ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_project ON budget_reservations(project_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_run ON budget_reservations(run_id)")
+
+        if "idempotency_records" not in tables:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS idempotency_records (
+                    key TEXT NOT NULL,
+                    project_id TEXT NOT NULL DEFAULT 'default',
+                    action TEXT NOT NULL,
+                    resource_id TEXT,
+                    response_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, key)
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_idempotency_records_action ON idempotency_records(project_id, action)")
+
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
+            "VALUES (8, datetime('now'), 'Add idempotency_key to run_jobs, project_id to budget_reservations, and idempotency_records table')"
+        )
+        conn.commit()
+
     def record_transaction(
         self,
         transaction_id: str,
@@ -680,8 +737,13 @@ class DatabaseManager:
         is_simulated: bool = False,
         is_unresolved: bool = False,
         cost_basis: str = "UNSPECIFIED",
-    ) -> None:
-        """Records a new entry in the budget ledger using exact integer micros and Decimal string."""
+        project_id: str = "default",
+    ) -> bool:
+        """Records a new entry in the budget ledger using exact integer micros and Decimal string.
+
+        Idempotent: if transaction_id already exists, returns False and does not duplicate spend.
+        Returns True if newly committed.
+        """
         if timestamp is None:
             timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -689,12 +751,12 @@ class DatabaseManager:
         formatted_usd = f"{amount_usd:.6f}"
 
         with self.get_connection() as conn:
-            conn.execute(
+            cur = conn.execute(
                 """
-                INSERT INTO budget_ledger (
+                INSERT OR IGNORE INTO budget_ledger (
                     transaction_id, timestamp, run_id, model_id, provider,
-                    amount_micros, amount_usd, is_pilot, is_preflight_estimate, is_simulated, is_unresolved, cost_basis, description
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    amount_micros, amount_usd, is_pilot, is_preflight_estimate, is_simulated, is_unresolved, cost_basis, description, project_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     transaction_id,
@@ -710,9 +772,11 @@ class DatabaseManager:
                     1 if is_unresolved else 0,
                     cost_basis,
                     description,
+                    project_id,
                 ),
             )
             conn.commit()
+            return cur.rowcount == 1
 
     def get_cumulative_spend(self, include_estimates: bool = False) -> tuple[int, Decimal]:
         """Returns total historical spend as (micros, Decimal)."""
@@ -794,6 +858,7 @@ class DatabaseManager:
         pilot_cap_usd: Decimal,
         run_cap_usd: Decimal,
         ttl_s: float = 1800.0,
+        project_id: str = "default",
     ) -> Optional[str]:
         """Atomically reserve worst-case spend for one case. Returns None on success, or the reason it was refused.
 
@@ -835,10 +900,18 @@ class DatabaseManager:
             if reason:
                 conn.execute("ROLLBACK")
                 return reason
-            conn.execute(
-                "INSERT INTO budget_reservations (reservation_id, run_id, amount_micros, is_pilot, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (reservation_id, run_id, amount, 1 if is_pilot else 0, now, now + ttl_s),
-            )
+
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(budget_reservations)").fetchall()}
+            if "project_id" in cols:
+                conn.execute(
+                    "INSERT INTO budget_reservations (reservation_id, run_id, amount_micros, is_pilot, created_at, expires_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (reservation_id, run_id, amount, 1 if is_pilot else 0, now, now + ttl_s, project_id),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO budget_reservations (reservation_id, run_id, amount_micros, is_pilot, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (reservation_id, run_id, amount, 1 if is_pilot else 0, now, now + ttl_s),
+                )
             conn.execute("COMMIT")
             return None
         except BaseException:
@@ -852,6 +925,13 @@ class DatabaseManager:
         with self.get_connection() as conn:
             conn.execute("DELETE FROM budget_reservations WHERE reservation_id = ?", (reservation_id,))
             conn.commit()
+
+    def release_run_reservations(self, run_id: str) -> int:
+        """Releases all open budget reservations for a specific run ID."""
+        with self.get_connection() as conn:
+            cur = conn.execute("DELETE FROM budget_reservations WHERE run_id = ?", (run_id,))
+            conn.commit()
+            return cur.rowcount
 
     def get_open_reservations(self) -> tuple[int, Decimal]:
         import time as _time
@@ -1603,6 +1683,22 @@ class DatabaseManager:
 
     # -- Asynchronous Job State Management -------------------------------------
 
+    def get_run_job_by_idempotency_key(self, idempotency_key: str, project_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieves a job by its unique idempotency key, optionally scoped by project."""
+        with self.get_connection() as conn:
+            if project_id is not None:
+                cur = conn.execute(
+                    "SELECT * FROM run_jobs WHERE idempotency_key = ? AND project_id = ?",
+                    (idempotency_key, project_id),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT * FROM run_jobs WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
     def create_run_job(
         self,
         job_id: str,
@@ -1616,35 +1712,80 @@ class DatabaseManager:
         lease_expires_at: Optional[str] = None,
         heartbeat_at: Optional[str] = None,
         attempt_count: int = 0,
-    ) -> None:
-        """Records a new asynchronous benchmark execution job."""
+        idempotency_key: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Records a new asynchronous benchmark execution job.
+
+        Idempotent: if idempotency_key is provided and already exists, returns the existing job.
+        """
+        if idempotency_key:
+            existing = self.get_run_job_by_idempotency_key(idempotency_key, project_id=project_id)
+            if existing:
+                return existing
+
         now = datetime.now(timezone.utc).isoformat()
         with self.get_connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO run_jobs (
-                    job_id, plan_id, run_id, status, total_cases, completed_cases, failed_cases,
-                    booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at,
-                    project_id, requested_by_key_id, worker_id, lease_expires_at, heartbeat_at, attempt_count
-                ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    job_id,
-                    plan_id,
-                    run_id,
-                    status,
-                    total_cases,
-                    now,
-                    now,
-                    project_id,
-                    requested_by_key_id,
-                    worker_id,
-                    lease_expires_at,
-                    heartbeat_at,
-                    attempt_count,
-                ),
-            )
-            conn.commit()
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(run_jobs)").fetchall()}
+            try:
+                if "idempotency_key" in cols:
+                    conn.execute(
+                        """
+                        INSERT INTO run_jobs (
+                            job_id, plan_id, run_id, status, total_cases, completed_cases, failed_cases,
+                            booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at,
+                            project_id, requested_by_key_id, worker_id, lease_expires_at, heartbeat_at, attempt_count, idempotency_key
+                        ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            job_id,
+                            plan_id,
+                            run_id,
+                            status,
+                            total_cases,
+                            now,
+                            now,
+                            project_id,
+                            requested_by_key_id,
+                            worker_id,
+                            lease_expires_at,
+                            heartbeat_at,
+                            attempt_count,
+                            idempotency_key,
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO run_jobs (
+                            job_id, plan_id, run_id, status, total_cases, completed_cases, failed_cases,
+                            booked_spend_usd, error_message, cancelled, created_at, updated_at, finished_at,
+                            project_id, requested_by_key_id, worker_id, lease_expires_at, heartbeat_at, attempt_count
+                        ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, NULL, 0, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            job_id,
+                            plan_id,
+                            run_id,
+                            status,
+                            total_cases,
+                            now,
+                            now,
+                            project_id,
+                            requested_by_key_id,
+                            worker_id,
+                            lease_expires_at,
+                            heartbeat_at,
+                            attempt_count,
+                        ),
+                    )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                if idempotency_key:
+                    existing = self.get_run_job_by_idempotency_key(idempotency_key, project_id=project_id)
+                    if existing:
+                        return existing
+                raise
+        return self.get_run_job(job_id, project_id=project_id)
 
     def update_run_job(
         self,
@@ -1777,7 +1918,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cur = conn.execute(
                 """
-                SELECT job_id, cancelled FROM run_jobs
+                SELECT job_id, run_id, cancelled FROM run_jobs
                 WHERE status IN ('running', 'claimed')
                   AND (lease_expires_at IS NULL OR lease_expires_at < ?)
                 """,
@@ -1786,6 +1927,7 @@ class DatabaseManager:
             rows = cur.fetchall()
             for row in rows:
                 jid = row["job_id"]
+                rid = row["run_id"]
                 was_cancelled = bool(row["cancelled"])
                 new_status = "cancelled" if was_cancelled else "failed"
                 err = "Execution was cancelled." if was_cancelled else "Execution interrupted: worker lease expired without heartbeat renewal (worker lost)."
@@ -1800,6 +1942,8 @@ class DatabaseManager:
                     """,
                     (new_status, err, now_str, now_str, jid),
                 )
+                if rid:
+                    conn.execute("DELETE FROM budget_reservations WHERE run_id = ?", (rid,))
                 recovered_ids.append(jid)
             conn.commit()
         return recovered_ids

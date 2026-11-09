@@ -207,7 +207,10 @@ class GenericRunner:
 
                     if billable:
                         try:
-                            reservation_id = self.budget_service.reserve(run_id, worst_case_estimate, run_cap_usd=plan.budget_cap_usd or None)
+                            plan_project_id = getattr(plan, "project_id", "default") if hasattr(plan, "project_id") else "default"
+                            reservation_id = self.budget_service.reserve(
+                                run_id, worst_case_estimate, run_cap_usd=plan.budget_cap_usd or None, project_id=plan_project_id
+                            )
                         except BudgetExceededError as e:
                             if not run_res.case_results:
                                 raise BudgetExceededError(f"Preflight budget check failed for case '{case_id}': {e}") from e
@@ -215,197 +218,206 @@ class GenericRunner:
                             run_res.halt_kind = "budget"
                             break
 
-                # --- Guard 4: Transport Execution ---
-                request_id = uuid.uuid4().hex
-                if plan.is_live:
-                    self._emit(kind="REQUEST_STARTED", request_id=request_id, run_id=run_id, case_id=case_id, model_key=target_id)
-                t0 = time.perf_counter()
-                case_start_utc = datetime.now(timezone.utc)
                 try:
-                    res = target.execute(case)
-                except Exception as exc:
-                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
-                    res = TargetResult(
-                        target_id=target_id,
-                        status=TargetStatus.FAILED,
-                        error_message=str(exc),
-                        latency_ms=elapsed_ms,
-                        is_replay=not plan.is_live,
-                        provenance="REPLAYED" if not plan.is_live else "LIVE",
+                    # --- Guard 4: Transport Execution ---
+                    request_id = uuid.uuid4().hex
+                    if plan.is_live:
+                        self._emit(kind="REQUEST_STARTED", request_id=request_id, run_id=run_id, case_id=case_id, model_key=target_id)
+                    t0 = time.perf_counter()
+                    case_start_utc = datetime.now(timezone.utc)
+                    try:
+                        res = target.execute(case)
+                    except Exception as exc:
+                        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                        res = TargetResult(
+                            target_id=target_id,
+                            status=TargetStatus.FAILED,
+                            error_message=str(exc),
+                            latency_ms=elapsed_ms,
+                            is_replay=not plan.is_live,
+                            provenance="REPLAYED" if not plan.is_live else "LIVE",
+                        )
+                    case_end_utc = datetime.now(timezone.utc)
+                    elapsed_ms = res.latency_ms if res.latency_ms is not None else ((time.perf_counter() - t0) * 1000.0)
+                    total_lat += elapsed_ms
+
+                    # --- Guard 5: Strict Validation ---
+                    if res.status == TargetStatus.SUCCESS:
+                        if res.output_text is None or not str(res.output_text).strip():
+                            res.status = TargetStatus.INVALID_OUTPUT
+                            res.error_message = "Output text was empty or whitespace."
+                            run_res.invalid_cases += 1
+                        else:
+                            run_res.successful_cases += 1
+                    else:
+                        run_res.failed_cases += 1
+
+                    # --- Guard 6: Persistence Data Prep ---
+                    # Optional scorer (only for successful outputs): returns any of accuracy / groundedness /
+                    # format_adherence / overall_score / notes. Unscored stays None, never 0.
+                    scores: Dict[str, Any] = case_scorer(dict(case), res) if (case_scorer and res.status == TargetStatus.SUCCESS) else {}
+                    persisted_results.append(
+                        {
+                            "result_id": f"res-{uuid.uuid4().hex[:12]}",
+                            "run_id": run_id,
+                            "case_id": case_id,
+                            "prompt": str(case.get("query") or case.get("prompt") or case.get("input") or ""),
+                            "expected_answer": str(case.get("expected_answer") or ""),
+                            "generated_output": str(res.output_text or ""),
+                            "latency_ms": elapsed_ms,
+                            "prompt_tokens": res.tokens_in,
+                            "completion_tokens": res.tokens_out,
+                            "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else None,
+                            # GenericRunner records whether a case completed, not whether it was right.
+                            # Correctness is unmeasured here (None), so it is never stored as a score.
+                            "accuracy": scores.get("accuracy"),
+                            "groundedness": scores.get("groundedness"),
+                            "format_adherence": scores.get(
+                                "format_adherence", 1.0 if res.status == TargetStatus.SUCCESS else 0.0 if res.status == TargetStatus.INVALID_OUTPUT else None
+                            ),
+                            "overall_score": scores.get("overall_score"),
+                            # Provenance of the scores above: ground_truth | judge | heuristic (None when unscored).
+                            "score_kind": scores.get("kind") if scores else None,
+                            "evaluator": scores.get("evaluator") if scores else None,
+                            "evaluator_notes": res.error_message
+                            or scores.get("notes")
+                            or ("" if scores else "Not scored: apply a scorer from runport.scorers to case_results."),
+                        }
                     )
-                case_end_utc = datetime.now(timezone.utc)
-                elapsed_ms = res.latency_ms if res.latency_ms is not None else ((time.perf_counter() - t0) * 1000.0)
-                total_lat += elapsed_ms
 
-                # --- Guard 5: Strict Validation ---
-                if res.status == TargetStatus.SUCCESS:
-                    if res.output_text is None or not str(res.output_text).strip():
-                        res.status = TargetStatus.INVALID_OUTPUT
-                        res.error_message = "Output text was empty or whitespace."
-                        run_res.invalid_cases += 1
-                    else:
-                        run_res.successful_cases += 1
-                else:
-                    run_res.failed_cases += 1
+                    # Canonical Trace & Span Instrumentation
+                    trace_id = res.trace_id or f"tr-{uuid.uuid4().hex[:16]}"
+                    res.trace_id = trace_id
+                    root_span_id = f"sp-{uuid.uuid4().hex[:12]}"
 
-                # --- Guard 6: Persistence Data Prep ---
-                # Optional scorer (only for successful outputs): returns any of accuracy / groundedness /
-                # format_adherence / overall_score / notes. Unscored stays None, never 0.
-                scores: Dict[str, Any] = case_scorer(dict(case), res) if (case_scorer and res.status == TargetStatus.SUCCESS) else {}
-                persisted_results.append(
-                    {
-                        "result_id": f"res-{uuid.uuid4().hex[:12]}",
-                        "run_id": run_id,
-                        "case_id": case_id,
-                        "prompt": str(case.get("query") or case.get("prompt") or case.get("input") or ""),
-                        "expected_answer": str(case.get("expected_answer") or ""),
-                        "generated_output": str(res.output_text or ""),
-                        "latency_ms": elapsed_ms,
-                        "prompt_tokens": res.tokens_in,
-                        "completion_tokens": res.tokens_out,
-                        "cost_usd": f"{res.cost_usd:.6f}" if res.cost_usd is not None else None,
-                        # GenericRunner records whether a case completed, not whether it was right.
-                        # Correctness is unmeasured here (None), so it is never stored as a score.
-                        "accuracy": scores.get("accuracy"),
-                        "groundedness": scores.get("groundedness"),
-                        "format_adherence": scores.get(
-                            "format_adherence", 1.0 if res.status == TargetStatus.SUCCESS else 0.0 if res.status == TargetStatus.INVALID_OUTPUT else None
-                        ),
-                        "overall_score": scores.get("overall_score"),
-                        # Provenance of the scores above: ground_truth | judge | heuristic (None when unscored).
-                        "score_kind": scores.get("kind") if scores else None,
-                        "evaluator": scores.get("evaluator") if scores else None,
-                        "evaluator_notes": res.error_message
-                        or scores.get("notes")
-                        or ("" if scores else "Not scored: apply a scorer from runport.scorers to case_results."),
+                    root_kind = _map_target_to_span_kind(target)
+                    root_status = _map_target_status_to_span_status(res.status)
+
+                    cost_usd_str = f"{res.cost_usd:.6f}" if res.cost_usd is not None else None
+                    cost_basis_str = (
+                        (res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)) if res.cost_basis is not None else None
+                    )
+
+                    tot_tokens = (res.tokens_in + res.tokens_out) if (res.tokens_in is not None and res.tokens_out is not None) else None
+
+                    root_attrs: Dict[str, Any] = {
+                        "target_id": target_id,
+                        "target_type": target.target_type.value if hasattr(target, "target_type") else "unknown",
+                        "is_replay": not plan.is_live or res.is_replay,
+                        "provenance": res.provenance,
                     }
-                )
+                    if res.metadata:
+                        root_attrs["metadata"] = scrub_secrets(res.metadata)
 
-                # Canonical Trace & Span Instrumentation
-                trace_id = res.trace_id or f"tr-{uuid.uuid4().hex[:16]}"
-                res.trace_id = trace_id
-                root_span_id = f"sp-{uuid.uuid4().hex[:12]}"
+                    root_span = Span(
+                        trace_id=trace_id,
+                        span_id=root_span_id,
+                        parent_span_id=None,
+                        name=target_id,
+                        kind=root_kind,
+                        status=root_status,
+                        start_time=case_start_utc,
+                        end_time=case_end_utc,
+                        duration_ms=round(elapsed_ms, 3) if elapsed_ms is not None else None,
+                        provider=getattr(target, "provider_name", None),
+                        model=getattr(target, "model_id", None) or target_id,
+                        prompt_tokens=res.tokens_in,
+                        completion_tokens=res.tokens_out,
+                        total_tokens=tot_tokens,
+                        cost_usd=cost_usd_str,
+                        cost_basis=cost_basis_str,
+                        attributes=root_attrs,
+                        error=scrub_secrets(res.error_message) if res.status != TargetStatus.SUCCESS else None,
+                    )
 
-                root_kind = _map_target_to_span_kind(target)
-                root_status = _map_target_status_to_span_status(res.status)
+                    child_spans: List[Span] = []
+                    if res.trajectory:
+                        for child in res.trajectory:
+                            if isinstance(child, Span):
+                                up: Dict[str, Any] = {"trace_id": trace_id}
+                                if child.parent_span_id is None:
+                                    up["parent_span_id"] = root_span_id
+                                child_spans.append(child.model_copy(update=up))
+                            elif isinstance(child, dict):
+                                c_dict = dict(child)
+                                c_dict["trace_id"] = trace_id
+                                if c_dict.get("parent_span_id") is None:
+                                    c_dict["parent_span_id"] = root_span_id
+                                child_spans.append(Span.model_validate(c_dict))
 
-                cost_usd_str = f"{res.cost_usd:.6f}" if res.cost_usd is not None else None
-                cost_basis_str = (
-                    (res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)) if res.cost_basis is not None else None
-                )
+                    trace = Trace(
+                        trace_id=trace_id,
+                        run_id=run_id,
+                        case_id=case_id,
+                        target_id=target_id,
+                        name=f"{target_id}:{case_id}",
+                        status=root_status,
+                        start_time=case_start_utc,
+                        end_time=case_end_utc,
+                        attributes={
+                            "dataset_path": plan.dataset_path,
+                            "plan_id": plan.plan_id,
+                            "fingerprint": plan.fingerprint,
+                            "is_live": plan.is_live,
+                        },
+                        spans=[root_span, *child_spans],
+                    )
+                    persisted_traces.append(trace)
 
-                tot_tokens = (res.tokens_in + res.tokens_out) if (res.tokens_in is not None and res.tokens_out is not None) else None
+                    # --- Guard 7: Spend Booking ---
+                    # Unknown cost never becomes $0.00 for a target that may bill: it is booked UNRESOLVED and the run
+                    # halts, because unresolved spend blocks live execution until reconciled.
+                    halt = False
+                    if plan.is_live and not res.is_replay:
+                        basis = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
+                        billing = getattr(target, "billing", BillingMode.BILLABLE)
+                        # Rejected as unauthorized, or provably never sent: nothing can have been billed.
+                        not_billed = res.status == TargetStatus.UNAUTHORIZED or res.request_sent is False
+                        deterministic_tx_id = f"tx-{run_id}-{case_id}"
+                        plan_project_id = getattr(plan, "project_id", "default") if hasattr(plan, "project_id") else "default"
 
-                root_attrs: Dict[str, Any] = {
-                    "target_id": target_id,
-                    "target_type": target.target_type.value if hasattr(target, "target_type") else "unknown",
-                    "is_replay": not plan.is_live or res.is_replay,
-                    "provenance": res.provenance,
-                }
-                if res.metadata:
-                    root_attrs["metadata"] = scrub_secrets(res.metadata)
-
-                root_span = Span(
-                    trace_id=trace_id,
-                    span_id=root_span_id,
-                    parent_span_id=None,
-                    name=target_id,
-                    kind=root_kind,
-                    status=root_status,
-                    start_time=case_start_utc,
-                    end_time=case_end_utc,
-                    duration_ms=round(elapsed_ms, 3) if elapsed_ms is not None else None,
-                    provider=getattr(target, "provider_name", None),
-                    model=getattr(target, "model_id", None) or target_id,
-                    prompt_tokens=res.tokens_in,
-                    completion_tokens=res.tokens_out,
-                    total_tokens=tot_tokens,
-                    cost_usd=cost_usd_str,
-                    cost_basis=cost_basis_str,
-                    attributes=root_attrs,
-                    error=scrub_secrets(res.error_message) if res.status != TargetStatus.SUCCESS else None,
-                )
-
-                child_spans: List[Span] = []
-                if res.trajectory:
-                    for child in res.trajectory:
-                        if isinstance(child, Span):
-                            up: Dict[str, Any] = {"trace_id": trace_id}
-                            if child.parent_span_id is None:
-                                up["parent_span_id"] = root_span_id
-                            child_spans.append(child.model_copy(update=up))
-                        elif isinstance(child, dict):
-                            c_dict = dict(child)
-                            c_dict["trace_id"] = trace_id
-                            if c_dict.get("parent_span_id") is None:
-                                c_dict["parent_span_id"] = root_span_id
-                            child_spans.append(Span.model_validate(c_dict))
-
-                trace = Trace(
-                    trace_id=trace_id,
-                    run_id=run_id,
-                    case_id=case_id,
-                    target_id=target_id,
-                    name=f"{target_id}:{case_id}",
-                    status=root_status,
-                    start_time=case_start_utc,
-                    end_time=case_end_utc,
-                    attributes={
-                        "dataset_path": plan.dataset_path,
-                        "plan_id": plan.plan_id,
-                        "fingerprint": plan.fingerprint,
-                        "is_live": plan.is_live,
-                    },
-                    spans=[root_span, *child_spans],
-                )
-                persisted_traces.append(trace)
-
-                # --- Guard 7: Spend Booking ---
-                # Unknown cost never becomes $0.00 for a target that may bill: it is booked UNRESOLVED and the run
-                # halts, because unresolved spend blocks live execution until reconciled.
-                halt = False
-                if plan.is_live and not res.is_replay:
-                    basis = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
-                    billing = getattr(target, "billing", BillingMode.BILLABLE)
-                    # Rejected as unauthorized, or provably never sent: nothing can have been billed.
-                    not_billed = res.status == TargetStatus.UNAUTHORIZED or res.request_sent is False
-                    if res.cost_usd is not None and basis != CostBasis.UNRESOLVED.value:
-                        self.budget_service.record_spend(
-                            transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
-                            model_id=target_id,
-                            provider=getattr(target, "provider_name", "unknown"),
-                            amount_usd=res.cost_usd,
-                            description=f"Run {run_id} Case {case_id}",
-                            run_id=run_id,
-                            is_pilot=True,
-                            cost_basis=basis,
-                        )
-                        run_res.total_spend_usd += res.cost_usd
-                    elif billing != BillingMode.BILLABLE or not_billed:
-                        # Local, declared-free, or never-billed request: booked as $0.00 with UNAVAILABLE basis
-                        self.budget_service.record_spend(
-                            transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
-                            model_id=target_id,
-                            provider=getattr(target, "provider_name", "local"),
-                            amount_usd=Decimal("0.000000"),
-                            description=f"Run {run_id} Case {case_id} (Local/Unavailable)",
-                            run_id=run_id,
-                            is_pilot=True,
-                            cost_basis=CostBasis.UNAVAILABLE.value,
-                        )
-                    else:
-                        # Billed request with unknown cost -> booked as UNRESOLVED
-                        self.budget_service.record_unresolved_spend(
-                            transaction_id=f"tx-{uuid.uuid4().hex[:12]}",
-                            model_id=target_id,
-                            provider=getattr(target, "provider_name", "unknown"),
-                            description=f"Run {run_id} Case {case_id} (Unresolved)",
-                            run_id=run_id,
-                        )
-                        res.cost_basis = CostBasis.UNRESOLVED
-                        halt = True
-
-                self.budget_service.release(reservation_id)
+                        if res.cost_usd is not None and basis != CostBasis.UNRESOLVED.value:
+                            newly_booked = self.budget_service.record_spend(
+                                transaction_id=deterministic_tx_id,
+                                model_id=target_id,
+                                provider=getattr(target, "provider_name", "unknown"),
+                                amount_usd=res.cost_usd,
+                                description=f"Run {run_id} Case {case_id}",
+                                run_id=run_id,
+                                is_pilot=True,
+                                cost_basis=basis,
+                                project_id=plan_project_id,
+                            )
+                            if newly_booked:
+                                run_res.total_spend_usd += res.cost_usd
+                        elif billing != BillingMode.BILLABLE or not_billed:
+                            # Local, declared-free, or never-billed request: booked as $0.00 with UNAVAILABLE basis
+                            self.budget_service.record_spend(
+                                transaction_id=deterministic_tx_id,
+                                model_id=target_id,
+                                provider=getattr(target, "provider_name", "local"),
+                                amount_usd=Decimal("0.000000"),
+                                description=f"Run {run_id} Case {case_id} (Local/Unavailable)",
+                                run_id=run_id,
+                                is_pilot=True,
+                                cost_basis=CostBasis.UNAVAILABLE.value,
+                                project_id=plan_project_id,
+                            )
+                        else:
+                            # Billed request with unknown cost -> booked as UNRESOLVED
+                            self.budget_service.record_unresolved_spend(
+                                transaction_id=deterministic_tx_id,
+                                model_id=target_id,
+                                provider=getattr(target, "provider_name", "unknown"),
+                                description=f"Run {run_id} Case {case_id} (Unresolved)",
+                                run_id=run_id,
+                                project_id=plan_project_id,
+                            )
+                            res.cost_basis = CostBasis.UNRESOLVED
+                            halt = True
+                finally:
+                    if reservation_id:
+                        self.budget_service.release(reservation_id)
                 if plan.is_live:
                     basis_out = res.cost_basis.value if isinstance(res.cost_basis, CostBasis) else str(res.cost_basis)
                     ok = res.status in (TargetStatus.SUCCESS, TargetStatus.INVALID_OUTPUT)
@@ -434,6 +446,9 @@ class GenericRunner:
                         "Remaining cases were not sent. Reconcile with 'runport budget reconcile'."
                     )
                     break
+
+            # Guarantee any open or aborted reservations for this run are released
+            self.budget_service.release_run_reservations(run_id)
 
             executed = len(run_res.case_results)
             run_res.skipped_cases = len(cases) - executed

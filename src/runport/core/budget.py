@@ -137,7 +137,14 @@ class BudgetService:
 
         return True, "Spend is permitted under local experiment policies."
 
-    def reserve(self, run_id: str, worst_case_usd: Decimal, run_cap_usd: Optional[Decimal] = None, is_pilot: bool = True) -> Optional[str]:
+    def reserve(
+        self,
+        run_id: str,
+        worst_case_usd: Decimal,
+        run_cap_usd: Optional[Decimal] = None,
+        is_pilot: bool = True,
+        project_id: str = "default",
+    ) -> Optional[str]:
         """Atomically reserve worst-case spend for one case against the per-run, total and pilot ceilings.
 
         Returns a reservation id, or raises BudgetExceededError with the reason. The per-run ceiling is cumulative: it
@@ -156,6 +163,7 @@ class BudgetService:
             total_cap_usd=self.policy.total_budget_usd,
             pilot_cap_usd=self.policy.pilot_budget_usd,
             run_cap_usd=cap,
+            project_id=project_id,
         )
         if reason:
             raise BudgetExceededError(f"Budget reservation refused: {reason}.")
@@ -164,6 +172,11 @@ class BudgetService:
     def release(self, reservation_id: Optional[str]) -> None:
         if reservation_id:
             self.db.release_reservation(reservation_id)
+
+    def release_run_reservations(self, run_id: str) -> int:
+        """Atomically releases all open budget reservations for a run ID."""
+        self.db.init_db()
+        return self.db.release_run_reservations(run_id)
 
     def check_preflight_budget(
         self,
@@ -188,10 +201,13 @@ class BudgetService:
         is_preflight_estimate: bool = False,
         is_simulated: bool = False,
         cost_basis: str = "UNSPECIFIED",
-    ) -> None:
-        """Commits an actual, estimated or simulated (dry-run) transaction. Simulated entries never count against ceilings."""
+        project_id: str = "default",
+    ) -> bool:
+        """Commits an actual, estimated or simulated (dry-run) transaction. Simulated entries never count against ceilings.
+        Returns True if newly recorded, False if duplicate transaction_id was safely ignored.
+        """
         self.db.init_db()
-        self.db.record_transaction(
+        return self.db.record_transaction(
             transaction_id=transaction_id,
             model_id=model_id,
             provider=provider,
@@ -202,6 +218,7 @@ class BudgetService:
             is_preflight_estimate=is_preflight_estimate,
             is_simulated=is_simulated,
             cost_basis=cost_basis,
+            project_id=project_id,
         )
 
     def calculate_case_cost(
@@ -216,11 +233,19 @@ class BudgetService:
         out_cost = (Decimal(completion_tokens) / Decimal("1000000")) * output_price_per_1m_usd
         return in_cost + out_cost
 
-    def record_unresolved_spend(self, transaction_id: str, model_id: str, provider: str, description: str, run_id: Optional[str] = None) -> None:
+    def record_unresolved_spend(
+        self,
+        transaction_id: str,
+        model_id: str,
+        provider: str,
+        description: str,
+        run_id: Optional[str] = None,
+        project_id: str = "default",
+    ) -> bool:
         """Record that a request may have been billed but no cost could be established. No amount is invented (it is stored as 0 and
         flagged); live runs stay blocked until the entry is reconciled with a real amount."""
         self.db.init_db()
-        self.db.record_transaction(
+        return self.db.record_transaction(
             transaction_id=transaction_id,
             model_id=model_id,
             provider=provider,
@@ -231,6 +256,7 @@ class BudgetService:
             is_preflight_estimate=False,
             is_unresolved=True,
             cost_basis="UNRESOLVED",
+            project_id=project_id,
         )
 
     def unresolved(self):

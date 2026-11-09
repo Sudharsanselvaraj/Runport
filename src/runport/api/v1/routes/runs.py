@@ -4,7 +4,7 @@ Specification: docs/SDK_API_CONTRACT.md section 2.2.
 """
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 
 from runport.api.v1.auth import SCOPE_RUNS_EXECUTE, SCOPE_RUNS_READ, require_scope
 from runport.api.v1.errors import ApprovalRequiredError, NotFoundError, PlanBlockedError
@@ -35,12 +35,35 @@ router = APIRouter(tags=["runs"])
 def submit_plan_run(
     plan_id: str,
     req: RunSubmitRequest = RunSubmitRequest(),
+    idempotency_key_header: Optional[str] = Header(None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(require_scope(SCOPE_RUNS_EXECUTE)),
 ) -> RunJobResponse:
     """Submits an approved plan for asynchronous background execution.
 
     Returns HTTP 202 Accepted with a run job tracking handle.
+    Idempotent: Re-submitting with the same Idempotency-Key returns the existing job.
     """
+    caller_project_id = auth.get("project_id", "default")
+    effective_idempotency_key = idempotency_key_header or req.idempotency_key
+
+    # Idempotency check 1: explicit idempotency key match
+    if effective_idempotency_key:
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        existing = db.get_run_job_by_idempotency_key(effective_idempotency_key, project_id=caller_project_id)
+        if existing:
+            return RunJobResponse(**existing)
+
+    # Idempotency check 2: active in-flight job for the same plan within tenant
+    if not effective_idempotency_key:
+        db = DatabaseManager(settings.db_path)
+        db.init_db()
+        active = [
+            j for j in db.list_run_jobs(limit=20, project_id=caller_project_id) if j.get("plan_id") == plan_id and j.get("status") in ("queued", "running")
+        ]
+        if active:
+            return RunJobResponse(**active[0])
+
     project_id = auth.get("project_id") if not auth.get("is_master") else None
     service = ExecutionService()
     plan = service.get_plan(plan_id, project_id=project_id)
@@ -67,8 +90,9 @@ def submit_plan_run(
         dataset_path=str(dataset_p),
         sample_size=req.sample_size or plan.case_count,
         requested_by=auth.get("principal") or auth.get("name") or "api_v1",
-        project_id=auth.get("project_id", "default"),
+        project_id=caller_project_id,
         requested_by_key_id=auth.get("key_id"),
+        idempotency_key=effective_idempotency_key,
     )
     return RunJobResponse(**job)
 

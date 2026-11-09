@@ -662,9 +662,9 @@ def test_migration_v4_preserves_existing_database(tmp_path: Path):
         assert "traces" in tables
         assert "spans" in tables
 
-        # Verify migrations were recorded (including v4 traces, v5 api_keys/run_jobs, v6 multi-tenancy, and v7 tenant resource ownership)
+        # Verify migrations were recorded (including v4 traces, v5 api_keys/run_jobs, v6 multi-tenancy, v7 tenant resource ownership, and v8 idempotency)
         versions = [r[0] for r in c.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()]
-        assert versions == [1, 2, 3, 4, 5, 6, 7]
+        assert versions == [1, 2, 3, 4, 5, 6, 7, 8]
 
 
 # =============================================================================

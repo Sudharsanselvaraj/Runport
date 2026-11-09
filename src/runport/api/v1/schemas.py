@@ -122,6 +122,7 @@ class RunJobResponse(BaseModel):
     booked_spend_usd: Optional[str] = Field(default=None, description="Total spend booked so far")
     error_message: Optional[str] = Field(default=None, description="Error details if job failed")
     cancelled: bool = Field(default=False, description="Whether cancellation was requested")
+    idempotency_key: Optional[str] = Field(default=None, description="Idempotency key if provided upon submission")
     created_at: str = Field(..., description="Job submission timestamp in UTC")
     updated_at: str = Field(..., description="Last progress update timestamp in UTC")
     finished_at: Optional[str] = Field(default=None, description="Completion timestamp in UTC")

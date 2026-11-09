@@ -82,6 +82,25 @@ class ExecutionOutcome:
     fingerprint: str
     runs: List[GenericRunResult] = field(default_factory=list)
 
+    @property
+    def run_id(self) -> Optional[str]:
+        return self.runs[0].run_id if self.runs else None
+
+    @property
+    def results(self) -> List[Any]:
+        all_res: List[Any] = []
+        for r in self.runs:
+            all_res.extend(r.case_results)
+        return all_res
+
+    @property
+    def spend(self) -> Decimal:
+        return sum((r.total_spend_usd for r in self.runs), Decimal("0.00"))
+
+    @property
+    def is_successful(self) -> bool:
+        return all(r.failed_cases == 0 and r.invalid_cases == 0 for r in self.runs)
+
 
 def _sha(obj: Any) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode("utf-8")).hexdigest()
@@ -283,6 +302,8 @@ class ExecutionService:
         rec = self.approvals.get(plan_id)
         if rec is None:
             raise ApprovalError(f"No plan '{plan_id}'; nothing was sent.")
+        if rec.summary.get("blockers"):
+            raise ApprovalError(f"Plan '{plan_id}' has unresolved blockers and cannot be executed; nothing was sent.")
         plan = self._plan_object(specs, cases, rec.summary["nonce"])
         if plan.fingerprint != rec.fingerprint:
             raise ApprovalError("The targets, cases or caps differ from the approved plan; nothing was sent. Create and approve a new plan.")
