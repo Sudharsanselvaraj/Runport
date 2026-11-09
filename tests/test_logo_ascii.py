@@ -158,6 +158,9 @@ def test_welcome_fallback_on_macos_terminal(monkeypatch):
     # Must NOT contain Braille approximation characters
     assert not any(0x2800 <= ord(c) <= 0x28FF for c in raw)
 
+    # Must render the official white solid emblem in macOS Terminal fallback
+    assert "▄███ ▄██████▄" in raw
+
     # Must contain official wordmark and welcome hierarchy
     assert "RUNPORT CLI" in plain
     assert "Welcome to Runport" in plain

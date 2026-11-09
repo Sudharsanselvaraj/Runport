@@ -32,6 +32,7 @@ from runport.tui.logo import (
     detect_image_protocol,
     is_logo_available,
     render_official_logo,
+    render_solid_emblem,
 )
 from runport.tui.theme import (
     ACCENT_CYAN,
@@ -79,8 +80,12 @@ class RunportLogo:
 
     @staticmethod
     def should_render(console: Optional[Console], compact: bool, cols: int, rows: int) -> bool:
-        """Determines whether the terminal can display the logo."""
-        return RunportLogo.can_render_image(console=console, compact=compact, cols=cols, rows=rows)
+        """Determines whether the terminal viewport can display the logo."""
+        if compact:
+            return False
+        if cols < 60 or rows < 28:
+            return False
+        return True
 
     @staticmethod
     def render_image(
@@ -92,9 +97,9 @@ class RunportLogo:
         return render_official_logo(console=console, rows=rows, width_cells=width_cells)
 
     @staticmethod
-    def render_emblem(solid: bool = False) -> Text:
-        """Deprecated: ASCII/Braille approximations have been removed."""
-        return Text()
+    def render_emblem(solid: bool = True) -> Text:
+        """Renders the official white interlocking geometric symbol."""
+        return render_solid_emblem()
 
     @staticmethod
     def render_compact() -> Text:

@@ -6,6 +6,7 @@ from typing import List
 
 from runport import __version__
 from runport.tui.logo import (
+    OFFICIAL_EMBLEM_LINES,
     TerminalImage,
     detect_image_protocol,
     encode_iterm2,
@@ -14,6 +15,7 @@ from runport.tui.logo import (
     get_logo_path,
     is_logo_available,
     render_official_logo,
+    render_solid_emblem,
 )
 from runport.tui.theme import ACCENT_LAVENDER
 
@@ -33,6 +35,7 @@ __all__ = [
     "APP_VERSION",
     "APP_SUBTITLE",
     "CLI_WORDMARK",
+    "OFFICIAL_EMBLEM_LINES",
     "RUNPORT_EMBLEM",
     "RUNPORT_EMBLEM_LINES",
     "RUNPORT_EMBLEM_SOLID",
@@ -45,4 +48,5 @@ __all__ = [
     "get_logo_path",
     "is_logo_available",
     "render_official_logo",
+    "render_solid_emblem",
 ]
