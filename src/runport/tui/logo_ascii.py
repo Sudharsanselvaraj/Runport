@@ -6,8 +6,30 @@ Regenerate with scripts/make_ascii_logo.py if the logo changes.
 
 from typing import List
 
-# Compact official emblem (28 cols x 12 lines) - perfectly balanced for CLI welcome screens
+# Compact official emblem (16 cols x 7 lines) - small, clean, perfectly sized icon
 RUNPORT_EMBLEM_LINES: List[str] = [
+    "   ⣴⣿⡿⣡⣾⣿⣿⣿⣿⣦   ",
+    " ⢀⣼⣿⡟⣰⣿⡟⠉⣭⣥⣤⣤⣤⡀ ",
+    "⢀⣾⣿⠏⣼⣿⠟  ⠿⠿⠿⠿⣿⣷⡀",
+    "⣿⣿⡏⢾⣿⠏    ⣠⣾⡷⢸⣿⣿",
+    "⠘⣿⣿⣶⣶⣶⣶⡆ ⣰⣿⡿⣡⣿⣿⠃",
+    " ⠈⠻⠿⠿⠿⠿⢃⣼⣿⡟⣰⣿⡿⠁ ",
+    "   ⠻⣿⣿⣿⣿⣿⠏⣼⣿⠟⠁  ",
+]
+
+# Solid half-block variant (16 cols x 7 lines)
+RUNPORT_EMBLEM_SOLID_LINES: List[str] = [
+    "   ▄██▄█████▄   ",
+    "  ██▀▄██ ▄▄▄▄▄  ",
+    " ██▀██▀  ██████ ",
+    "█████▀    ▄██▀██",
+    "▀██████▄ ▄██▄██▀",
+    "  ▀████ ▄█▀▄██  ",
+    "   ▀█████▀▄█▀   ",
+]
+
+# Medium variant (28 cols x 12 lines)
+RUNPORT_EMBLEM_MEDIUM_LINES: List[str] = [
     "      ⣴⣾⣿⣿⡟⢁⣴⣿⣿⣿⣿⣿⣿⣿⣷⣤⡀     ",
     "    ⢀⣾⣿⣿⣿⠏⢠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡀    ",
     "   ⢠⣾⣿⣿⣿⠋⣰⣿⣿⣿⡟⠁⢠⣤⣤⣤⣤⣤⣤⣤⣤⡀   ",
@@ -22,23 +44,7 @@ RUNPORT_EMBLEM_LINES: List[str] = [
     "     ⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⡿⠋⣰⣿⣿⡿⠟⠁     ",
 ]
 
-# Solid half-block variant (28 cols x 12 lines)
-RUNPORT_EMBLEM_SOLID_LINES: List[str] = [
-    "      ▄████ ▄████████▄      ",
-    "     ████▀ ████████████     ",
-    "   ▄████▀▄████  ▄▄▄▄▄▄▄▄    ",
-    "  ▄████ ▄███▀   █████████▄  ",
-    " ▄████ ████▀    ██████████▄ ",
-    "████▀ ████         ▄▄▄▄▀████",
-    "████▄▀██▀         ████▀▄████",
-    " █████▄▄▄▄▄▄▄   ▄████▀▄████ ",
-    "  ▀██████████  ▄████ ▄███▀  ",
-    "   ▀▀▀▀▀▀▀▀▀▀ ▄███▀ ████▀   ",
-    "     ████████████▀▄████▀    ",
-    "      ▀█████████▀▄███▀      ",
-]
-
-# Large official emblem (64 cols x 27 lines)
+# Large variant (64 cols x 27 lines)
 RUNPORT_EMBLEM_LARGE_LINES: List[str] = [
     "               ⢀⣤⣶⣿⣿⣿⣿⣿⣿⣿⠏  ⢀⣴⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣤⡀               ",
     "             ⢀⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⠋ ⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀             ",
@@ -70,6 +76,7 @@ RUNPORT_EMBLEM_LARGE_LINES: List[str] = [
 ]
 
 RUNPORT_EMBLEM = "\n".join(RUNPORT_EMBLEM_LINES)
+RUNPORT_EMBLEM_MEDIUM = "\n".join(RUNPORT_EMBLEM_MEDIUM_LINES)
 RUNPORT_EMBLEM_LARGE = "\n".join(RUNPORT_EMBLEM_LARGE_LINES)
 RUNPORT_EMBLEM_SOLID = "\n".join(RUNPORT_EMBLEM_SOLID_LINES)
 
