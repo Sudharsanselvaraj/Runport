@@ -588,6 +588,7 @@ def test_multi_target_job_progress_and_requested_by(audit_workspace):
     assert persisted is not None
     assert persisted["total_cases"] == 12
     assert persisted.get("requested_by") == "admin-user@example.com"
+    job_mgr.cancel_job(job["job_id"], project_id="proj-a")
 
 
 # =============================================================================

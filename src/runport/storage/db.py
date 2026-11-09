@@ -292,6 +292,18 @@ class DatabaseManager:
             self._migrate_idempotency_and_reservations(conn)
 
     @staticmethod
+    def _add_column_if_missing(conn: sqlite3.Connection, table: str, column_def: str) -> None:
+        """Idempotently adds a column to an existing table, safely ignoring duplicate column errors."""
+        col_name = column_def.split()[0].strip()
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if col_name not in cols:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_def}")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+
+    @staticmethod
     def _migrate_evaluation_runs(conn: sqlite3.Connection) -> None:
         """Allow NULL run-level means ('Null is not 0'): an unmeasured mean must not be stored as 0.
 
@@ -387,11 +399,8 @@ class DatabaseManager:
     @staticmethod
     def _migrate_score_provenance(conn: sqlite3.Connection) -> None:
         """Add score provenance columns. Rows written before them keep NULL: their kind is unknown, not ground truth."""
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_results)").fetchall()}
-        if cols and "score_kind" not in cols:
-            conn.execute("ALTER TABLE evaluation_results ADD COLUMN score_kind TEXT")
-        if cols and "evaluator" not in cols:
-            conn.execute("ALTER TABLE evaluation_results ADD COLUMN evaluator TEXT")
+        DatabaseManager._add_column_if_missing(conn, "evaluation_results", "score_kind TEXT")
+        DatabaseManager._add_column_if_missing(conn, "evaluation_results", "evaluator TEXT")
 
     @staticmethod
     def _migrate_ledger(conn: sqlite3.Connection) -> None:
@@ -400,13 +409,9 @@ class DatabaseManager:
         Legacy rows are marked simulated ONLY when the run they belong to is recorded as a dry run (evaluation_runs.is_dry_run = 1).
         Rows with no such evidence stay counted as actual, which is the conservative choice for a spend ceiling.
         """
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(budget_ledger)").fetchall()]
-        if "is_simulated" not in cols:
-            conn.execute("ALTER TABLE budget_ledger ADD COLUMN is_simulated INTEGER NOT NULL DEFAULT 0")
-        if "is_unresolved" not in cols:
-            conn.execute("ALTER TABLE budget_ledger ADD COLUMN is_unresolved INTEGER NOT NULL DEFAULT 0")
-        if "cost_basis" not in cols:
-            conn.execute("ALTER TABLE budget_ledger ADD COLUMN cost_basis TEXT NOT NULL DEFAULT 'UNSPECIFIED'")
+        DatabaseManager._add_column_if_missing(conn, "budget_ledger", "is_simulated INTEGER NOT NULL DEFAULT 0")
+        DatabaseManager._add_column_if_missing(conn, "budget_ledger", "is_unresolved INTEGER NOT NULL DEFAULT 0")
+        DatabaseManager._add_column_if_missing(conn, "budget_ledger", "cost_basis TEXT NOT NULL DEFAULT 'UNSPECIFIED'")
         conn.execute("UPDATE budget_ledger SET is_simulated = 1 WHERE is_simulated = 0 AND run_id IN (SELECT run_id FROM evaluation_runs WHERE is_dry_run = 1)")
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) "
@@ -583,31 +588,21 @@ class DatabaseManager:
 
         # Add project_id, principal, last_used_at to api_keys if missing
         if "api_keys" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
-            if "project_id" not in cols:
-                conn.execute("ALTER TABLE api_keys ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
-            if "principal" not in cols:
-                conn.execute("ALTER TABLE api_keys ADD COLUMN principal TEXT")
-            if "last_used_at" not in cols:
-                conn.execute("ALTER TABLE api_keys ADD COLUMN last_used_at TEXT")
+            DatabaseManager._add_column_if_missing(conn, "api_keys", "project_id TEXT NOT NULL DEFAULT 'default'")
+            DatabaseManager._add_column_if_missing(conn, "api_keys", "principal TEXT")
+            DatabaseManager._add_column_if_missing(conn, "api_keys", "last_used_at TEXT")
 
         # Add project_id to evaluation_runs if missing
         if "evaluation_runs" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_runs)").fetchall()}
-            if "project_id" not in cols:
-                conn.execute("ALTER TABLE evaluation_runs ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            DatabaseManager._add_column_if_missing(conn, "evaluation_runs", "project_id TEXT NOT NULL DEFAULT 'default'")
 
         # Add project_id to traces if missing
         if "traces" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(traces)").fetchall()}
-            if "project_id" not in cols:
-                conn.execute("ALTER TABLE traces ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            DatabaseManager._add_column_if_missing(conn, "traces", "project_id TEXT NOT NULL DEFAULT 'default'")
 
         # Add project_id to budget_ledger if missing
         if "budget_ledger" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(budget_ledger)").fetchall()}
-            if "project_id" not in cols:
-                conn.execute("ALTER TABLE budget_ledger ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            DatabaseManager._add_column_if_missing(conn, "budget_ledger", "project_id TEXT NOT NULL DEFAULT 'default'")
 
         # Seed default organization and project for local single-tenant mode
         conn.execute("""
@@ -646,31 +641,20 @@ class DatabaseManager:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
 
         if "run_jobs" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(run_jobs)").fetchall()}
-            if "project_id" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
-            if "requested_by_key_id" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN requested_by_key_id TEXT")
-            if "worker_id" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN worker_id TEXT")
-            if "lease_expires_at" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN lease_expires_at TEXT")
-            if "heartbeat_at" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN heartbeat_at TEXT")
-            if "attempt_count" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
-            if "started_at" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN started_at TEXT")
-            if "cancelled_at" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN cancelled_at TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "project_id TEXT NOT NULL DEFAULT 'default'")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "requested_by_key_id TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "worker_id TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "lease_expires_at TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "heartbeat_at TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "attempt_count INTEGER NOT NULL DEFAULT 0")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "started_at TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "cancelled_at TEXT")
 
             conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_project ON run_jobs(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_project_status ON run_jobs(project_id, status)")
 
         if "plan_approvals" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(plan_approvals)").fetchall()}
-            if "project_id" not in cols:
-                conn.execute("ALTER TABLE plan_approvals ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+            DatabaseManager._add_column_if_missing(conn, "plan_approvals", "project_id TEXT NOT NULL DEFAULT 'default'")
 
             conn.execute("CREATE INDEX IF NOT EXISTS idx_plan_approvals_project ON plan_approvals(project_id)")
 
@@ -691,21 +675,15 @@ class DatabaseManager:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
 
         if "run_jobs" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(run_jobs)").fetchall()}
-            if "idempotency_key" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN idempotency_key TEXT")
-            if "requested_by" not in cols:
-                conn.execute("ALTER TABLE run_jobs ADD COLUMN requested_by TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "idempotency_key TEXT")
+            DatabaseManager._add_column_if_missing(conn, "run_jobs", "requested_by TEXT")
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_jobs_project_idempotency ON run_jobs(project_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
             )
 
         if "budget_reservations" in tables:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(budget_reservations)").fetchall()}
-            if "project_id" not in cols:
-                conn.execute("ALTER TABLE budget_reservations ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
-            if "plan_id" not in cols:
-                conn.execute("ALTER TABLE budget_reservations ADD COLUMN plan_id TEXT")
+            DatabaseManager._add_column_if_missing(conn, "budget_reservations", "project_id TEXT NOT NULL DEFAULT 'default'")
+            DatabaseManager._add_column_if_missing(conn, "budget_reservations", "plan_id TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_project ON budget_reservations(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_run ON budget_reservations(run_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_reservations_plan ON budget_reservations(plan_id)")
