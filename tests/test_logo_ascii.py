@@ -65,12 +65,14 @@ def test_no_dependency_on_cwd(tmp_path, monkeypatch):
     assert bytes_read is not None and bytes_read[:8] == b"\x89PNG\r\n\x1a\n"
 
 
-def test_deprecated_dotted_constants_are_empty():
-    """Assert legacy dotted/ASCII approximations are completely removed."""
-    assert RUNPORT_EMBLEM_LINES == []
-    assert RUNPORT_EMBLEM_SOLID_LINES == []
-    assert RUNPORT_EMBLEM == ""
-    assert RUNPORT_EMBLEM_SOLID == ""
+def test_official_terminal_emblem_constants_dimensions():
+    """Assert official terminal emblem lines are non-empty and uniform in column width."""
+    assert len(RUNPORT_EMBLEM_LINES) == 27
+    assert all(len(line) == 64 for line in RUNPORT_EMBLEM_LINES)
+    assert len(RUNPORT_EMBLEM_SOLID_LINES) == 31
+    assert all(len(line) == 72 for line in RUNPORT_EMBLEM_SOLID_LINES)
+    assert len(RUNPORT_EMBLEM) > 0
+    assert len(RUNPORT_EMBLEM_SOLID) > 0
 
 
 def test_terminal_image_protocol_detection(monkeypatch):
@@ -138,7 +140,7 @@ def test_iterm2_and_kitty_encoding():
 
 
 def test_welcome_fallback_on_macos_terminal(monkeypatch):
-    """Assert macOS Terminal (Apple_Terminal) uses clean fallback with lavender wordmark and zero corrupted escapes."""
+    """Assert macOS Terminal (Apple_Terminal) uses clean terminal emblem fallback and zero corrupted image escapes."""
     monkeypatch.delenv("RUNPORT_IMAGE_PROTOCOL", raising=False)
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("TERM", "xterm-256color")
@@ -155,8 +157,8 @@ def test_welcome_fallback_on_macos_terminal(monkeypatch):
     assert "\033]1337" not in raw
     assert "\033_G" not in raw
 
-    # Must NOT contain Braille approximation characters
-    assert not any(0x2800 <= ord(c) <= 0x28FF for c in raw)
+    # In 100x50 terminal without image support, it renders the official terminal art emblem
+    assert any(0x2800 <= ord(c) <= 0x28FF for c in raw)
 
     # Must contain official wordmark and welcome hierarchy
     assert "RUNPORT CLI" in plain
@@ -228,7 +230,7 @@ def test_graceful_fallback_when_asset_missing(monkeypatch):
 
 
 def test_compact_terminal_suppresses_logo(monkeypatch):
-    """Assert compact viewports (< 28 rows) cleanly suppress the image logo."""
+    """Assert compact viewports (< 28 rows) cleanly suppress both image and emblem logo."""
     monkeypatch.setenv("RUNPORT_IMAGE_PROTOCOL", "iterm2")
 
     buf = io.StringIO()
@@ -237,6 +239,7 @@ def test_compact_terminal_suppresses_logo(monkeypatch):
     screen.render(clear=False)
     raw = buf.getvalue()
 
-    # Image is suppressed in tight viewports
+    # Image and Braille emblem are suppressed in tight viewports
     assert "\033]1337" not in raw
+    assert not any(0x2800 <= ord(c) <= 0x28FF for c in raw)
     assert "RUNPORT CLI" in raw

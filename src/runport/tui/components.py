@@ -33,6 +33,11 @@ from runport.tui.logo import (
     is_logo_available,
     render_official_logo,
 )
+from runport.tui.logo_ascii import (
+    RUNPORT_EMBLEM_LARGE_LINES,
+    RUNPORT_EMBLEM_LINES,
+    RUNPORT_EMBLEM_SOLID_LINES,
+)
 from runport.tui.theme import (
     ACCENT_CYAN,
     ACCENT_LAVENDER,
@@ -79,8 +84,16 @@ class RunportLogo:
 
     @staticmethod
     def should_render(console: Optional[Console], compact: bool, cols: int, rows: int) -> bool:
-        """Determines whether the terminal can display the logo."""
-        return RunportLogo.can_render_image(console=console, compact=compact, cols=cols, rows=rows)
+        """Determines whether the terminal viewport can display the logo (image or terminal art)."""
+        if compact:
+            return False
+        if os.environ.get("RUNPORT_NO_LOGO", "").strip().lower() in ("1", "true", "yes"):
+            return False
+        if RunportLogo.can_render_image(console=console, compact=compact, cols=cols, rows=rows):
+            return True
+        if cols < 66 or rows < 50:
+            return False
+        return True
 
     @staticmethod
     def render_image(
@@ -92,9 +105,20 @@ class RunportLogo:
         return render_official_logo(console=console, rows=rows, width_cells=width_cells)
 
     @staticmethod
-    def render_emblem(solid: bool = False) -> Text:
-        """Deprecated: ASCII/Braille approximations have been removed."""
-        return Text()
+    def render_emblem(solid: bool = False, large: bool = False) -> Text:
+        """Renders the official Runport geometric emblem in terminal art (white)."""
+        style_env = os.environ.get("RUNPORT_LOGO_STYLE", "").strip().lower()
+        if style_env == "solid" or solid:
+            lines = RUNPORT_EMBLEM_SOLID_LINES
+        elif style_env == "large" or large:
+            lines = RUNPORT_EMBLEM_LARGE_LINES
+        else:
+            lines = RUNPORT_EMBLEM_LINES
+
+        text = Text()
+        for line in lines:
+            text.append(line + "\n", style="bold bright_white")
+        return text
 
     @staticmethod
     def render_compact() -> Text:

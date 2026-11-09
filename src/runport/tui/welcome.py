@@ -201,11 +201,19 @@ class WelcomeScreen:
             grid.add_row(TerminalFooter.render(hints=footer_hints, width=content_width))
             return Align.center(grid)
 
-        # 1. Header / Logo Section: Official Symbol (White) if supported by terminal graphics
+        # 1. Header / Logo Section: Official Symbol (White)
         if _should_show_emblem(self.console, compact, cols, eff_rows):
-            image_renderable = RunportLogo.render_image(self.console, rows=6, width_cells=12)
+            image_renderable = None
+            if RunportLogo.can_render_image(self.console, compact, cols, eff_rows):
+                image_renderable = RunportLogo.render_image(self.console, rows=6, width_cells=12)
+
             if image_renderable is not None:
                 grid.add_row(image_renderable)
+            else:
+                emblem = RunportLogo.render_emblem()
+                if emblem.plain.strip():
+                    grid.add_row(Align.center(emblem))
+                    grid.add_row(Text(""))
 
         # 2. Brand Title & Version Hierarchy
         grid.add_row(Align.center(Text("RUNPORT CLI", style=f"bold {ACCENT_LAVENDER}")))
