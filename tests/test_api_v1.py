@@ -266,8 +266,17 @@ def test_v1_async_job_submission_and_status(test_env):
     assert res_job.json()["job_id"] == job_id
 
 
-def test_v1_job_cancellation(test_env):
+def test_v1_job_cancellation(test_env, monkeypatch):
     client = test_env["client"]
+    from runport.services.execution import ExecutionService
+
+    orig_execute = ExecutionService.execute
+
+    def slow_execute(*args, **kwargs):
+        time.sleep(0.4)
+        return orig_execute(*args, **kwargs)
+
+    monkeypatch.setattr(ExecutionService, "execute", slow_execute)
 
     # Create and approve plan
     plan_res = client.post(

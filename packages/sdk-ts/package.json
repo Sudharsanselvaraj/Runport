@@ -32,6 +32,9 @@
   ],
   "author": "Runport Contributors",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "devDependencies": {
     "typescript": "^5.7.3"
   }

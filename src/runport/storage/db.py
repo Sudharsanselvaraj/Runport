@@ -113,9 +113,6 @@ CREATE TABLE IF NOT EXISTS budget_reservations (
     project_id TEXT NOT NULL DEFAULT 'default',
     plan_id TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_budget_reservations_project ON budget_reservations(project_id);
-CREATE INDEX IF NOT EXISTS idx_budget_reservations_run ON budget_reservations(run_id);
-CREATE INDEX IF NOT EXISTS idx_budget_reservations_plan ON budget_reservations(plan_id);
 
 CREATE TABLE IF NOT EXISTS idempotency_records (
     key TEXT NOT NULL,
