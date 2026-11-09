@@ -104,10 +104,13 @@ def test_the_budget_service_applies_the_override_and_keeps_the_ledger(tmp_path, 
 
 
 def test_cli_refuses_without_an_interactive_terminal(tmp_path):
+    import re
+
     r = CliRunner().invoke(app, ["budget", "raise-pilot-ceiling", "--to", "5.00", "--operator", "T"])
     assert r.exit_code == 1 and "interactive" in r.output and not bp.policy_path(settings.data_dir).exists()
     r2 = CliRunner().invoke(app, ["budget", "policy"])
-    assert r2.exit_code == 0 and "pilot $1.00" in r2.output
+    clean_out = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", r2.output)
+    assert r2.exit_code == 0 and "pilot $1.00" in clean_out
 
 
 def test_audit_reconciles_ledger_with_stored_results_and_separates_guard_from_ledger(tmp_path):
