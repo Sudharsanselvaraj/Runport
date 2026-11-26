@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/runport-logo-white.png">
     <source media="(prefers-color-scheme: light)" srcset="assets/runport-logo-black.png">
-    <img src="assets/runport-logo-white.png" alt="Runport" width="280" />
+    <img src="assets/runport-logo-white.png" alt="Runport" width="270" />
   </picture>
 </p>
 
